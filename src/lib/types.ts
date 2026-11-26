@@ -26,6 +26,11 @@ export interface SessionUser extends UserProfile {
   authMode: "supabase" | "demo";
 }
 
+export type AuthResolutionStatus =
+  | "authenticated"
+  | "unauthenticated"
+  | "profile_error";
+
 export interface BandConversionRow {
   id: string;
   skill: BandConversionSkill;

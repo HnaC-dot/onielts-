@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getCurrentUser } from "@/lib/auth";
+import { getAuthState } from "@/lib/auth";
+import {
+  isServiceRoleConfigured,
+  isSupabaseConfigured,
+} from "@/lib/supabase/server";
 import {
   adminCreateBlogPost,
   adminCreatePromoCode,
@@ -22,7 +26,7 @@ import {
   listAllProfiles,
   listOrders,
 } from "@/lib/db";
-import type { IeltsTest } from "@/lib/types";
+import type { IeltsTest, SessionUser } from "@/lib/types";
 
 const adminActionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -83,21 +87,53 @@ const adminActionSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-async function requireAdmin() {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return null;
+async function requireAdmin(): Promise<
+  { ok: true; admin: SessionUser } | { ok: false; response: NextResponse }
+> {
+  const authState = await getAuthState();
+  if (authState.status === "profile_error") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Đã xác thực nhưng không thể tải hồ sơ quản trị từ cơ sở dữ liệu." },
+        { status: 503 }
+      ),
+    };
   }
-  return user;
+  if (!authState.user) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Vui lòng đăng nhập bằng tài khoản quản trị." },
+        { status: 401 }
+      ),
+    };
+  }
+  if (authState.user.role !== "admin") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Chỉ quản trị viên mới có quyền truy cập." },
+        { status: 403 }
+      ),
+    };
+  }
+  if (isSupabaseConfigured() && !isServiceRoleConfigured()) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Máy chủ thiếu biến môi trường SUPABASE_SERVICE_ROLE_KEY cho thao tác quản trị." },
+        { status: 503 }
+      ),
+    };
+  }
+  return { ok: true, admin: authState.user };
 }
 
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin) {
-    return NextResponse.json(
-      { error: "Chỉ quản trị viên mới có quyền truy cập." },
-      { status: 403 }
-    );
+  const guard = await requireAdmin();
+  if (!guard.ok) {
+    return guard.response;
   }
   const [
     profiles,
@@ -137,13 +173,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const admin = await requireAdmin();
-  if (!admin) {
-    return NextResponse.json(
-      { error: "Chỉ quản trị viên mới có quyền thực hiện." },
-      { status: 403 }
-    );
+  const guard = await requireAdmin();
+  if (!guard.ok) {
+    return guard.response;
   }
+  const admin = guard.admin;
 
   try {
     const body = await req.json();

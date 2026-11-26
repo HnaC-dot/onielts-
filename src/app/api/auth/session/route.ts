@@ -4,11 +4,15 @@ import { z } from "zod";
 import {
   createOrFindDemoEmailUser,
   DEMO_USER_COOKIE,
-  getCurrentUser,
+  ensureProfileForAuthUser,
+  getAuthState,
   isDemoAuthEnabled,
   REFERRAL_COOKIE,
 } from "@/lib/auth";
-import { createSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
+import {
+  createSupabaseRouteClient,
+  isSupabaseConfigured,
+} from "@/lib/supabase/server";
 import { readStore } from "@/lib/store";
 
 const authActionSchema = z.discriminatedUnion("action", [
@@ -31,12 +35,16 @@ const authActionSchema = z.discriminatedUnion("action", [
 ]);
 
 export async function GET() {
-  const user = await getCurrentUser();
-  return NextResponse.json({
-    user,
-    supabaseConfigured: isSupabaseConfigured(),
-    demoEnabled: isDemoAuthEnabled(),
-  });
+  const authState = await getAuthState();
+  return NextResponse.json(
+    {
+      user: authState.user,
+      authStatus: authState.status,
+      supabaseConfigured: isSupabaseConfigured(),
+      demoEnabled: isDemoAuthEnabled(),
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 export async function POST(req: Request) {
@@ -55,18 +63,30 @@ export async function POST(req: Request) {
     const demoAllowed = isDemoAuthEnabled();
 
     if (data.action === "logout") {
-      if (supabaseActive) {
-        const supabase = await createSupabaseServerClient();
-        await supabase?.auth.signOut();
+      const routeClient = supabaseActive
+        ? await createSupabaseRouteClient()
+        : null;
+      if (routeClient) {
+        const { error } = await routeClient.supabase.auth.signOut();
+        if (error) {
+          console.error("[auth.session] signOut failed", {
+            errorName: error.name,
+            status: error.status ?? null,
+            message: error.message,
+          });
+        }
       }
-      const res = NextResponse.json({ ok: true });
+      const res = NextResponse.json(
+        { ok: true },
+        { headers: { "Cache-Control": "no-store" } }
+      );
       res.cookies.set(DEMO_USER_COOKIE, "", {
         path: "/",
         httpOnly: true,
         sameSite: "lax",
         maxAge: 0,
       });
-      return res;
+      return routeClient ? routeClient.applyCookies(res) : res;
     }
 
     if (data.action === "demo_switch") {
@@ -79,7 +99,10 @@ export async function POST(req: Request) {
       const store = readStore();
       const target = store.profiles.find((p) => p.id === data.userId);
       if (!target) {
-        return NextResponse.json({ error: "Không tìm thấy tài khoản mẫu" }, { status: 404 });
+        return NextResponse.json(
+          { error: "Không tìm thấy tài khoản mẫu" },
+          { status: 404 }
+        );
       }
       const res = NextResponse.json({ ok: true, user: target });
       res.cookies.set(DEMO_USER_COOKIE, target.id, {
@@ -93,8 +116,8 @@ export async function POST(req: Request) {
 
     if (data.action === "send_otp") {
       if (supabaseActive) {
-        const supabase = await createSupabaseServerClient();
-        if (!supabase) {
+        const routeClient = await createSupabaseRouteClient();
+        if (!routeClient) {
           return NextResponse.json(
             { error: "Không thể kết nối máy chủ xác thực." },
             { status: 503 }
@@ -102,22 +125,28 @@ export async function POST(req: Request) {
         }
         const origin =
           process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(req.url).origin;
-        const { error } = await supabase.auth.signInWithOtp({
+        const { error } = await routeClient.supabase.auth.signInWithOtp({
           email: data.email,
           options: {
             shouldCreateUser: true,
-            emailRedirectTo: `${origin.replace(/\/$/, "")}/auth/callback`,
+            emailRedirectTo: `${origin.replace(/\/$/, "")}/auth/callback?next=/`,
           },
         });
         if (error) {
+          console.error("[auth.session] signInWithOtp failed", {
+            errorName: error.name,
+            status: error.status ?? null,
+            message: error.message,
+          });
           return NextResponse.json({ error: error.message }, { status: 400 });
         }
-        return NextResponse.json({
+        const res = NextResponse.json({
           ok: true,
           mode: "supabase",
           message:
             "Đã gửi email đăng nhập! Bạn chỉ cần mở Gmail và bấm nút 'Sign in' trong thư (hoặc nhập mã 6 số nếu có).",
         });
+        return routeClient.applyCookies(res);
       }
 
       if (!demoAllowed) {
@@ -136,24 +165,35 @@ export async function POST(req: Request) {
 
     if (data.action === "verify_otp") {
       if (supabaseActive) {
-        const supabase = await createSupabaseServerClient();
-        if (!supabase) {
+        const routeClient = await createSupabaseRouteClient();
+        if (!routeClient) {
           return NextResponse.json(
             { error: "Không thể kết nối máy chủ xác thực." },
             { status: 503 }
           );
         }
-        const { error } = await supabase.auth.verifyOtp({
-          email: data.email,
-          token: data.code,
-          type: "email",
-        });
+        const { data: verifyData, error } =
+          await routeClient.supabase.auth.verifyOtp({
+            email: data.email,
+            token: data.code,
+            type: "email",
+          });
         if (error) {
+          console.error("[auth.session] verifyOtp failed", {
+            errorName: error.name,
+            status: error.status ?? null,
+            message: error.message,
+          });
           return NextResponse.json({ error: error.message }, { status: 400 });
         }
-        // Trigger profile provisioning on first OTP sign-in
-        await getCurrentUser();
-        return NextResponse.json({ ok: true, mode: "supabase" });
+        if (verifyData.user) {
+          await ensureProfileForAuthUser(routeClient.supabase, verifyData.user);
+        }
+        const res = NextResponse.json(
+          { ok: true, mode: "supabase" },
+          { headers: { "Cache-Control": "no-store" } }
+        );
+        return routeClient.applyCookies(res);
       }
 
       if (!demoAllowed) {
@@ -184,7 +224,10 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
-  } catch {
+  } catch (err) {
+    console.error("[auth.session] unexpected error", {
+      message: err instanceof Error ? err.message : "unknown_error",
+    });
     return NextResponse.json({ error: "Lỗi xử lý yêu cầu" }, { status: 500 });
   }
 }

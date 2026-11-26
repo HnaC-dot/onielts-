@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import {
+  AlertTriangle,
   BookOpen,
   Calculator,
   ChevronDown,
@@ -36,10 +37,12 @@ import {
 import { BrandLogo } from "./brand-logo";
 import { Button } from "./ui/button";
 import { openAddFlashcardModal } from "./flashcard-quick-add";
-import type { SessionUser } from "@/lib/types";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { AuthResolutionStatus, SessionUser } from "@/lib/types";
 
 interface SiteHeaderProps {
   user: SessionUser | null;
+  authStatus?: AuthResolutionStatus;
 }
 
 interface SearchResult {
@@ -48,7 +51,7 @@ interface SearchResult {
   category: string;
 }
 
-export function SiteHeader({ user }: SiteHeaderProps) {
+export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
   const t = useTranslations("nav");
   const locale = useLocale();
   const router = useRouter();
@@ -126,6 +129,10 @@ export function SiteHeader({ user }: SiteHeaderProps) {
   };
 
   const handleLogout = async () => {
+    const supabase = createSupabaseBrowserClient();
+    if (supabase) {
+      await supabase.auth.signOut().catch(() => {});
+    }
     await fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -536,6 +543,16 @@ export function SiteHeader({ user }: SiteHeaderProps) {
                 </div>
               )}
             </div>
+          ) : authStatus === "profile_error" ? (
+            <Link
+              href="/profile"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span className="hidden sm:inline">
+                {locale === "en" ? "Profile error" : "Lỗi tải hồ sơ"}
+              </span>
+            </Link>
           ) : (
             <div className="hidden sm:flex items-center gap-1.5">
               <Link href="/auth">
@@ -597,7 +614,16 @@ export function SiteHeader({ user }: SiteHeaderProps) {
               <Calculator className="h-4 w-4 text-emerald-600" /> Band Calc
             </Link>
           </div>
-          {!user && (
+          {!user && authStatus === "profile_error" ? (
+            <div className="mt-3">
+              <Link href="/profile" onClick={() => setMobileOpen(false)} className="block">
+                <Button variant="outline" className="w-full border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="h-4 w-4" />
+                  {locale === "en" ? "Profile error — Retry" : "Lỗi tải hồ sơ — Thử lại"}
+                </Button>
+              </Link>
+            </div>
+          ) : !user && (
             <div className="mt-3 flex gap-2">
               <Link href="/auth" onClick={() => setMobileOpen(false)} className="flex-1">
                 <Button variant="outline" className="w-full">

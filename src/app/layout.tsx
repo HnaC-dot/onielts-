@@ -7,7 +7,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { GlobalFlashcardModal } from "@/components/flashcard-quick-add";
 import { MentorFloatingButton } from "@/components/mentor-floating-button";
-import { getCurrentUser } from "@/lib/auth";
+import { getAuthState } from "@/lib/auth";
 import "./globals.css";
 
 const beVietnamPro = Be_Vietnam_Pro({
@@ -54,10 +54,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [locale, messages, user] = await Promise.all([
+  const [locale, messages, authState] = await Promise.all([
     getLocale(),
     getMessages(),
-    getCurrentUser(),
+    getAuthState(),
   ]);
 
   const jsonLd = {
@@ -79,7 +79,7 @@ export default async function RootLayout({
         />
         <ThemeProvider>
           <NextIntlClientProvider locale={locale} messages={messages}>
-            <SiteHeader user={user} />
+            <SiteHeader user={authState.user} authStatus={authState.status} />
             <main className="flex-1">{children}</main>
             <SiteFooter />
             <GlobalFlashcardModal />

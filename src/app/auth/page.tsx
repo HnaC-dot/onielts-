@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, Crown, Loader2, Mail, Shield, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,48 @@ import {
   isSupabaseClientConfigured,
 } from "@/lib/supabase/client";
 
+function getReadableAuthError(code: string, isEn: boolean): string {
+  switch (code) {
+    case "access_denied":
+      return isEn
+        ? "Google sign-in was cancelled or denied. You can try again below."
+        : "Bạn đã hủy hoặc từ chối đăng nhập Google. Vui lòng thử lại bên dưới.";
+    case "provider_error":
+      return isEn
+        ? "The sign-in provider returned an error. Please try again or use Email OTP."
+        : "Nhà cung cấp đăng nhập trả về lỗi. Vui lòng thử lại hoặc dùng Email OTP.";
+    case "exchange_failed":
+      return isEn
+        ? "Could not finish creating your session after Google sign-in. Please try signing in again."
+        : "Không thể hoàn tất phiên đăng nhập sau khi xác thực Google. Vui lòng thử đăng nhập lại.";
+    case "otp_failed":
+      return isEn
+        ? "The email sign-in link or code is invalid or expired. Please request a new one."
+        : "Liên kết hoặc mã đăng nhập qua Email đã hết hạn hoặc không hợp lệ. Vui lòng gửi lại.";
+    case "missing_code":
+      return isEn
+        ? "The sign-in callback was missing a verification code. Please start sign-in again."
+        : "Đường dẫn xác thực thiếu mã đăng nhập. Vui lòng bắt đầu đăng nhập lại từ trang này.";
+    case "supabase_unconfigured":
+      return isEn
+        ? "Authentication service is not configured on the server yet."
+        : "Dịch vụ xác thực (Supabase Auth) chưa được cấu hình trên máy chủ.";
+    default:
+      return isEn
+        ? "Sign-in did not complete. Please try again or use Email OTP."
+        : "Đăng nhập Google chưa hoàn tất. Vui lòng thử lại hoặc dùng Email OTP.";
+  }
+}
+
+function sanitizeNextPath(raw: string | null): string {
+  if (!raw) return "/";
+  return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
+}
+
 export default function AuthPage() {
   const t = useTranslations("auth");
+  const locale = useLocale();
+  const isEn = locale === "en";
   const router = useRouter();
   const supabaseReady = isSupabaseClientConfigured();
 
@@ -32,37 +72,61 @@ export default function AuthPage() {
     if (ref && /^[a-z0-9_-]{3,32}$/i.test(ref)) {
       document.cookie = `onielts_ref=${encodeURIComponent(ref.toUpperCase())}; path=/; max-age=2592000; samesite=lax`;
     }
-    const oauthFailed = params.get("error") === "oauth_failed";
+    const authError = params.get("error");
 
     fetch("/api/auth/session")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!active) return;
-        if (oauthFailed) {
-          setErrorMsg("Đăng nhập Google chưa hoàn tất. Vui lòng thử lại hoặc dùng Email OTP.");
+        if (authError) {
+          setErrorMsg(getReadableAuthError(authError, isEn));
         }
         if (d && typeof d.demoEnabled === "boolean") {
           setDemoEnabled(d.demoEnabled);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!active) return;
+        if (authError) {
+          setErrorMsg(getReadableAuthError(authError, isEn));
+        }
+      });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [isEn]);
+
+  const getNextPath = () => {
+    if (typeof window === "undefined") return "/";
+    const params = new URLSearchParams(window.location.search);
+    return sanitizeNextPath(params.get("next"));
+  };
+
+  const buildCallbackUrl = () => {
+    const nextPath = getNextPath();
+    return nextPath === "/"
+      ? `${window.location.origin}/auth/callback?next=/`
+      : `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+  };
 
   const handleGoogleLogin = async () => {
     setErrorMsg("");
     if (supabaseReady) {
       const supabase = createSupabaseBrowserClient();
       if (supabase) {
+        const redirectTo = buildCallbackUrl();
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: `${window.location.origin}/auth/callback` },
+          options: { redirectTo },
         });
         if (error) {
-          setErrorMsg(error.message || "Không thể kết nối Google Sign-In.");
+          setErrorMsg(
+            error.message ||
+              (isEn
+                ? "Could not connect to Google Sign-In."
+                : "Không thể kết nối Google Sign-In.")
+          );
         }
         return;
       }
@@ -71,7 +135,11 @@ export default function AuthPage() {
       await handleDemoSwitch("demo-free-001");
       return;
     }
-    setErrorMsg("Đăng nhập Google chưa được kích hoạt trên hệ thống.");
+    setErrorMsg(
+      isEn
+        ? "Google Sign-In is not enabled on this server."
+        : "Đăng nhập Google chưa được kích hoạt trên hệ thống."
+    );
   };
 
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -87,16 +155,23 @@ export default function AuthPage() {
             email,
             options: {
               shouldCreateUser: true,
-              emailRedirectTo: `${window.location.origin}/auth/callback`,
+              emailRedirectTo: buildCallbackUrl(),
             },
           });
           if (error) {
-            setErrorMsg(error.message || "Không thể gửi email đăng nhập.");
+            setErrorMsg(
+              error.message ||
+                (isEn
+                  ? "Could not send sign-in email."
+                  : "Không thể gửi email đăng nhập.")
+            );
             return;
           }
           setOtpSent(true);
           setStatusMsg(
-            "Đã gửi email đăng nhập! Hãy mở Gmail và bấm nút 'Sign in' trong thư (hoặc nhập mã 6 số nếu có)."
+            isEn
+              ? "Sign-in email sent! Open your inbox and click the sign-in link (or enter the 6-digit OTP code if shown)."
+              : "Đã gửi email đăng nhập! Hãy mở Gmail và bấm nút 'Sign in' trong thư (hoặc nhập mã 6 số nếu có)."
           );
           return;
         }
@@ -115,7 +190,7 @@ export default function AuthPage() {
       setOtpSent(true);
       setStatusMsg(data.message || "Đã gửi email đăng nhập.");
     } catch {
-      setErrorMsg("Lỗi kết nối máy chủ.");
+      setErrorMsg(isEn ? "Server connection error." : "Lỗi kết nối máy chủ.");
     } finally {
       setLoading(false);
     }
@@ -136,10 +211,10 @@ export default function AuthPage() {
         setErrorMsg(data.error || "Mã OTP không hợp lệ");
         return;
       }
-      router.push("/");
+      router.push(getNextPath());
       router.refresh();
     } catch {
-      setErrorMsg("Lỗi kết nối máy chủ.");
+      setErrorMsg(isEn ? "Server connection error." : "Lỗi kết nối máy chủ.");
     } finally {
       setLoading(false);
     }
@@ -160,7 +235,7 @@ export default function AuthPage() {
         setErrorMsg(data.error || "Chế độ dùng thử không khả dụng.");
         return;
       }
-      router.push("/");
+      router.push(getNextPath());
       router.refresh();
     } finally {
       setLoading(false);
