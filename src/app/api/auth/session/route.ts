@@ -100,9 +100,14 @@ export async function POST(req: Request) {
             { status: 503 }
           );
         }
+        const origin =
+          process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(req.url).origin;
         const { error } = await supabase.auth.signInWithOtp({
           email: data.email,
-          options: { shouldCreateUser: true },
+          options: {
+            shouldCreateUser: true,
+            emailRedirectTo: `${origin.replace(/\/$/, "")}/auth/callback`,
+          },
         });
         if (error) {
           return NextResponse.json({ error: error.message }, { status: 400 });
@@ -110,7 +115,8 @@ export async function POST(req: Request) {
         return NextResponse.json({
           ok: true,
           mode: "supabase",
-          message: "Đã gửi mã OTP 6 số tới email của bạn. Vui lòng kiểm tra hộp thư.",
+          message:
+            "Đã gửi email đăng nhập! Bạn chỉ cần mở Gmail và bấm nút 'Sign in' trong thư (hoặc nhập mã 6 số nếu có).",
         });
       }
 

@@ -80,6 +80,28 @@ export default function AuthPage() {
     setErrorMsg("");
     setStatusMsg("");
     try {
+      if (supabaseReady) {
+        const supabase = createSupabaseBrowserClient();
+        if (supabase) {
+          const { error } = await supabase.auth.signInWithOtp({
+            email,
+            options: {
+              shouldCreateUser: true,
+              emailRedirectTo: `${window.location.origin}/auth/callback`,
+            },
+          });
+          if (error) {
+            setErrorMsg(error.message || "Không thể gửi email đăng nhập.");
+            return;
+          }
+          setOtpSent(true);
+          setStatusMsg(
+            "Đã gửi email đăng nhập! Hãy mở Gmail và bấm nút 'Sign in' trong thư (hoặc nhập mã 6 số nếu có)."
+          );
+          return;
+        }
+      }
+
       const res = await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,7 +113,7 @@ export default function AuthPage() {
         return;
       }
       setOtpSent(true);
-      setStatusMsg(data.message || "Đã gửi mã xác nhận 6 số.");
+      setStatusMsg(data.message || "Đã gửi email đăng nhập.");
     } catch {
       setErrorMsg("Lỗi kết nối máy chủ.");
     } finally {
