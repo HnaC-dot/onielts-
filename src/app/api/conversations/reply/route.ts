@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import { getConversationTopicBySlug } from "@/lib/db";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 import { checkUsageLimit } from "@/lib/usage-limits";
 import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
@@ -8,6 +9,7 @@ import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
 export const maxDuration = 45;
 
 const reqSchema = z.object({
+  topicSlug: z.string().trim().max(120).optional(),
   topicTitle: z.string().min(2).max(120),
   history: z
     .array(
@@ -49,7 +51,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Tin nhắn không hợp lệ" }, { status: 400 });
     }
 
-    const { topicTitle, history, userMessage } = parsed.data;
+    const { topicSlug, topicTitle, history, userMessage } = parsed.data;
+    const dbTopic = topicSlug ? await getConversationTopicBySlug(topicSlug) : null;
+    const customInstructions = dbTopic?.systemPrompt?.trim()
+      ? `\n\nTopic-specific coaching instructions from academic editors:\n${dbTopic.systemPrompt.trim().slice(0, 2000)}`
+      : "";
+    const vocabHint =
+      dbTopic?.suggestedVocab && dbTopic.suggestedVocab.length > 0
+        ? `\nTarget vocabulary for this topic: ${dbTopic.suggestedVocab.slice(0, 10).join(", ")}.`
+        : "";
+
     const transcript = history
       .slice(-6)
       .map((m) => `${m.role === "ai" ? "Examiner" : "Learner"}: ${m.text}`)
@@ -59,9 +70,9 @@ export async function POST(req: Request) {
       feature: "conversation:reply",
       skill: "speaking",
       userId: user?.id ?? clientKey,
-      systemPrompt: `You are a warm, encouraging IELTS Speaking partner role-playing the topic "${topicTitle}".
+      systemPrompt: `You are a warm, encouraging IELTS Speaking partner role-playing the topic "${dbTopic?.title_en || topicTitle}".
 Respond naturally in 2-3 sentences and ask one engaging follow-up question.
-Also give one brief, helpful Vietnamese tip improving the learner's previous reply (grammar or natural vocabulary), plus 3 Band 7.5-8.5 reply suggestions the learner can use next.`,
+Also give one brief, helpful Vietnamese tip improving the learner's previous reply (grammar or natural vocabulary), plus 3 Band 7.5-8.5 reply suggestions the learner can use next.${vocabHint}${customInstructions}`,
       userPrompt: `Recent conversation:\n${transcript}\n\nLatest learner message:\n${sanitizeUserDataForPrompt(userMessage, 1000)}`,
       schema: replySchema,
       jsonSchemaHint: `{

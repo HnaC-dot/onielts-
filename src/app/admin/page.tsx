@@ -63,15 +63,15 @@ const ROADMAP_MODULES = [
   },
   {
     phase: "GĐ4",
-    status: "next" as const,
+    status: "active" as const,
     title: "6 Module Học tập & Luyện tập",
-    desc: "Khóa học kéo-thả bài, Hội thoại AI, Nâng cấp câu viết, Phát âm IPA, Chép chính tả, Video tương tác (.srt/.vtt).",
-    href: "/courses",
+    desc: "Khóa học kéo-thả bài, Hội thoại AI (system_prompt), Nâng cấp câu viết, Phát âm IPA, Chép chính tả, Video tương tác (.srt/.vtt).",
+    href: "/admin/courses",
     icon: GraduationCap,
   },
   {
     phase: "GĐ5",
-    status: "planned" as const,
+    status: "next" as const,
     title: "Người dùng, Hộp thư & Trang tĩnh",
     desc: "Quản lý user/Premium/gói giá, hộp thư liên hệ & đề xuất tính năng, sửa /about, /legal/*, FAQs và cài đặt chung.",
     href: "/admin/legacy?tab=users",
@@ -300,31 +300,33 @@ export default async function AdminDashboardPage() {
       {/* Secondary quick counts strip */}
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
-          { label: "Khóa học", count: counts.courses, icon: GraduationCap },
-          { label: "Video tương tác", count: counts.videos, icon: Video },
-          { label: "Chép chính tả", count: counts.dictations, icon: Headphones },
-          { label: "Phát âm IPA", count: counts.ipaSounds, icon: Volume2 },
-          { label: "Tệp Media", count: counts.mediaAssets, icon: ImageIcon },
+          { label: "Khóa học", count: counts.courses, icon: GraduationCap, href: "/admin/courses" },
+          { label: "Video tương tác", count: counts.videos, icon: Video, href: "/admin/videos" },
+          { label: "Chép chính tả", count: counts.dictations, icon: Headphones, href: "/admin/dictation" },
+          { label: "Phát âm IPA", count: counts.ipaSounds, icon: Volume2, href: "/admin/pronunciation" },
+          { label: "Tệp Media", count: counts.mediaAssets, icon: ImageIcon, href: "/admin/media" },
           {
             label: "Liên hệ / Đề xuất",
             count: counts.unreadContacts + counts.openFeatureRequests,
             icon: Inbox,
+            href: "/admin#roadmap",
           },
         ].map((item) => {
           const Icon = item.icon;
           return (
-            <div
+            <Link
               key={item.label}
-              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-900"
+              href={item.href}
+              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 transition hover:border-emerald-400 hover:shadow-xs dark:border-slate-800 dark:bg-slate-900"
             >
-              <Icon className="h-4 w-4 shrink-0 text-slate-400" />
+              <Icon className="h-4 w-4 shrink-0 text-emerald-600/80" />
               <div className="min-w-0">
                 <p className="text-sm font-bold text-slate-900 dark:text-white">
                   {item.count}
                 </p>
                 <p className="truncate text-[11px] text-slate-500">{item.label}</p>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

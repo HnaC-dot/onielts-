@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
@@ -42,24 +43,33 @@ export default async function CoursesIndexPage() {
 
             return (
               <Link key={course.id} href={`/courses/${course.slug}`}>
-                <Card className="flex h-full flex-col justify-between p-6 transition hover:border-emerald-400 hover:shadow-md">
+                <Card className="flex h-full flex-col justify-between overflow-hidden transition hover:border-emerald-400 hover:shadow-md">
                   <div>
-                    <div className="flex items-center justify-between">
-                      <Badge>Target {course.target_band}</Badge>
-                      <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                        <Clock className="h-3.5 w-3.5" />
-                        {course.duration_hours}h
-                      </span>
+                    {course.cover_image_url && (
+                      <img
+                        src={course.cover_image_url}
+                        alt={course.seo_meta?.coverImageAlt || (isEn ? course.title_en : course.title_vi)}
+                        className="h-40 w-full object-cover border-b border-slate-100 dark:border-slate-800"
+                      />
+                    )}
+                    <div className="p-6 pb-0">
+                      <div className="flex items-center justify-between">
+                        <Badge>Target {course.target_band}</Badge>
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                          <Clock className="h-3.5 w-3.5" />
+                          {course.duration_hours}h
+                        </span>
+                      </div>
+                      <h2 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">
+                        {isEn ? course.title_en : course.title_vi}
+                      </h2>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                        {isEn ? course.description_en : course.description_vi}
+                      </p>
                     </div>
-                    <h2 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">
-                      {isEn ? course.title_en : course.title_vi}
-                    </h2>
-                    <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                      {isEn ? course.description_en : course.description_vi}
-                    </p>
                   </div>
 
-                  <div className="mt-6 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+                  <div className="mt-6 space-y-3 border-t border-slate-100 px-6 pb-6 pt-4 dark:border-slate-800">
                     <div>
                       <div className="flex justify-between text-[11px] font-semibold text-slate-500">
                         <span>{isEn ? "Progress" : "Tiến độ"}</span>

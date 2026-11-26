@@ -2,8 +2,12 @@
 
 import React, { useState } from "react";
 import { useLocale } from "next-intl";
-import { BookOpen, CheckCircle2, Circle, Clock } from "lucide-react";
+import { BookOpen, CheckCircle2, Circle, Clock, Headphones } from "lucide-react";
 import type { CourseItem } from "@/lib/types";
+import {
+  extractYoutubeVideoId,
+  renderBlogContentToSafeHtml,
+} from "@/lib/sanitize";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -31,6 +35,13 @@ export function CoursePlayerClient({
     (completedIds.length / Math.max(1, course.lessons.length)) * 100
   );
   const isCompleted = completedIds.includes(activeLesson.id);
+  const rawLessonContent = isEn
+    ? activeLesson.content_en || activeLesson.content_vi
+    : activeLesson.content_vi;
+  const lessonHtml = renderBlogContentToSafeHtml(rawLessonContent);
+  const lessonYoutubeId = activeLesson.videoUrl
+    ? extractYoutubeVideoId(activeLesson.videoUrl)
+    : null;
 
   const toggleComplete = async () => {
     setSaving(true);
@@ -145,20 +156,48 @@ export function CoursePlayerClient({
             </Button>
           </div>
 
-          <div className="whitespace-pre-line text-sm leading-7 text-slate-800 dark:text-slate-200">
-            {isEn ? activeLesson.content_en : activeLesson.content_vi}
-          </div>
+          {/* Optional Lesson Video */}
+          {lessonYoutubeId && (
+            <div className="aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 dark:border-slate-800">
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${lessonYoutubeId}?rel=0`}
+                title={isEn ? activeLesson.title_en : activeLesson.title_vi}
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="h-full w-full"
+              />
+            </div>
+          )}
 
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
-            <h3 className="text-xs font-bold uppercase text-emerald-800 dark:text-emerald-300">
-              {isEn ? "Key Takeaways" : "Điểm ghi nhớ cốt lõi"}
-            </h3>
-            <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-sm text-slate-800 dark:text-slate-200">
-              {activeLesson.keyTakeaways.map((k, i) => (
-                <li key={i}>{k}</li>
-              ))}
-            </ul>
-          </div>
+          {/* Optional Lesson Audio */}
+          {activeLesson.audioUrl && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2 dark:border-slate-800 dark:bg-slate-900">
+              <p className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                <Headphones className="h-4 w-4 text-emerald-600" />
+                {isEn ? "Lesson Audio Recording" : "Audio bài giảng"}
+              </p>
+              <audio controls src={activeLesson.audioUrl} className="w-full" />
+            </div>
+          )}
+
+          <div
+            className="prose prose-sm prose-slate max-w-none leading-7 text-slate-800 dark:prose-invert dark:text-slate-200"
+            dangerouslySetInnerHTML={{ __html: lessonHtml }}
+          />
+
+          {activeLesson.keyTakeaways.length > 0 && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
+              <h3 className="text-xs font-bold uppercase text-emerald-800 dark:text-emerald-300">
+                {isEn ? "Key Takeaways" : "Điểm ghi nhớ cốt lõi"}
+              </h3>
+              <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-sm text-slate-800 dark:text-slate-200">
+                {activeLesson.keyTakeaways.map((k, i) => (
+                  <li key={i}>{k}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Interactive Lesson Checkpoint Quiz */}
           {activeLesson.quiz && (

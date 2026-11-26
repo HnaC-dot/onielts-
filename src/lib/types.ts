@@ -373,6 +373,10 @@ export interface CourseItem {
   target_band: string;
   duration_hours: number;
   is_published: boolean;
+  is_premium?: boolean;
+  cover_image_url?: string | null;
+  seo_meta?: SeoMeta;
+  sort_order?: number;
   lessons: {
     id: string;
     title_vi: string;
@@ -380,6 +384,8 @@ export interface CourseItem {
     duration_min: number;
     content_vi: string;
     content_en: string;
+    videoUrl?: string;
+    audioUrl?: string;
     keyTakeaways: string[];
     quiz?: {
       question: string;
@@ -406,15 +412,20 @@ export interface DictationLesson {
   category: string;
   difficulty: string;
   accent: "en-GB" | "en-US" | "en-AU";
+  is_published?: boolean;
+  is_premium?: boolean;
+  seo_meta?: SeoMeta;
   sentences: {
     id: string;
     text: string;
     translation_vi: string;
     tip_vi?: string;
+    audioUrl?: string;
   }[];
 }
 
 export interface PronunciationSound {
+  id?: string;
   slug: string;
   symbol: string;
   category: "vowel" | "diphthong" | "consonant";
@@ -425,6 +436,12 @@ export interface PronunciationSound {
   tip_en: string;
   examples: { word: string; ipa: string; meaning_vi: string }[];
   practiceSentence: string;
+  mouth_image_url?: string | null;
+  audio_url?: string | null;
+  is_published?: boolean;
+  is_premium?: boolean;
+  seo_meta?: SeoMeta;
+  sort_order?: number;
 }
 
 export interface LearnVideo {
@@ -437,6 +454,9 @@ export interface LearnVideo {
   description_en: string;
   level: string;
   duration_label: string;
+  is_published?: boolean;
+  is_premium?: boolean;
+  seo_meta?: SeoMeta;
   transcript: {
     startSec: number;
     endSec: number;
@@ -488,6 +508,13 @@ export interface WritingExercise {
   title_en: string;
   topic: string;
   targetSkill: string;
+  criteria?: string[];
+  explanation_vi?: string;
+  explanation_en?: string;
+  status?: ContentPublishStatus;
+  is_premium?: boolean;
+  seo_meta?: SeoMeta;
+  sort_order?: number;
   sentences: {
     id: string;
     weakSentence: string;
@@ -499,6 +526,7 @@ export interface WritingExercise {
 }
 
 export interface ConversationTopic {
+  id?: string;
   slug: string;
   title_vi: string;
   title_en: string;
@@ -508,6 +536,12 @@ export interface ConversationTopic {
   description_vi: string;
   description_en: string;
   suggestedVocab: string[];
+  sampleQuestions?: string[];
+  systemPrompt?: string;
+  status?: ContentPublishStatus;
+  is_premium?: boolean;
+  seo_meta?: SeoMeta;
+  sort_order?: number;
 }
 
 export interface ReferralRecord {

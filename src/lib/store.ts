@@ -6,6 +6,7 @@ import type {
   BandConversionRow,
   BlogPost,
   ContactMessageItem,
+  ConversationTopic,
   CourseItem,
   CourseProgress,
   DailyExamAttempt,
@@ -31,6 +32,7 @@ import type {
 import {
   DEFAULT_BAND_CONVERSIONS,
   DEFAULT_BLOG_POSTS,
+  DEFAULT_CONVERSATION_TOPICS,
   DEFAULT_COURSES,
   DEFAULT_DEMO_USERS,
   DEFAULT_DICTATION_LESSONS,
@@ -71,6 +73,7 @@ export interface LocalStoreData {
   blog_posts: BlogPost[];
   testimonials: TestimonialItem[];
   writing_exercises: WritingExercise[];
+  conversation_topics: ConversationTopic[];
   referrals: ReferralRecord[];
   feature_requests: FeatureRequestItem[];
   contact_messages: ContactMessageItem[];
@@ -78,7 +81,7 @@ export interface LocalStoreData {
 
 const STORE_DIR = path.join(process.cwd(), ".local-data");
 const STORE_PATH = path.join(STORE_DIR, "store.json");
-const CURRENT_STORE_VERSION = 3;
+const CURRENT_STORE_VERSION = 4;
 
 function buildInitialStore(): LocalStoreData {
   return {
@@ -108,11 +111,26 @@ function buildInitialStore(): LocalStoreData {
       },
     ],
     dictation_lessons: structuredClone(DEFAULT_DICTATION_LESSONS),
-    pronunciation_sounds: structuredClone(DEFAULT_IPA_SOUNDS),
+    pronunciation_sounds: structuredClone(DEFAULT_IPA_SOUNDS).map((s, idx) => ({
+      ...s,
+      id: s.id ?? `ipa-${idx + 1}`,
+      is_published: true,
+      sort_order: idx + 1,
+    })),
     learn_videos: structuredClone(DEFAULT_LEARN_VIDEOS),
     blog_posts: structuredClone(DEFAULT_BLOG_POSTS),
     testimonials: structuredClone(DEFAULT_TESTIMONIALS),
-    writing_exercises: structuredClone(DEFAULT_WRITING_EXERCISES),
+    writing_exercises: structuredClone(DEFAULT_WRITING_EXERCISES).map((w, idx) => ({
+      ...w,
+      status: "published" as const,
+      sort_order: idx + 1,
+    })),
+    conversation_topics: structuredClone(DEFAULT_CONVERSATION_TOPICS).map((c, idx) => ({
+      ...c,
+      id: c.id ?? `conv-${idx + 1}`,
+      status: "published" as const,
+      sort_order: idx + 1,
+    })),
     referrals: [
       {
         id: "ref-seed-1",
@@ -139,11 +157,33 @@ function ensureStoreFile(): LocalStoreData {
       const raw = fs.readFileSync(STORE_PATH, "utf-8");
       const parsed = JSON.parse(raw) as LocalStoreData;
       if (parsed && typeof parsed === "object" && Array.isArray(parsed.profiles)) {
+        let dirty = false;
         if ((parsed.version ?? 1) < CURRENT_STORE_VERSION) {
-          parsed.ielts_tests = structuredClone(FULL_SEED_TESTS);
+          if ((parsed.version ?? 1) < 3) {
+            parsed.ielts_tests = structuredClone(FULL_SEED_TESTS);
+          }
+          if (!Array.isArray(parsed.conversation_topics)) {
+            parsed.conversation_topics = structuredClone(DEFAULT_CONVERSATION_TOPICS).map(
+              (c, idx) => ({
+                ...c,
+                id: c.id ?? `conv-${idx + 1}`,
+                status: "published" as const,
+                sort_order: idx + 1,
+              })
+            );
+          }
+          parsed.pronunciation_sounds = (parsed.pronunciation_sounds ?? DEFAULT_IPA_SOUNDS).map(
+            (s, idx) => ({
+              ...s,
+              id: s.id ?? `ipa-${idx + 1}`,
+              is_published: s.is_published ?? true,
+              sort_order: s.sort_order ?? idx + 1,
+            })
+          );
           parsed.version = CURRENT_STORE_VERSION;
-          writeStoreFile(parsed);
+          dirty = true;
         }
+        if (dirty) writeStoreFile(parsed);
         cachedStore = parsed;
         return cachedStore;
       }

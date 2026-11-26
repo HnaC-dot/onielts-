@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/admin-auth";
 import {
   getBlogPosts,
+  getConversationTopics,
   getCourses,
+  getDictationLessons,
   getIeltsTests,
+  getLearnVideos,
+  getPronunciationSounds,
+  getWritingExercises,
   listAllProfiles,
 } from "@/lib/db";
 
@@ -30,6 +35,12 @@ const ADMIN_QUICK_LINKS: Array<{
   { title: "Thư viện Media (Ảnh / MP3 / SVG / PDF)", keywords: "media thu vien anh upload mp3 svg pdf", href: "/admin/media" },
   { title: "Blog & Mẹo thi (SEO Editor)", keywords: "blog bai viet seo tin tuc meo thi", href: "/admin/blog" },
   { title: "Viết bài Blog mới", keywords: "viet bai blog moi tao bai viet new", href: "/admin/blog/new" },
+  { title: "Khóa học & Bài học (Kéo-thả bài)", keywords: "khoa hoc courses bai hoc lesson quiz", href: "/admin/courses" },
+  { title: "Hội thoại AI (Speaking Role-play)", keywords: "hoi thoai ai speaking conversations prompt", href: "/admin/conversations" },
+  { title: "Bài tập nâng cấp câu viết (Band 5.5 → 8.0)", keywords: "nang cap cau viet writing exercises band 8", href: "/admin/writing-exercises" },
+  { title: "Phát âm IPA (Khẩu hình & Audio)", keywords: "phat am ipa pronunciation vowel consonant", href: "/admin/pronunciation" },
+  { title: "Chép chính tả & Shadowing (Dictation)", keywords: "chep chinh ta dictation shadowing mp3", href: "/admin/dictation" },
+  { title: "Video tương tác (YouTube & .SRT/.VTT)", keywords: "video tuong tac youtube phu de srt vtt transcript", href: "/admin/videos" },
   { title: "Nhật ký hoạt động (Audit Logs)", keywords: "audit log nhat ky lich su", href: "/admin/audit" },
   { title: "Quản trị nhanh (Legacy 6 Tab)", keywords: "legacy tab ai band pricing tests blog users", href: "/admin/legacy" },
   { title: "Bảng giá & Khuyến mãi", keywords: "pricing promo code banner goi gia", href: "/admin/legacy?tab=pricing", adminOnly: true },
@@ -63,12 +74,18 @@ export async function GET(req: Request) {
   }
 
   if (q.length >= 2) {
-    const [tests, posts, courses, profiles] = await Promise.all([
-      getIeltsTests(true),
-      getBlogPosts(true),
-      getCourses(),
-      isAdmin ? listAllProfiles() : Promise.resolve([]),
-    ]);
+    const [tests, posts, courses, conversations, exercises, sounds, dictations, videos, profiles] =
+      await Promise.all([
+        getIeltsTests(true),
+        getBlogPosts(true),
+        getCourses(true),
+        getConversationTopics(true),
+        getWritingExercises(true),
+        getPronunciationSounds(true),
+        getDictationLessons(true),
+        getLearnVideos(true),
+        isAdmin ? listAllProfiles() : Promise.resolve([]),
+      ]);
 
     for (const t of tests) {
       if (
@@ -110,8 +127,63 @@ export async function GET(req: Request) {
         results.push({
           type: "course",
           title: c.title_vi,
-          subtitle: `Course · Target ${c.target_band}`,
-          href: `/courses/${c.slug}`,
+          subtitle: `Khóa học · Target ${c.target_band} · ${c.lessons.length} bài`,
+          href: "/admin/courses",
+        });
+      }
+    }
+
+    for (const cv of conversations) {
+      if (cv.title_vi.toLowerCase().includes(q) || cv.title_en.toLowerCase().includes(q) || cv.slug.toLowerCase().includes(q)) {
+        results.push({
+          type: "course",
+          title: cv.title_vi,
+          subtitle: `Hội thoại AI · ${cv.part}`,
+          href: "/admin/conversations",
+        });
+      }
+    }
+
+    for (const we of exercises) {
+      if (we.title_vi.toLowerCase().includes(q) || we.topic.toLowerCase().includes(q)) {
+        results.push({
+          type: "course",
+          title: we.title_vi,
+          subtitle: `Nâng cấp câu · ${we.topic}`,
+          href: "/admin/writing-exercises",
+        });
+      }
+    }
+
+    for (const s of sounds) {
+      if (s.symbol.toLowerCase().includes(q) || s.title_vi.toLowerCase().includes(q)) {
+        results.push({
+          type: "course",
+          title: `${s.symbol} ${s.title_vi}`,
+          subtitle: `Phát âm IPA · ${s.category}`,
+          href: "/admin/pronunciation",
+        });
+      }
+    }
+
+    for (const d of dictations) {
+      if (d.title_vi.toLowerCase().includes(q) || d.category.toLowerCase().includes(q)) {
+        results.push({
+          type: "course",
+          title: d.title_vi,
+          subtitle: `Chép chính tả · ${d.accent}`,
+          href: "/admin/dictation",
+        });
+      }
+    }
+
+    for (const v of videos) {
+      if (v.title_vi.toLowerCase().includes(q) || v.youtube_id.toLowerCase().includes(q)) {
+        results.push({
+          type: "course",
+          title: v.title_vi,
+          subtitle: `Video · ${v.duration_label}`,
+          href: "/admin/videos",
         });
       }
     }

@@ -120,7 +120,7 @@ export async function findMediaUsages(
   const admin = createSupabaseAdminClient();
   if (!admin) return usageMap;
 
-  const [blogsRes, testsRes, coursesRes, ipaRes, pagesRes, settingsRes] =
+  const [blogsRes, testsRes, coursesRes, ipaRes, dictRes, videosRes, pagesRes, settingsRes] =
     await Promise.all([
       admin
         .from("blog_posts")
@@ -128,7 +128,7 @@ export async function findMediaUsages(
         .limit(500),
       admin
         .from("ielts_tests")
-        .select("id, slug, title_vi, sections, seo_meta")
+        .select("id, slug, title_vi, test_data, audio_url, seo_meta")
         .limit(200),
       admin
         .from("courses")
@@ -136,9 +136,17 @@ export async function findMediaUsages(
         .limit(100),
       admin
         .from("pronunciation_sounds")
-        .select("id, slug, symbol, mouth_image_url, audio_url")
+        .select("id, slug, symbol, mouth_image_url, audio_url, seo_meta")
         .limit(100),
-      admin.from("static_pages").select("id, slug, title_vi, content_vi, seo_meta").limit(50),
+      admin
+        .from("dictation_lessons")
+        .select("id, slug, title_vi, sentences, seo_meta")
+        .limit(150),
+      admin
+        .from("learn_videos")
+        .select("id, slug, title_vi, seo_meta")
+        .limit(150),
+      admin.from("static_pages").select("id, slug, title_vi, body_vi, seo_meta").limit(50),
       admin.from("site_settings").select("key, value").limit(50),
     ]);
 
@@ -165,9 +173,9 @@ export async function findMediaUsages(
         entityType: "ielts_test",
         entityId: String(t.id),
         label: `Đề thi: ${String(t.title_vi)}`,
-        href: `/tests/${String(t.slug)}`,
+        href: `/admin/tests/${String(t.id)}`,
       },
-      text: `${JSON.stringify(t.sections ?? [])} ${JSON.stringify(t.seo_meta ?? {})}`,
+      text: `${t.audio_url ?? ""} ${JSON.stringify(t.test_data ?? {})} ${JSON.stringify(t.seo_meta ?? {})}`,
     });
   }
 
@@ -177,7 +185,7 @@ export async function findMediaUsages(
         entityType: "course",
         entityId: String(c.id),
         label: `Khóa học: ${String(c.title_vi)}`,
-        href: `/courses/${String(c.slug)}`,
+        href: `/admin/courses`,
       },
       text: `${c.cover_image_url ?? ""} ${JSON.stringify(c.lessons ?? [])} ${JSON.stringify(c.seo_meta ?? {})}`,
     });
@@ -189,9 +197,33 @@ export async function findMediaUsages(
         entityType: "pronunciation",
         entityId: String(p.id),
         label: `IPA: ${String(p.symbol)}`,
-        href: `/pronunciation/${String(p.slug)}`,
+        href: `/admin/pronunciation`,
       },
-      text: `${p.mouth_image_url ?? ""} ${p.audio_url ?? ""}`,
+      text: `${p.mouth_image_url ?? ""} ${p.audio_url ?? ""} ${JSON.stringify(p.seo_meta ?? {})}`,
+    });
+  }
+
+  for (const d of dictRes.data ?? []) {
+    haystackEntries.push({
+      ref: {
+        entityType: "dictation",
+        entityId: String(d.id),
+        label: `Dictation: ${String(d.title_vi)}`,
+        href: `/admin/dictation`,
+      },
+      text: `${JSON.stringify(d.sentences ?? [])} ${JSON.stringify(d.seo_meta ?? {})}`,
+    });
+  }
+
+  for (const v of videosRes.data ?? []) {
+    haystackEntries.push({
+      ref: {
+        entityType: "video",
+        entityId: String(v.id),
+        label: `Video: ${String(v.title_vi)}`,
+        href: `/admin/videos`,
+      },
+      text: `${JSON.stringify(v.seo_meta ?? {})}`,
     });
   }
 
@@ -203,7 +235,7 @@ export async function findMediaUsages(
         label: `Trang: ${String(pg.title_vi)}`,
         href: `/${String(pg.slug)}`,
       },
-      text: `${pg.content_vi ?? ""} ${JSON.stringify(pg.seo_meta ?? {})}`,
+      text: `${pg.body_vi ?? ""} ${JSON.stringify(pg.seo_meta ?? {})}`,
     });
   }
 

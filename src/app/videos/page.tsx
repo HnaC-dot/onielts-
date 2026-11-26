@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
@@ -34,13 +35,18 @@ export default async function VideosIndexPage() {
           <Link key={v.id} href={`/videos/${v.slug}`}>
             <Card className="overflow-hidden h-full transition hover:border-emerald-400 hover:shadow-md">
               <div className="relative flex h-44 items-center justify-center bg-slate-900 text-white">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 shadow-lg">
+                <img
+                  src={`https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg`}
+                  alt={isEn ? v.title_en : v.title_vi}
+                  className="absolute inset-0 h-full w-full object-cover opacity-75 transition hover:opacity-85"
+                />
+                <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 shadow-lg">
                   <Play className="h-6 w-6 fill-current pl-0.5" />
                 </div>
-                <span className="absolute bottom-3 right-3 rounded-md bg-black/75 px-2 py-0.5 text-xs font-semibold">
+                <span className="absolute bottom-3 right-3 z-10 rounded-md bg-black/75 px-2 py-0.5 text-xs font-semibold">
                   {v.duration_label}
                 </span>
-                <span className="absolute left-3 top-3">
+                <span className="absolute left-3 top-3 z-10">
                   <Badge>{v.level}</Badge>
                 </span>
               </div>

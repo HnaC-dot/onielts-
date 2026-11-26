@@ -8,6 +8,7 @@ import { readStore, updateStore } from "./store";
 import {
   DEFAULT_BAND_CONVERSIONS,
   DEFAULT_BLOG_POSTS,
+  DEFAULT_CONVERSATION_TOPICS,
   DEFAULT_COURSES,
   DEFAULT_DICTATION_LESSONS,
   DEFAULT_FEATURE_REQUESTS,
@@ -23,11 +24,22 @@ import { FULL_SEED_TESTS } from "./seed-tests";
 import { computeExtendedPremiumExpiry } from "./payments/payos";
 import { computeNextSm2 } from "./srs";
 import { isBlogPostPubliclyVisible } from "./blog-shared";
+import {
+  conversationTopicToDbRow,
+  mapConversationRow,
+  mapCourseRow,
+  mapDictationRow,
+  mapPronunciationRow,
+  mapVideoRow,
+  mapWritingExerciseRow,
+  writingExerciseToDbRow,
+} from "./learning-mappers";
 import type {
   AiUsageLog,
   BandConversionRow,
   BlogPost,
   ContactMessageItem,
+  ConversationTopic,
   CourseItem,
   CourseProgress,
   DailyExamAttempt,
@@ -50,6 +62,7 @@ import type {
   TestimonialItem,
   UserProfile,
   WritingEvaluation,
+  WritingExercise,
   WritingSubmission,
 } from "./types";
 
@@ -325,6 +338,31 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
             { onConflict: "slug", ignoreDuplicates: true }
           );
         }
+
+        // 8. Conversation Topics & Writing Exercises (CMS GĐ4 tables)
+        const { count: convCount, error: convCountErr } = await admin
+          .from("conversation_topics")
+          .select("id", { count: "exact", head: true });
+        if (!convCountErr && (!convCount || convCount === 0)) {
+          await admin.from("conversation_topics").upsert(
+            DEFAULT_CONVERSATION_TOPICS.map((c, idx) =>
+              conversationTopicToDbRow(c, idx + 1)
+            ),
+            { onConflict: "slug", ignoreDuplicates: true }
+          );
+        }
+
+        const { count: weCount, error: weCountErr } = await admin
+          .from("writing_exercises")
+          .select("id", { count: "exact", head: true });
+        if (!weCountErr && (!weCount || weCount === 0)) {
+          await admin.from("writing_exercises").upsert(
+            DEFAULT_WRITING_EXERCISES.map((w, idx) =>
+              writingExerciseToDbRow(w, idx + 1)
+            ),
+            { onConflict: "slug", ignoreDuplicates: true }
+          );
+        }
       } catch (err) {
         console.error("[ensureSupabaseCatalogSeeded] error:", err);
         seedPromise = null;
@@ -364,24 +402,6 @@ function mapTestRow(row: Record<string, unknown>): IeltsTest {
     writingPrompt: (td.writingPrompt as IeltsTest["writingPrompt"]) ?? undefined,
     speakingPrompts: (td.speakingPrompts as IeltsTest["speakingPrompts"]) ?? undefined,
     created_at: String(row.created_at ?? new Date().toISOString()),
-  };
-}
-
-function mapCourseRow(row: Record<string, unknown>): CourseItem {
-  const lessons = Array.isArray(row.lessons) ? (row.lessons as CourseItem["lessons"]) : [];
-  const totalMins = lessons.reduce((acc, l) => acc + (Number(l.duration_min) || 15), 0);
-  return {
-    id: String(row.id),
-    slug: String(row.slug),
-    title_vi: String(row.title_vi ?? ""),
-    title_en: String(row.title_en ?? ""),
-    description_vi: String(row.description_vi ?? ""),
-    description_en: String(row.description_en ?? ""),
-    level: String(row.level ?? ""),
-    target_band: String(row.target_band ?? ""),
-    duration_hours: Math.max(1, Math.round(totalMins / 60)),
-    is_published: Boolean(row.is_published),
-    lessons,
   };
 }
 
@@ -2588,34 +2608,51 @@ export async function deleteFlashcardItem(
 // =============================================================================
 // 10. COURSES & PROGRESS
 // =============================================================================
-export async function getCourses(): Promise<CourseItem[]> {
+export async function getCourses(includeUnpublished = false): Promise<CourseItem[]> {
   if (!isSupabaseConfigured()) {
-    return readStore().courses.filter((c) => c.is_published);
+    const list = readStore().courses;
+    return includeUnpublished ? list : list.filter((c) => c.is_published);
   }
   await ensureSupabaseCatalogSeeded();
   const sb = await getReadSupabase();
   if (!sb) return DEFAULT_COURSES;
 
-  const { data } = await sb
+  let query = sb
     .from("courses")
     .select("*")
-    .eq("is_published", true)
-    .order("sort_order", { ascending: true });
-  if (!data || data.length === 0) return DEFAULT_COURSES;
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (!includeUnpublished) {
+    query = query.eq("is_published", true);
+  }
+  const { data } = await query;
+  if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_COURSES;
   return data.map((r) => mapCourseRow(r as Record<string, unknown>));
 }
 
-export async function getCourseBySlug(slug: string): Promise<CourseItem | null> {
+export async function getCourseBySlug(
+  slug: string,
+  includeUnpublished = false
+): Promise<CourseItem | null> {
   if (!isSupabaseConfigured()) {
-    return readStore().courses.find((c) => c.slug === slug) ?? null;
+    const found = readStore().courses.find((c) => c.slug === slug) ?? null;
+    if (!found) return null;
+    if (!includeUnpublished && !found.is_published) return null;
+    return found;
   }
   await ensureSupabaseCatalogSeeded();
   const sb = await getReadSupabase();
   if (!sb) return DEFAULT_COURSES.find((c) => c.slug === slug) ?? null;
 
   const { data } = await sb.from("courses").select("*").eq("slug", slug).maybeSingle();
-  if (!data) return DEFAULT_COURSES.find((c) => c.slug === slug) ?? null;
-  return mapCourseRow(data as Record<string, unknown>);
+  if (!data) {
+    return includeUnpublished
+      ? null
+      : DEFAULT_COURSES.find((c) => c.slug === slug) ?? null;
+  }
+  const mapped = mapCourseRow(data as Record<string, unknown>);
+  if (!includeUnpublished && !mapped.is_published) return null;
+  return mapped;
 }
 
 export async function getUserCourseProgress(userId: string | null): Promise<CourseProgress[]> {
@@ -2872,56 +2909,209 @@ export async function adminCreateBlogPost(input: {
   });
 }
 
-export async function getDictationLessons(): Promise<DictationLesson[]> {
-  if (!isSupabaseConfigured()) return readStore().dictation_lessons;
+export async function getDictationLessons(
+  includeUnpublished = false
+): Promise<DictationLesson[]> {
+  if (!isSupabaseConfigured()) {
+    const list = readStore().dictation_lessons;
+    return includeUnpublished ? list : list.filter((d) => d.is_published !== false);
+  }
   await ensureSupabaseCatalogSeeded();
   const sb = await getReadSupabase();
   if (!sb) return DEFAULT_DICTATION_LESSONS;
-  const { data } = await sb
+  let query = sb
     .from("dictation_lessons")
     .select("*")
-    .eq("is_published", true);
-  if (!data || data.length === 0) return DEFAULT_DICTATION_LESSONS;
-  return data.map((d) => ({
-    id: String(d.id),
-    slug: String(d.slug),
-    title_vi: String(d.title_vi),
-    title_en: String(d.title_en),
-    category: String(d.category),
-    difficulty: String(d.difficulty),
-    accent: (d.accent as DictationLesson["accent"]) ?? "en-GB",
-    sentences: Array.isArray(d.sentences) ? (d.sentences as DictationLesson["sentences"]) : [],
-  }));
+    .order("created_at", { ascending: true });
+  if (!includeUnpublished) {
+    query = query.eq("is_published", true);
+  }
+  const { data } = await query;
+  if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_DICTATION_LESSONS;
+  return data.map((d) => mapDictationRow(d as Record<string, unknown>));
 }
 
-export async function getPronunciationSounds(): Promise<PronunciationSound[]> {
-  if (!isSupabaseConfigured()) return readStore().pronunciation_sounds;
-  return DEFAULT_IPA_SOUNDS;
+export async function getPronunciationSounds(
+  includeUnpublished = false
+): Promise<PronunciationSound[]> {
+  if (!isSupabaseConfigured()) {
+    const list = readStore().pronunciation_sounds;
+    return includeUnpublished ? list : list.filter((s) => s.is_published !== false);
+  }
+  await ensureSupabaseCatalogSeeded();
+  const sb = await getReadSupabase();
+  if (!sb) return DEFAULT_IPA_SOUNDS;
+
+  let query = sb
+    .from("pronunciation_sounds")
+    .select("*")
+    .order("sort_order", { ascending: true });
+  if (!includeUnpublished) {
+    query = query.eq("is_published", true);
+  }
+  const { data } = await query;
+  if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_IPA_SOUNDS;
+  return data.map((row) => mapPronunciationRow(row as Record<string, unknown>));
 }
 
-export async function getLearnVideos(): Promise<LearnVideo[]> {
-  if (!isSupabaseConfigured()) return readStore().learn_videos;
+export async function getPronunciationSoundBySlug(
+  slug: string,
+  includeUnpublished = false
+): Promise<PronunciationSound | null> {
+  if (!isSupabaseConfigured()) {
+    const found = readStore().pronunciation_sounds.find((s) => s.slug === slug) ?? null;
+    if (!found) return null;
+    if (!includeUnpublished && found.is_published === false) return null;
+    return found;
+  }
+  await ensureSupabaseCatalogSeeded();
+  const sb = await getReadSupabase();
+  if (!sb) return DEFAULT_IPA_SOUNDS.find((s) => s.slug === slug) ?? null;
+
+  const { data } = await sb
+    .from("pronunciation_sounds")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!data) {
+    return includeUnpublished
+      ? null
+      : DEFAULT_IPA_SOUNDS.find((s) => s.slug === slug) ?? null;
+  }
+  const mapped = mapPronunciationRow(data as Record<string, unknown>);
+  if (!includeUnpublished && mapped.is_published === false) return null;
+  return mapped;
+}
+
+export async function getLearnVideos(includeUnpublished = false): Promise<LearnVideo[]> {
+  if (!isSupabaseConfigured()) {
+    const list = readStore().learn_videos;
+    return includeUnpublished ? list : list.filter((v) => v.is_published !== false);
+  }
   await ensureSupabaseCatalogSeeded();
   const sb = await getReadSupabase();
   if (!sb) return DEFAULT_LEARN_VIDEOS;
-  const { data } = await sb.from("learn_videos").select("*").eq("is_published", true);
-  if (!data || data.length === 0) return DEFAULT_LEARN_VIDEOS;
-  return data.map((v) => ({
-    id: String(v.id),
-    slug: String(v.slug),
-    youtube_id: String(v.youtube_id),
-    title_vi: String(v.title_vi),
-    title_en: String(v.title_en),
-    description_vi: String(v.description_vi),
-    description_en: String(v.description_en),
-    level: String(v.level),
-    duration_label: String(v.duration_label),
-    transcript: Array.isArray(v.transcript) ? (v.transcript as LearnVideo["transcript"]) : [],
-  }));
+  let query = sb
+    .from("learn_videos")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (!includeUnpublished) {
+    query = query.eq("is_published", true);
+  }
+  const { data } = await query;
+  if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_LEARN_VIDEOS;
+  return data.map((v) => mapVideoRow(v as Record<string, unknown>));
 }
 
-export async function getWritingExercises() {
-  return DEFAULT_WRITING_EXERCISES;
+export async function getLearnVideoBySlug(
+  slug: string,
+  includeUnpublished = false
+): Promise<LearnVideo | null> {
+  if (!isSupabaseConfigured()) {
+    const found = readStore().learn_videos.find((v) => v.slug === slug) ?? null;
+    if (!found) return null;
+    if (!includeUnpublished && found.is_published === false) return null;
+    return found;
+  }
+  await ensureSupabaseCatalogSeeded();
+  const sb = await getReadSupabase();
+  if (!sb) return DEFAULT_LEARN_VIDEOS.find((v) => v.slug === slug) ?? null;
+
+  const { data } = await sb
+    .from("learn_videos")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!data) {
+    return includeUnpublished
+      ? null
+      : DEFAULT_LEARN_VIDEOS.find((v) => v.slug === slug) ?? null;
+  }
+  const mapped = mapVideoRow(data as Record<string, unknown>);
+  if (!includeUnpublished && mapped.is_published === false) return null;
+  return mapped;
+}
+
+export async function getWritingExercises(
+  includeUnpublished = false
+): Promise<WritingExercise[]> {
+  if (!isSupabaseConfigured()) {
+    const list = readStore().writing_exercises;
+    return includeUnpublished ? list : list.filter((w) => w.status !== "draft");
+  }
+  await ensureSupabaseCatalogSeeded();
+  const sb = await getReadSupabase();
+  if (!sb) return DEFAULT_WRITING_EXERCISES;
+
+  let query = sb
+    .from("writing_exercises")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (!includeUnpublished) {
+    query = query.eq("status", "published");
+  }
+  const { data, error } = await query;
+  if (error || !data || data.length === 0) {
+    return includeUnpublished ? [] : DEFAULT_WRITING_EXERCISES;
+  }
+  return data.map((row) => mapWritingExerciseRow(row as Record<string, unknown>));
+}
+
+export async function getConversationTopics(
+  includeUnpublished = false
+): Promise<ConversationTopic[]> {
+  if (!isSupabaseConfigured()) {
+    const list = readStore().conversation_topics;
+    return includeUnpublished ? list : list.filter((c) => c.status !== "draft");
+  }
+  await ensureSupabaseCatalogSeeded();
+  const sb = await getReadSupabase();
+  if (!sb) return DEFAULT_CONVERSATION_TOPICS;
+
+  let query = sb
+    .from("conversation_topics")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (!includeUnpublished) {
+    query = query.eq("status", "published");
+  }
+  const { data, error } = await query;
+  if (error || !data || data.length === 0) {
+    return includeUnpublished ? [] : DEFAULT_CONVERSATION_TOPICS;
+  }
+  return data.map((row) => mapConversationRow(row as Record<string, unknown>));
+}
+
+export async function getConversationTopicBySlug(
+  slug: string,
+  includeUnpublished = false
+): Promise<ConversationTopic | null> {
+  if (!slug) return null;
+  if (!isSupabaseConfigured()) {
+    const found = readStore().conversation_topics.find((c) => c.slug === slug) ?? null;
+    if (!found) return null;
+    if (!includeUnpublished && found.status === "draft") return null;
+    return found;
+  }
+  await ensureSupabaseCatalogSeeded();
+  const sb = await getReadSupabase();
+  if (!sb) return DEFAULT_CONVERSATION_TOPICS.find((c) => c.slug === slug) ?? null;
+
+  const { data, error } = await sb
+    .from("conversation_topics")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error || !data) {
+    return includeUnpublished
+      ? null
+      : DEFAULT_CONVERSATION_TOPICS.find((c) => c.slug === slug) ?? null;
+  }
+  const mapped = mapConversationRow(data as Record<string, unknown>);
+  if (!includeUnpublished && mapped.status === "draft") return null;
+  return mapped;
 }
 
 export async function getSampleTestimonials(): Promise<TestimonialItem[]> {

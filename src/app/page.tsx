@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import {
   getBlogPosts,
+  getConversationTopics,
   getCourses,
   getDailyExamState,
   getDictationLessons,
@@ -34,7 +35,6 @@ import {
   getSampleTestimonials,
   getWritingExercises,
 } from "@/lib/db";
-import { DEFAULT_CONVERSATION_TOPICS } from "@/lib/seed-data";
 import { getVietnamDateString, formatDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -140,6 +140,7 @@ export default async function HomePage() {
     publishedTests,
     dailyState,
     courses,
+    conversationTopics,
     writingExercises,
     pronunciationSounds,
     dictationLessons,
@@ -152,6 +153,7 @@ export default async function HomePage() {
     getIeltsTests(false),
     getDailyExamState(vnToday, null),
     getCourses(),
+    getConversationTopics(false),
     getWritingExercises(),
     getPronunciationSounds(),
     getDictationLessons(),
@@ -522,7 +524,7 @@ export default async function HomePage() {
         viewAllHref="/conversations"
         viewAllLabel={t("viewAll")}
       >
-        {DEFAULT_CONVERSATION_TOPICS.map((topic) => (
+        {conversationTopics.map((topic) => (
           <Link
             key={topic.slug}
             href={`/conversations?topic=${topic.slug}`}

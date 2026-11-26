@@ -88,6 +88,7 @@ export function ConversationsClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          topicSlug: activeTopic.slug,
           topicTitle: activeTopic.title_en,
           history: nextHistory.map((m) => ({ role: m.role, text: m.text })),
           userMessage: content,

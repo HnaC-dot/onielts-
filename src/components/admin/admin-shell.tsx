@@ -76,12 +76,12 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Học tập & Luyện tập",
     items: [
-      { label: "Khóa học & Bài học", href: "/admin#roadmap", icon: GraduationCap, phaseBadge: "GĐ4" },
-      { label: "Hội thoại AI", href: "/admin#roadmap", icon: MessageSquare, phaseBadge: "GĐ4" },
-      { label: "Nâng cấp câu viết", href: "/admin#roadmap", icon: PenTool, phaseBadge: "GĐ4" },
-      { label: "Phát âm IPA", href: "/admin#roadmap", icon: Volume2, phaseBadge: "GĐ4" },
-      { label: "Chép chính tả", href: "/admin#roadmap", icon: Headphones, phaseBadge: "GĐ4" },
-      { label: "Video tương tác", href: "/admin#roadmap", icon: Video, phaseBadge: "GĐ4" },
+      { label: "Khóa học & Bài học", href: "/admin/courses", icon: GraduationCap },
+      { label: "Hội thoại AI", href: "/admin/conversations", icon: MessageSquare },
+      { label: "Nâng cấp câu viết", href: "/admin/writing-exercises", icon: PenTool },
+      { label: "Phát âm IPA", href: "/admin/pronunciation", icon: Volume2 },
+      { label: "Chép chính tả", href: "/admin/dictation", icon: Headphones },
+      { label: "Video tương tác", href: "/admin/videos", icon: Video },
     ],
   },
   {
@@ -371,7 +371,7 @@ export function AdminShell({
               {isAdmin ? "Admin" : "Editor"}
             </Badge>
             <span className="text-slate-500 dark:text-slate-400">
-              GĐ3 · Tests &amp; Daily Exam Active
+              GĐ4 · 6 Learning Modules Active
             </span>
           </div>
         </div>

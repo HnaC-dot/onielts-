@@ -44,12 +44,21 @@ export function DictationClient({
   const [shadowAudioUrl, setShadowAudioUrl] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const sentenceAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const lesson = lessons.find((l) => l.slug === lessonSlug) ?? lessons[0];
   if (!lesson) return null;
   const sentence = lesson.sentences[sentIdx] ?? lesson.sentences[0];
 
+  const stopSentenceAudio = () => {
+    if (sentenceAudioRef.current) {
+      sentenceAudioRef.current.pause();
+      sentenceAudioRef.current.currentTime = 0;
+    }
+  };
+
   const switchSentence = (nextIdx: number) => {
+    stopSentenceAudio();
     setSentIdx(nextIdx);
     setTyped("");
     setDiff(null);
@@ -58,6 +67,20 @@ export function DictationClient({
   };
 
   const handlePlay = () => {
+    stopSentenceAudio();
+    if (sentence.audioUrl) {
+      try {
+        const audio = new Audio(sentence.audioUrl);
+        audio.playbackRate = speed;
+        sentenceAudioRef.current = audio;
+        void audio.play().catch(() => {
+          speakEnglish(sentence.text, lesson.accent, speed);
+        });
+        return;
+      } catch {
+        // fallback to TTS below
+      }
+    }
     speakEnglish(sentence.text, lesson.accent, speed);
   };
 

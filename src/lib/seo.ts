@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { z } from "zod";
 import { extractFirstHeading, extractPlainText } from "./sanitize";
-import type { BlogPost, SeoMeta } from "./types";
+import type { BlogPost, CourseItem, LearnVideo, SeoMeta } from "./types";
 
 export const seoMetaSchema = z
   .object({
@@ -285,3 +285,85 @@ export function buildBreadcrumbJsonLd(
     })),
   };
 }
+
+export function buildCourseJsonLd(course: CourseItem, baseUrl = getAppBaseUrl()) {
+  const url = `${baseUrl}/courses/${course.slug}`;
+  const rawImage = course.seo_meta?.ogImage || course.cover_image_url || "";
+  const image = rawImage
+    ? rawImage.startsWith("http")
+      ? rawImage
+      : `${baseUrl}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`
+    : undefined;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "Course",
+    name: course.seo_meta?.metaTitle || course.title_vi,
+    description: course.seo_meta?.metaDescription || course.description_vi,
+    url,
+    image: image ? [image] : undefined,
+    educationalLevel: course.level,
+    inLanguage: "vi",
+    provider: {
+      "@type": "Organization",
+      name: "Ôn IELTS",
+      sameAs: baseUrl,
+    },
+    hasCourseInstance: {
+      "@type": "CourseInstance",
+      courseMode: "online",
+      courseWorkload: `PT${Math.max(1, course.duration_hours)}H`,
+    },
+    numberOfLessons: course.lessons.length,
+  };
+}
+
+function durationLabelToIso8601(label: string): string {
+  const parts = label
+    .trim()
+    .split(":")
+    .map((p) => Number.parseInt(p, 10))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  if (parts.length === 3) {
+    return `PT${parts[0]}H${parts[1]}M${parts[2]}S`;
+  }
+  if (parts.length === 2) {
+    return `PT${parts[0]}M${parts[1]}S`;
+  }
+  if (parts.length === 1 && parts[0] > 0) {
+    return `PT${parts[0]}M`;
+  }
+  return "PT5M";
+}
+
+export function buildVideoObjectJsonLd(video: LearnVideo, baseUrl = getAppBaseUrl()) {
+  const url = `${baseUrl}/videos/${video.slug}`;
+  const ytThumb = `https://i.ytimg.com/vi/${video.youtube_id}/hqdefault.jpg`;
+  const rawImage = video.seo_meta?.ogImage || ytThumb;
+  const thumbnailUrl = rawImage.startsWith("http")
+    ? rawImage
+    : `${baseUrl}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    name: video.seo_meta?.metaTitle || video.title_vi,
+    description: video.seo_meta?.metaDescription || video.description_vi,
+    thumbnailUrl: [thumbnailUrl],
+    embedUrl: `https://www.youtube-nocookie.com/embed/${video.youtube_id}`,
+    contentUrl: `https://www.youtube.com/watch?v=${video.youtube_id}`,
+    duration: durationLabelToIso8601(video.duration_label),
+    educationalLevel: video.level,
+    inLanguage: "en",
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": url,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "Ôn IELTS",
+      url: baseUrl,
+    },
+  };
+}
+

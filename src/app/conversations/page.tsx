@@ -1,6 +1,6 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
-import { DEFAULT_CONVERSATION_TOPICS } from "@/lib/seed-data";
+import { getConversationTopics } from "@/lib/db";
 import { ConversationsClient } from "@/components/conversations-client";
 
 export const metadata = {
@@ -14,7 +14,11 @@ export default async function ConversationsPage({
 }: {
   searchParams: Promise<{ topic?: string }>;
 }) {
-  const [locale, params] = await Promise.all([getLocale(), searchParams]);
+  const [locale, params, topics] = await Promise.all([
+    getLocale(),
+    searchParams,
+    getConversationTopics(false),
+  ]);
   const isEn = locale === "en";
 
   return (
@@ -30,10 +34,7 @@ export default async function ConversationsPage({
         </p>
       </div>
 
-      <ConversationsClient
-        topics={DEFAULT_CONVERSATION_TOPICS}
-        initialTopicSlug={params.topic}
-      />
+      <ConversationsClient topics={topics} initialTopicSlug={params.topic} />
     </div>
   );
 }
