@@ -2,24 +2,75 @@ import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { CheckCircle2, HeartHandshake, ShieldCheck, Sparkles } from "lucide-react";
+import { getStaticPageBySlug } from "@/lib/site-content";
+import { buildBreadcrumbJsonLd, buildNextMetadata } from "@/lib/seo";
+import { renderBlogContentToSafeHtml } from "@/lib/sanitize";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+export async function generateMetadata() {
+  const page = await getStaticPageBySlug("about", false);
+  return buildNextMetadata({
+    title: page?.title_vi || "Giới thiệu về Ôn IELTS",
+    description:
+      page?.seo_meta?.metaDescription ||
+      "Ôn IELTS — Nền tảng tự học và luyện thi IELTS toàn diện tích hợp AI cho người học Việt Nam.",
+    pathname: "/about",
+    seoMeta: page?.seo_meta,
+    type: "website",
+  });
+}
+
 export default async function AboutPage() {
-  const locale = await getLocale();
+  const [locale, cmsPage] = await Promise.all([
+    getLocale(),
+    getStaticPageBySlug("about", false),
+  ]);
   const isEn = locale === "en";
+
+  const title = cmsPage
+    ? isEn
+      ? cmsPage.title_en || cmsPage.title_vi
+      : cmsPage.title_vi
+    : isEn
+    ? "About Ôn IELTS"
+    : "Giới thiệu về Ôn IELTS";
+
+  const rawBody = cmsPage
+    ? isEn
+      ? cmsPage.body_en || cmsPage.body_vi
+      : cmsPage.body_vi
+    : "";
+  const safeHtml = rawBody ? renderBlogContentToSafeHtml(rawBody) : "";
+
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+    { name: "Trang chủ", pathname: "/" },
+    { name: title, pathname: "/about" },
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 space-y-10">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+
       <div className="max-w-3xl space-y-4">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
-          {isEn ? "About Ôn IELTS" : "Giới thiệu về Ôn IELTS"}
+          {title}
         </h1>
-        <p className="text-base leading-relaxed text-slate-600 dark:text-slate-300">
-          {isEn
-            ? "Ôn IELTS was created to make high-quality, structured IELTS preparation accessible to every Vietnamese learner — combining 100% original exam-style practice with instant, practical AI coaching."
-            : "Ôn IELTS ra đời với sứ mệnh giúp mọi học sinh, sinh viên và người đi làm Việt Nam tiếp cận lộ trình ôn thi IELTS bài bản, chi phí hợp lý và nhận phản hồi AI chi tiết ngay lập tức."}
-        </p>
+        {safeHtml ? (
+          <div
+            className="prose prose-slate max-w-none text-base leading-relaxed text-slate-600 dark:prose-invert dark:text-slate-300"
+            dangerouslySetInnerHTML={{ __html: safeHtml }}
+          />
+        ) : (
+          <p className="text-base leading-relaxed text-slate-600 dark:text-slate-300">
+            {isEn
+              ? "Ôn IELTS was created to make high-quality, structured IELTS preparation accessible to every Vietnamese learner — combining 100% original exam-style practice with instant, practical AI coaching."
+              : "Ôn IELTS ra đời với sứ mệnh giúp mọi học sinh, sinh viên và người đi làm Việt Nam tiếp cận lộ trình ôn thi IELTS bài bản, chi phí hợp lý và nhận phản hồi AI chi tiết ngay lập tức."}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-5 md:grid-cols-3">

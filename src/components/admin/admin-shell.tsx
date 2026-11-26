@@ -87,11 +87,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Hệ thống & SEO",
     items: [
-      { label: "Người dùng & Premium", href: "/admin/legacy?tab=users", icon: Users, adminOnly: true, phaseBadge: "GĐ5" },
-      { label: "Gói giá & Referral", href: "/admin/legacy?tab=pricing", icon: CreditCard, adminOnly: true, phaseBadge: "GĐ5" },
-      { label: "Hộp thư & Phản hồi", href: "/admin#roadmap", icon: Inbox, phaseBadge: "GĐ5" },
-      { label: "Trang tĩnh & FAQs", href: "/admin#roadmap", icon: FileCode2, phaseBadge: "GĐ5" },
-      { label: "Cài đặt chung", href: "/admin#roadmap", icon: Settings, adminOnly: true, phaseBadge: "GĐ5" },
+      { label: "Người dùng & Premium", href: "/admin/users", icon: Users, adminOnly: true },
+      { label: "Gói giá & Referral", href: "/admin/pricing", icon: CreditCard, adminOnly: true },
+      { label: "Hộp thư & Phản hồi", href: "/admin/inbox", icon: Inbox },
+      { label: "Trang tĩnh & FAQs", href: "/admin/pages", icon: FileCode2 },
+      { label: "Cài đặt chung", href: "/admin/settings", icon: Settings, adminOnly: true },
       { label: "SEO & Redirect 301", href: "/admin#roadmap", icon: Globe, adminOnly: true, phaseBadge: "GĐ6" },
     ],
   },
@@ -371,7 +371,7 @@ export function AdminShell({
               {isAdmin ? "Admin" : "Editor"}
             </Badge>
             <span className="text-slate-500 dark:text-slate-400">
-              GĐ4 · 6 Learning Modules Active
+              GĐ5 · System &amp; Users Active
             </span>
           </div>
         </div>

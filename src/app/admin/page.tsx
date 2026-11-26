@@ -71,15 +71,15 @@ const ROADMAP_MODULES = [
   },
   {
     phase: "GĐ5",
-    status: "next" as const,
+    status: "active" as const,
     title: "Người dùng, Hộp thư & Trang tĩnh",
-    desc: "Quản lý user/Premium/gói giá, hộp thư liên hệ & đề xuất tính năng, sửa /about, /legal/*, FAQs và cài đặt chung.",
-    href: "/admin/legacy?tab=users",
+    desc: "Quản lý user/Premium/gói giá/Referral, hộp thư liên hệ & đề xuất tính năng, sửa /about, /legal/*, FAQs và cài đặt chung.",
+    href: "/admin/users",
     icon: Settings,
   },
   {
     phase: "GĐ6",
-    status: "planned" as const,
+    status: "next" as const,
     title: "SEO toàn trang & Redirect 301",
     desc: "Dynamic sitemap.xml, robots.txt, JSON-LD tự động, Twitter summary_large_image, tự tạo 301 khi đổi slug.",
     href: "/sitemap.xml",
@@ -309,7 +309,7 @@ export default async function AdminDashboardPage() {
             label: "Liên hệ / Đề xuất",
             count: counts.unreadContacts + counts.openFeatureRequests,
             icon: Inbox,
-            href: "/admin#roadmap",
+            href: "/admin/inbox",
           },
         ].map((item) => {
           const Icon = item.icon;

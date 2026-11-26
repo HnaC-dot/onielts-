@@ -31,6 +31,11 @@ const ENTITY_FILTERS = [
   { value: "pricing_plan", label: "Gói giá" },
   { value: "promo_code", label: "Mã giảm giá" },
   { value: "promo_banner", label: "Banner" },
+  { value: "contact_message", label: "Hộp thư Liên hệ" },
+  { value: "feature_request", label: "Đề xuất tính năng" },
+  { value: "static_page", label: "Trang tĩnh & Pháp lý" },
+  { value: "faq", label: "Câu hỏi FAQ" },
+  { value: "site_settings", label: "Cài đặt chung / Referral" },
 ];
 
 export function AuditLogsClient({

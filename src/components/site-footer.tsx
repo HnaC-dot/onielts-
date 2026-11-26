@@ -1,13 +1,38 @@
+/* eslint-disable @next/next/no-img-element */
 import React from "react";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { getSiteGeneralSettings } from "@/lib/site-content";
 import { BrandLogo } from "./brand-logo";
 
 export async function SiteFooter() {
-  const tBrand = await getTranslations("brand");
-  const tFooter = await getTranslations("footer");
-  const tNav = await getTranslations("nav.menu");
+  const [locale, tBrand, tFooter, tNav, settings] = await Promise.all([
+    getLocale(),
+    getTranslations("brand"),
+    getTranslations("footer"),
+    getTranslations("nav.menu"),
+    getSiteGeneralSettings(),
+  ]);
+  const isEn = locale === "en";
   const year = new Date().getFullYear();
+
+  const tagline = isEn
+    ? settings.taglineEn || tBrand("tagline")
+    : settings.taglineVi || tBrand("tagline");
+  const disclaimer = isEn
+    ? settings.disclaimerEn || tBrand("disclaimer")
+    : settings.disclaimerVi || tBrand("disclaimer");
+  const copyrightText =
+    !isEn && settings.footerCopyrightVi
+      ? settings.footerCopyrightVi.replace("{year}", String(year))
+      : tFooter("copyright", { year });
+
+  const socials = [
+    { label: "YouTube", href: settings.socialYoutube },
+    { label: "Facebook", href: settings.socialFacebook },
+    { label: "TikTok", href: settings.socialTiktok },
+    { label: "Zalo", href: settings.socialZalo },
+  ].filter((s) => s.href && /^https?:\/\//i.test(s.href));
 
   return (
     <footer className="mt-20 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
@@ -16,40 +41,54 @@ export async function SiteFooter() {
           {/* Brand + Non-Affiliation Disclaimer */}
           <div className="lg:col-span-2 space-y-4">
             <Link href="/" className="inline-block">
-              <BrandLogo />
+              {settings.logoUrl ? (
+                <img
+                  src={settings.logoUrl}
+                  alt={settings.siteName}
+                  className="h-9 w-auto object-contain"
+                />
+              ) : (
+                <BrandLogo />
+              )}
             </Link>
             <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              {tBrand("tagline")}
+              {tagline}
             </p>
+            {(settings.supportEmail || settings.hotline) && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {settings.supportEmail && (
+                  <span>
+                    Email:{" "}
+                    <a
+                      href={`mailto:${settings.supportEmail}`}
+                      className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+                    >
+                      {settings.supportEmail}
+                    </a>
+                  </span>
+                )}
+                {settings.supportEmail && settings.hotline ? " · " : ""}
+                {settings.hotline && <span>Hotline: {settings.hotline}</span>}
+              </p>
+            )}
             <p className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs leading-relaxed text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-              {tBrand("disclaimer")}
+              {disclaimer}
             </p>
-            <div className="flex items-center gap-3 text-xs font-semibold text-slate-500">
-              <a
-                href="https://youtube.com"
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 hover:border-emerald-500 hover:text-emerald-600 dark:border-slate-800"
-              >
-                YouTube
-              </a>
-              <a
-                href="https://facebook.com"
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 hover:border-emerald-500 hover:text-emerald-600 dark:border-slate-800"
-              >
-                Facebook
-              </a>
-              <a
-                href="https://tiktok.com"
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 hover:border-emerald-500 hover:text-emerald-600 dark:border-slate-800"
-              >
-                TikTok
-              </a>
-            </div>
+            {socials.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold text-slate-500">
+                {socials.map((s) => (
+                  <a
+                    key={s.label}
+                    href={s.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 hover:border-emerald-500 hover:text-emerald-600 dark:border-slate-800"
+                  >
+                    {s.label}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Resources */}
@@ -98,7 +137,7 @@ export async function SiteFooter() {
         </div>
 
         <div className="mt-10 border-t border-slate-200 pt-6 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-          {tFooter("copyright", { year })}
+          {copyrightText}
         </div>
       </div>
     </footer>

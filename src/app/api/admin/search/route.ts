@@ -42,9 +42,12 @@ const ADMIN_QUICK_LINKS: Array<{
   { title: "Chép chính tả & Shadowing (Dictation)", keywords: "chep chinh ta dictation shadowing mp3", href: "/admin/dictation" },
   { title: "Video tương tác (YouTube & .SRT/.VTT)", keywords: "video tuong tac youtube phu de srt vtt transcript", href: "/admin/videos" },
   { title: "Nhật ký hoạt động (Audit Logs)", keywords: "audit log nhat ky lich su", href: "/admin/audit" },
+  { title: "Người dùng, Phân quyền & Premium", keywords: "users profile premium order don hang role khoa tai khoan", href: "/admin/users", adminOnly: true },
+  { title: "Gói giá, Mã giảm giá & Referral", keywords: "pricing promo code banner goi gia referral gioi thieu", href: "/admin/pricing", adminOnly: true },
+  { title: "Hộp thư Liên hệ & Đề xuất tính năng", keywords: "inbox hop thu contact lien he feature request de xuat", href: "/admin/inbox" },
+  { title: "Trang tĩnh (/about, /legal/*) & FAQs", keywords: "pages trang tinh about legal privacy terms faq", href: "/admin/pages" },
+  { title: "Cài đặt chung Website (Logo, Banner, MXH)", keywords: "settings cai dat chung logo hotline email thong bao", href: "/admin/settings", adminOnly: true },
   { title: "Quản trị nhanh (Legacy 6 Tab)", keywords: "legacy tab ai band pricing tests blog users", href: "/admin/legacy" },
-  { title: "Bảng giá & Khuyến mãi", keywords: "pricing promo code banner goi gia", href: "/admin/legacy?tab=pricing", adminOnly: true },
-  { title: "Người dùng & Đơn hàng", keywords: "users profile premium order don hang", href: "/admin/legacy?tab=users", adminOnly: true },
 ];
 
 export async function GET(req: Request) {
@@ -198,7 +201,7 @@ export async function GET(req: Request) {
             type: "user",
             title: u.full_name || u.email,
             subtitle: `${u.email} · ${u.role}`,
-            href: "/admin/legacy?tab=users",
+            href: "/admin/users",
           });
         }
         if (results.length >= 35) break;

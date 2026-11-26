@@ -367,3 +367,22 @@ export function buildVideoObjectJsonLd(video: LearnVideo, baseUrl = getAppBaseUr
   };
 }
 
+export function buildFaqPageJsonLd(
+  faqs: Array<{ question: string; answer: string }>
+) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs
+      .filter((f) => f.question.trim() && f.answer.trim())
+      .map((f) => ({
+        "@type": "Question",
+        name: f.question.trim(),
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: f.answer.trim(),
+        },
+      })),
+  };
+}
+

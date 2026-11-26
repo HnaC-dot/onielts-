@@ -561,6 +561,8 @@ export interface FeatureRequestItem {
   description: string;
   votes: number;
   status: "open" | "planned" | "shipped";
+  email?: string | null;
+  admin_note?: string | null;
   created_at: string;
 }
 
@@ -571,5 +573,62 @@ export interface ContactMessageItem {
   subject: string;
   message: string;
   status: "new" | "replied";
+  is_read?: boolean;
+  admin_note?: string | null;
   created_at: string;
+}
+
+export interface StaticPageItem {
+  id: string;
+  slug: string;
+  title_vi: string;
+  title_en: string;
+  body_vi: string;
+  body_en: string;
+  sections_vi?: { heading: string; body: string }[];
+  sections_en?: { heading: string; body: string }[];
+  status: ContentPublishStatus;
+  seo_meta?: SeoMeta;
+  updated_at: string;
+}
+
+export interface FaqItem {
+  id: string;
+  question_vi: string;
+  question_en: string;
+  answer_vi: string;
+  answer_en: string;
+  category: string;
+  sort_order: number;
+  is_published: boolean;
+  created_at?: string;
+}
+
+export interface SiteGeneralSettings {
+  siteName: string;
+  taglineVi: string;
+  taglineEn: string;
+  disclaimerVi: string;
+  disclaimerEn: string;
+  logoUrl: string;
+  supportEmail: string;
+  hotline: string;
+  address: string;
+  socialYoutube: string;
+  socialFacebook: string;
+  socialTiktok: string;
+  socialZalo: string;
+  announcementEnabled: boolean;
+  announcementTextVi: string;
+  announcementTextEn: string;
+  announcementHref: string;
+  footerCopyrightVi: string;
+}
+
+export interface ReferralConfigSettings {
+  isEnabled: boolean;
+  referrerBonusDays: number;
+  referredBonusDays: number;
+  headlineVi: string;
+  headlineEn: string;
 }

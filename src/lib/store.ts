@@ -11,6 +11,7 @@ import type {
   CourseProgress,
   DailyExamAttempt,
   DictationLesson,
+  FaqItem,
   FeatureRequestItem,
   FlashcardItem,
   FlashcardSet,
@@ -21,8 +22,11 @@ import type {
   PromoBanner,
   PromoCode,
   PronunciationSound,
+  ReferralConfigSettings,
   ReferralRecord,
+  SiteGeneralSettings,
   SpeakingSubmission,
+  StaticPageItem,
   TestAttempt,
   TestimonialItem,
   UserProfile,
@@ -47,6 +51,12 @@ import {
   DEFAULT_TESTIMONIALS,
   DEFAULT_WRITING_EXERCISES,
 } from "./seed-data";
+import {
+  DEFAULT_FAQS,
+  DEFAULT_REFERRAL_CONFIG,
+  DEFAULT_SITE_GENERAL_SETTINGS,
+  DEFAULT_STATIC_PAGES,
+} from "./system-cms-shared";
 import { FULL_SEED_TESTS } from "./seed-tests";
 
 export interface LocalStoreData {
@@ -77,11 +87,17 @@ export interface LocalStoreData {
   referrals: ReferralRecord[];
   feature_requests: FeatureRequestItem[];
   contact_messages: ContactMessageItem[];
+  static_pages: StaticPageItem[];
+  faqs: FaqItem[];
+  site_settings: {
+    general: SiteGeneralSettings;
+    referral: ReferralConfigSettings;
+  };
 }
 
 const STORE_DIR = path.join(process.cwd(), ".local-data");
 const STORE_PATH = path.join(STORE_DIR, "store.json");
-const CURRENT_STORE_VERSION = 4;
+const CURRENT_STORE_VERSION = 5;
 
 function buildInitialStore(): LocalStoreData {
   return {
@@ -145,6 +161,12 @@ function buildInitialStore(): LocalStoreData {
     ],
     feature_requests: structuredClone(DEFAULT_FEATURE_REQUESTS),
     contact_messages: [],
+    static_pages: structuredClone(DEFAULT_STATIC_PAGES),
+    faqs: structuredClone(DEFAULT_FAQS),
+    site_settings: {
+      general: structuredClone(DEFAULT_SITE_GENERAL_SETTINGS),
+      referral: structuredClone(DEFAULT_REFERRAL_CONFIG),
+    },
   };
 }
 
@@ -180,6 +202,18 @@ function ensureStoreFile(): LocalStoreData {
               sort_order: s.sort_order ?? idx + 1,
             })
           );
+          if (!Array.isArray(parsed.static_pages)) {
+            parsed.static_pages = structuredClone(DEFAULT_STATIC_PAGES);
+          }
+          if (!Array.isArray(parsed.faqs)) {
+            parsed.faqs = structuredClone(DEFAULT_FAQS);
+          }
+          if (!parsed.site_settings) {
+            parsed.site_settings = {
+              general: structuredClone(DEFAULT_SITE_GENERAL_SETTINGS),
+              referral: structuredClone(DEFAULT_REFERRAL_CONFIG),
+            };
+          }
           parsed.version = CURRENT_STORE_VERSION;
           dirty = true;
         }

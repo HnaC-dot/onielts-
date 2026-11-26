@@ -7,7 +7,9 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { GlobalFlashcardModal } from "@/components/flashcard-quick-add";
 import { MentorFloatingButton } from "@/components/mentor-floating-button";
+import Link from "next/link";
 import { getAuthState } from "@/lib/auth";
+import { getSiteGeneralSettings } from "@/lib/site-content";
 import "./globals.css";
 
 const beVietnamPro = Be_Vietnam_Pro({
@@ -54,21 +56,38 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [locale, messages, authState] = await Promise.all([
+  const [locale, messages, authState, siteSettings] = await Promise.all([
     getLocale(),
     getMessages(),
     getAuthState(),
+    getSiteGeneralSettings(),
   ]);
+
+  const sameAs = [
+    siteSettings.socialYoutube,
+    siteSettings.socialFacebook,
+    siteSettings.socialTiktok,
+    siteSettings.socialZalo,
+  ].filter((u) => u && /^https?:\/\//i.test(u));
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "EducationalOrganization",
-    name: "Ôn IELTS",
+    name: siteSettings.siteName || "Ôn IELTS",
     url: process.env.NEXT_PUBLIC_APP_URL || "https://onielts.vn",
     description:
+      siteSettings.taglineVi ||
       "Nền tảng tự học và luyện thi IELTS toàn diện tích hợp AI cho người học Việt Nam.",
-    sameAs: ["https://youtube.com", "https://facebook.com", "https://tiktok.com"],
+    sameAs:
+      sameAs.length > 0
+        ? sameAs
+        : ["https://youtube.com", "https://facebook.com", "https://tiktok.com"],
   };
+
+  const announcementText =
+    locale === "en"
+      ? siteSettings.announcementTextEn || siteSettings.announcementTextVi
+      : siteSettings.announcementTextVi;
 
   return (
     <html lang={locale} suppressHydrationWarning className={beVietnamPro.variable}>
@@ -79,6 +98,20 @@ export default async function RootLayout({
         />
         <ThemeProvider>
           <NextIntlClientProvider locale={locale} messages={messages}>
+            {siteSettings.announcementEnabled && announcementText && (
+              <div className="bg-emerald-700 px-4 py-2 text-center text-xs font-semibold text-white">
+                {siteSettings.announcementHref ? (
+                  <Link
+                    href={siteSettings.announcementHref}
+                    className="hover:underline"
+                  >
+                    {announcementText} →
+                  </Link>
+                ) : (
+                  <span>{announcementText}</span>
+                )}
+              </div>
+            )}
             <SiteHeader user={authState.user} authStatus={authState.status} />
             <main className="flex-1">{children}</main>
             <SiteFooter />
