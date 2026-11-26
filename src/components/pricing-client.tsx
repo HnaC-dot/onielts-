@@ -25,6 +25,7 @@ interface PricingClientProps {
   plans: PricingPlan[];
   banner: PromoBanner;
   user: SessionUser | null;
+  serverNowMs?: number;
 }
 
 interface ActiveCheckout {
@@ -38,21 +39,35 @@ interface ActiveCheckout {
   sandboxMocked: boolean;
 }
 
-function getCountdownParts(targetIso: string) {
-  const diff = Math.max(0, new Date(targetIso).getTime() - Date.now());
+function getCountdownParts(targetIso: string, nowMs: number) {
+  const targetMs = Date.parse(targetIso);
+  if (!Number.isFinite(targetMs)) {
+    return { days: 0, hours: 0, mins: 0, secs: 0, expired: true };
+  }
+  const diff = targetMs - nowMs;
+  if (diff <= 0) {
+    return { days: 0, hours: 0, mins: 0, secs: 0, expired: true };
+  }
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
   const mins = Math.floor((diff / (1000 * 60)) % 60);
   const secs = Math.floor((diff / 1000) % 60);
-  return { days, hours, mins, secs, expired: diff <= 0 };
+  return { days, hours, mins, secs, expired: false };
 }
 
-export function PricingClient({ plans, banner, user }: PricingClientProps) {
+export function PricingClient({
+  plans,
+  banner,
+  user,
+  serverNowMs,
+}: PricingClientProps) {
   const locale = useLocale();
   const isEn = locale === "en";
   const router = useRouter();
 
-  const [countdown, setCountdown] = useState(() => getCountdownParts(banner.ends_at));
+  const [countdown, setCountdown] = useState(() =>
+    getCountdownParts(banner.ends_at, serverNowMs ?? Date.now())
+  );
   const [promoInput, setPromoInput] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<{
     code: string;
@@ -69,11 +84,14 @@ export function PricingClient({ plans, banner, user }: PricingClientProps) {
   const [checkoutErr, setCheckoutErr] = useState("");
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setCountdown(getCountdownParts(banner.ends_at));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [banner.ends_at]);
+    const sync = () => setCountdown(getCountdownParts(banner.ends_at, Date.now()));
+    const raf = requestAnimationFrame(sync);
+    const id = setInterval(sync, 1000);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearInterval(id);
+    };
+  }, [banner.ends_at, banner.is_active]);
 
   const computeFinalPrice = (priceVnd: number) => {
     if (!appliedPromo) return priceVnd;

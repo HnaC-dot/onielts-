@@ -3,13 +3,18 @@ import { getLocale } from "next-intl/server";
 import { getDailyExamState, listAllProfiles } from "@/lib/db";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { getVietnamDateString } from "@/lib/utils";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { LeaderboardClient, type StreakLeaderRow } from "@/components/leaderboard-client";
 
-export const metadata = {
-  title: "Bảng xếp hạng Đề thi mỗi ngày & Chuỗi Streak",
-  description:
-    "Xếp hạng học viên Ôn IELTS theo độ chính xác, tốc độ hoàn thành đề mỗi ngày và chuỗi ngày học liên tục theo Tuần, Tháng, Năm.",
-};
+export async function generateMetadata() {
+  return buildPublicPageMetadata({
+    title: "Bảng xếp hạng Đề thi mỗi ngày & Chuỗi Streak",
+    description:
+      "Xếp hạng học viên Ôn IELTS theo độ chính xác, tốc độ hoàn thành đề mỗi ngày và chuỗi ngày học liên tục theo Tuần, Tháng, Năm.",
+    pathname: "/leaderboard",
+    type: "website",
+  });
+}
 
 function isDemoSeedUserId(userId: string): boolean {
   return userId.startsWith("demo-");

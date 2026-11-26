@@ -1,13 +1,18 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
 import { getConversationTopics } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { ConversationsClient } from "@/components/conversations-client";
 
-export const metadata = {
-  title: "Hội thoại AI đóng vai luyện Speaking IELTS",
-  description:
-    "Thực hành giao tiếp và phản xạ Speaking IELTS qua các chủ đề thực tế có đầu vào/đầu ra giọng nói và gợi ý nâng cấp câu trả lời từng lượt.",
-};
+export async function generateMetadata() {
+  const topics = await getConversationTopics(false);
+  return buildPublicPageMetadata({
+    title: "Hội thoại AI đóng vai luyện Speaking IELTS",
+    description: `Thực hành giao tiếp và phản xạ Speaking IELTS qua ${topics.length} chủ đề thực tế có đầu vào/đầu ra giọng nói và gợi ý nâng cấp câu trả lời từng lượt.`,
+    pathname: "/conversations",
+    type: "website",
+  });
+}
 
 export default async function ConversationsPage({
   searchParams,

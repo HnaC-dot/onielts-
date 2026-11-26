@@ -1,13 +1,18 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
 import { getBandConversionTables } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { BandCalculatorClient } from "@/components/band-calculator-client";
 
-export const metadata = {
-  title: "Tính điểm Band IELTS chuẩn (Overall, Reading, Listening, Writing, Speaking)",
-  description:
-    "Công cụ tính điểm Band IELTS chính xác theo quy tắc làm tròn 6.25 lên 6.5, 6.75 lên 7.0 và bảng quy đổi số câu đúng Reading Academic, General & Listening.",
-};
+export async function generateMetadata() {
+  return buildPublicPageMetadata({
+    title: "Tính điểm Band IELTS chuẩn (Overall, Reading, Listening, Writing, Speaking)",
+    description:
+      "Công cụ tính điểm Band IELTS chính xác theo quy tắc làm tròn 6.25 lên 6.5, 6.75 lên 7.0 và bảng quy đổi số câu đúng Reading Academic, General & Listening.",
+    pathname: "/band-calculator",
+    type: "website",
+  });
+}
 
 export default async function BandCalculatorPage() {
   const [locale, rows] = await Promise.all([

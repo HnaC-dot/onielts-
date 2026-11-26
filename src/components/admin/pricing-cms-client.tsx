@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   CreditCard,
@@ -58,6 +58,17 @@ export function PricingCmsClient({
 
   const [saving, setSaving] = useState(false);
   const [deleteCodeTarget, setDeleteCodeTarget] = useState<PromoCode | null>(null);
+  const [nowMs, setNowMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    const sync = () => setNowMs(Date.now());
+    const raf = requestAnimationFrame(sync);
+    const id = setInterval(sync, 30_000);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearInterval(id);
+    };
+  }, []);
 
   const reloadAll = async () => {
     const res = await fetch("/api/admin/pricing");
@@ -465,22 +476,55 @@ export function PricingCmsClient({
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Thời hạn kết thúc (ISO / UTC)
-                </label>
-                <input
-                  type="text"
-                  value={banner.ends_at}
-                  onChange={(e) => setBanner({ ...banner, ends_at: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
-                />
-              </div>
-              <div className="flex items-end">
-                <Button type="button" size="sm" disabled={saving} onClick={saveBanner}>
-                  <Save className="h-3.5 w-3.5" />
-                  Lưu Banner
-                </Button>
+              <div className="sm:col-span-2">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Ngày giờ kết thúc ưu đãi (Giờ Việt Nam · UTC+7)
+                  </label>
+                  {(() => {
+                    const endMs = Date.parse(banner.ends_at);
+                    const isExpired =
+                      !Number.isFinite(endMs) || (nowMs !== null && endMs <= nowMs);
+                    if (!banner.is_active) {
+                      return <Badge variant="secondary">Đang tắt</Badge>;
+                    }
+                    return isExpired ? (
+                      <Badge variant="secondary">Đã hết hạn · Tự ẩn ở /pricing</Badge>
+                    ) : (
+                      <Badge variant="default">Đang chạy đếm ngược</Badge>
+                    );
+                  })()}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="datetime-local"
+                    value={(() => {
+                      const ms = Date.parse(banner.ends_at);
+                      if (!Number.isFinite(ms)) return "";
+                      // Shift UTC -> UTC+7 (Vietnam time) for datetime-local input
+                      const vn = new Date(ms + 7 * 60 * 60 * 1000);
+                      return vn.toISOString().slice(0, 16);
+                    })()}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      // Interpret input as Vietnam UTC+7 -> store canonical ISO UTC
+                      const parsed = Date.parse(`${val}:00+07:00`);
+                      if (Number.isFinite(parsed)) {
+                        setBanner({ ...banner, ends_at: new Date(parsed).toISOString() });
+                      }
+                    }}
+                    className="flex-1 min-w-[200px] rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+                  />
+                  <Button type="button" size="sm" disabled={saving} onClick={saveBanner}>
+                    <Save className="h-3.5 w-3.5" />
+                    Lưu Banner
+                  </Button>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Khi đồng hồ đếm ngược chạm 00:00:00:00, banner ưu đãi trên{" "}
+                  <code>/pricing</code> sẽ tự động ẩn ngay lập tức.
+                </p>
               </div>
             </div>
           </Card>

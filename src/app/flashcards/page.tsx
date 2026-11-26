@@ -2,13 +2,18 @@ import React from "react";
 import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getFlashcardsForUser } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { FlashcardsClient } from "@/components/flashcards-client";
 
-export const metadata = {
-  title: "Flashcards từ vựng IELTS (Lặp lại ngắt quãng SM-2)",
-  description:
-    "Quản lý bộ thẻ từ vựng học thuật, lưu nhanh bằng cách bôi đen từ trên bất kỳ trang nào và ôn tập theo thuật toán lặp lại ngắt quãng SM-2.",
-};
+export async function generateMetadata() {
+  return buildPublicPageMetadata({
+    title: "Flashcards từ vựng IELTS (Lặp lại ngắt quãng SM-2)",
+    description:
+      "Quản lý bộ thẻ từ vựng học thuật, lưu nhanh bằng cách bôi đen từ trên bất kỳ trang nào và ôn tập theo thuật toán lặp lại ngắt quãng SM-2.",
+    pathname: "/flashcards",
+    type: "website",
+  });
+}
 
 export default async function FlashcardsPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);

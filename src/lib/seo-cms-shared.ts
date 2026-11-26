@@ -38,7 +38,7 @@ export const DEFAULT_SITE_SEO_SETTINGS: SiteSeoSettings = {
     "chép chính tả IELTS",
     "phát âm IPA",
   ],
-  defaultOgImage: "",
+  defaultOgImage: "/og-default.png",
   defaultOgImageAlt: "Ôn IELTS — Nền tảng ôn luyện IELTS thông minh cùng AI",
   twitterHandle: "",
   googleSiteVerification: "",

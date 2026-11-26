@@ -205,10 +205,17 @@ export async function POST(req: Request) {
     }
 
     if (d.action === "update_promo_banner") {
+      const parsedEnd = Date.parse(d.ends_at);
+      if (!Number.isFinite(parsedEnd)) {
+        return NextResponse.json(
+          { error: "Thời gian kết thúc banner không hợp lệ." },
+          { status: 400 }
+        );
+      }
       await adminUpdatePromoBanner({
         title_vi: d.title_vi,
         title_en: d.title_en,
-        ends_at: d.ends_at,
+        ends_at: new Date(parsedEnd).toISOString(),
         is_active: d.is_active,
       });
       await recordAuditLog({
@@ -219,6 +226,7 @@ export async function POST(req: Request) {
         summary: `Cập nhật banner khuyến mãi (active=${d.is_active})`,
       });
       revalidatePath("/pricing");
+      revalidatePath("/admin/pricing");
       return NextResponse.json({ ok: true });
     }
 
@@ -252,6 +260,27 @@ export async function POST(req: Request) {
     }
 
     if (d.action === "toggle_test_publish") {
+      if (d.is_published) {
+        const allTests = await getIeltsTests(true);
+        const target = allTests.find((t) => t.id === d.id);
+        if (
+          target &&
+          (target.skill === "reading" || target.skill === "listening")
+        ) {
+          const actualQ = target.sections.reduce(
+            (sum, s) => sum + s.questions.length,
+            0
+          );
+          if (actualQ < 40) {
+            return NextResponse.json(
+              {
+                error: `Cảnh báo: Đề ${target.skill === "reading" ? "Reading" : "Listening"} "${target.title_vi}" mới có ${actualQ}/40 câu. Vui lòng bổ sung đủ 40 câu trong Trình tạo đề (/admin/tests/${target.id}) trước khi xuất bản.`,
+              },
+              { status: 400 }
+            );
+          }
+        }
+      }
       await adminToggleTestPublish(d.id, d.is_published);
       await recordAuditLog({
         actor,
@@ -263,6 +292,7 @@ export async function POST(req: Request) {
       });
       revalidatePath("/tests");
       revalidatePath("/");
+      revalidatePath("/sitemap.xml");
       return NextResponse.json({ ok: true });
     }
 
@@ -274,17 +304,27 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      await adminCreateTest(parsedTest, actor.id);
+      const created = await adminCreateTest(parsedTest, actor.id);
+      const isIncompleteObjective =
+        (parsedTest.skill === "reading" || parsedTest.skill === "listening") &&
+        created.questionCount < 40;
       await recordAuditLog({
         actor,
         action: "create_test_json",
         entityType: "ielts_test",
         entityLabel: parsedTest.title_vi,
-        summary: `Tạo đề thi mới (${parsedTest.skill}) /tests/${parsedTest.slug}`,
+        summary: `Tạo đề thi mới (${parsedTest.skill}, ${created.questionCount} câu, ${created.is_published ? "đã đăng" : "nháp"}) /tests/${parsedTest.slug}`,
       });
       revalidatePath("/tests");
       revalidatePath("/");
-      return NextResponse.json({ ok: true });
+      revalidatePath("/sitemap.xml");
+      return NextResponse.json({
+        ok: true,
+        is_published: created.is_published,
+        warning: isIncompleteObjective
+          ? `Cảnh báo: Đề ${parsedTest.skill === "reading" ? "Reading" : "Listening"} mới có ${created.questionCount}/40 câu nên đã được lưu ở trạng thái NHÁP (chưa xuất bản).`
+          : undefined,
+      });
     }
 
     if (d.action === "update_user_admin") {

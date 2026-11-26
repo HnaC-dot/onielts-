@@ -5,14 +5,20 @@ import { getLocale } from "next-intl/server";
 import { ArrowRight, BookOpen, Clock } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { getCourses, getUserCourseProgress } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export const metadata = {
-  title: "Khóa học tự học IELTS theo lộ trình (5.0 → 7.5+)",
-  description:
-    "Các khóa học IELTS nguyên bản có lưu tiến độ từng bài học, tóm tắt cốt lõi và bài kiểm tra nhanh sau mỗi bài.",
-};
+export async function generateMetadata() {
+  const courses = await getCourses(false);
+  const totalLessons = courses.reduce((sum, c) => sum + c.lessons.length, 0);
+  return buildPublicPageMetadata({
+    title: "Khóa học tự học IELTS theo lộ trình (5.0 → 7.5+)",
+    description: `${courses.length} khóa học IELTS nguyên bản (${totalLessons} bài học) có lưu tiến độ từng bài, tóm tắt cốt lõi và bài kiểm tra nhanh sau mỗi bài.`,
+    pathname: "/courses",
+    type: "website",
+  });
+}
 
 export default async function CoursesIndexPage() {
   const [locale, user, courses] = await Promise.all([

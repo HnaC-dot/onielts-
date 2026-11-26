@@ -129,10 +129,11 @@ describe("Admin CMS GĐ2 — XSS Sanitizer, SEO Engine, Media Validation & Blog 
 
     const withoutImg = buildNextMetadata({
       title: "Text Only Post",
-      description: "Short description for testing summary twitter card.",
+      description: "Short description for testing default OG image and summary_large_image.",
       pathname: "/blog/text-only",
     });
-    expect((withoutImg.twitter as { card?: string })?.card).toBe("summary");
+    expect((withoutImg.twitter as { card?: string })?.card).toBe("summary_large_image");
+    expect(JSON.stringify(withoutImg.openGraph?.images)).toContain("/og-default.png");
 
     const articleLd = buildArticleJsonLd({
       id: "b1",

@@ -4,14 +4,19 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { Play } from "lucide-react";
 import { getLearnVideos } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export const metadata = {
-  title: "Video học IELTS kèm phụ đề tương tác song ngữ",
-  description:
-    "Học IELTS qua video chọn lọc kèm bản ghi tương tác đồng bộ: bấm từng câu để tua video, bấm từng từ để lưu ngay vào Flashcard.",
-};
+export async function generateMetadata() {
+  const videos = await getLearnVideos(false);
+  return buildPublicPageMetadata({
+    title: "Video học IELTS kèm phụ đề tương tác song ngữ",
+    description: `${videos.length} video học IELTS chọn lọc kèm bản ghi tương tác đồng bộ: bấm từng câu để tua video, bấm từng từ để lưu ngay vào Flashcard.`,
+    pathname: "/videos",
+    type: "website",
+  });
+}
 
 export default async function VideosIndexPage() {
   const [locale, videos] = await Promise.all([getLocale(), getLearnVideos()]);

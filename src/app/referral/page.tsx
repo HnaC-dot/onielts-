@@ -4,15 +4,23 @@ import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { getUserReferrals } from "@/lib/db";
+import { getReferralConfig } from "@/lib/site-content";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { ReferralClient } from "@/components/referral-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-export const metadata = {
-  title: "Mời bạn bè ôn thi IELTS cùng nhau",
-  description:
-    "Chia sẻ liên kết giới thiệu Ôn IELTS và theo dõi lượt đăng ký, nâng cấp của bạn bè.",
-};
+export async function generateMetadata() {
+  const refCfg = await getReferralConfig();
+  return buildPublicPageMetadata({
+    title: "Mời bạn bè ôn thi IELTS cùng nhau",
+    description:
+      refCfg.headlineVi ||
+      "Chia sẻ liên kết giới thiệu Ôn IELTS và theo dõi lượt đăng ký, nâng cấp của bạn bè.",
+    pathname: "/referral",
+    type: "website",
+  });
+}
 
 export default async function ReferralPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);

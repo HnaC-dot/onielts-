@@ -5,8 +5,8 @@ import { getPublicFaqs, getStaticPageBySlug } from "@/lib/site-content";
 import {
   buildBreadcrumbJsonLd,
   buildFaqPageJsonLd,
-  buildNextMetadata,
 } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { renderBlogContentToSafeHtml } from "@/lib/sanitize";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const page = await getStaticPageBySlug(`legal/${slug}`, false);
   if (!page) return {};
-  return buildNextMetadata({
+  return buildPublicPageMetadata({
     title: page.title_vi,
     description: page.seo_meta?.metaDescription || page.title_vi,
     pathname: `/legal/${slug}`,

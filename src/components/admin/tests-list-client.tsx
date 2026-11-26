@@ -59,6 +59,10 @@ export function TestsListClient({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IeltsTest | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [under40Warning, setUnder40Warning] = useState<{
+    test: IeltsTest;
+    count: number;
+  } | null>(null);
 
   const pageSize = 15;
 
@@ -95,6 +99,47 @@ export function TestsListClient({
     },
     []
   );
+
+  const handleTogglePublish = async (test: IeltsTest) => {
+    const nextPub = !test.is_published;
+    const isObj = test.skill === "reading" || test.skill === "listening";
+    const check = validateTestForPublish(test);
+
+    if (nextPub && isObj && check.questionCount < 40) {
+      setUnder40Warning({ test, count: check.questionCount });
+      toast.error(
+        `Cảnh báo: Đề ${test.skill === "reading" ? "Reading" : "Listening"} mới có ${check.questionCount}/40 câu — chưa đủ 40 câu để xuất bản!`
+      );
+      return;
+    }
+
+    setBusyId(test.id);
+    try {
+      const res = await fetch("/api/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle_test_publish",
+          id: test.id,
+          is_published: nextPub,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Không thể đổi trạng thái xuất bản đề thi.");
+        return;
+      }
+      toast.success(
+        nextPub
+          ? `Đã công khai đề "${test.title_vi}"!`
+          : `Đã ẩn (chuyển về Nháp) đề "${test.title_vi}".`
+      );
+      await fetchTests(page, q, skill, mod, published, premium);
+      router.refresh();
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const handleDuplicate = async (test: IeltsTest) => {
     setBusyId(test.id);
@@ -317,9 +362,21 @@ export function TestsListClient({
                       </td>
 
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <Badge variant={test.is_published ? "default" : "secondary"}>
-                          {test.is_published ? "Đã đăng" : "Nháp"}
-                        </Badge>
+                        <button
+                          type="button"
+                          disabled={busyId === test.id}
+                          onClick={() => void handleTogglePublish(test)}
+                          title={
+                            test.is_published
+                              ? "Bấm để ẩn đề (chuyển về Nháp)"
+                              : "Bấm để xuất bản công khai"
+                          }
+                          className="cursor-pointer"
+                        >
+                          <Badge variant={test.is_published ? "default" : "secondary"}>
+                            {test.is_published ? "Đã đăng" : "Nháp"}
+                          </Badge>
+                        </button>
                       </td>
 
                       <td className="px-4 py-3 whitespace-nowrap text-right">
@@ -406,6 +463,27 @@ export function TestsListClient({
         loading={deleting}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={Boolean(under40Warning)}
+        title="Cảnh báo: Đề chưa đủ 40 câu!"
+        description={
+          under40Warning
+            ? `Đề ${under40Warning.test.skill === "reading" ? "Reading" : "Listening"} "${under40Warning.test.title_vi}" hiện chỉ có ${under40Warning.count}/40 câu. Hệ thống không cho phép xuất bản đề Reading/Listening dưới 40 câu để tránh sai lệch thang điểm Band IELTS.`
+            : ""
+        }
+        confirmLabel="Mở trình sửa đề để bổ sung câu"
+        cancelLabel="Đóng"
+        destructive={false}
+        onCancel={() => setUnder40Warning(null)}
+        onConfirm={() => {
+          if (under40Warning) {
+            const targetId = under40Warning.test.id;
+            setUnder40Warning(null);
+            router.push(`/admin/tests/${targetId}`);
+          }
+        }}
       />
     </div>
   );

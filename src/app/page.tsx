@@ -36,11 +36,31 @@ import {
   getWritingExercises,
 } from "@/lib/db";
 import { getVietnamDateString, formatDuration } from "@/lib/utils";
+import { getSiteSeoSettings } from "@/lib/site-content";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
+import { computeTestCounts, getPlatformCounts } from "@/lib/platform-stats";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TestimonialsCarousel } from "@/components/testimonials-carousel";
 import { HorizontalCarouselSection } from "@/components/horizontal-carousel";
+
+export async function generateMetadata() {
+  const [seo, counts] = await Promise.all([
+    getSiteSeoSettings(),
+    getPlatformCounts(),
+  ]);
+  const dynamicSummary = `${counts.publishedTestCount} đề thi IELTS nguyên bản (${counts.totalObjectiveQuestions} câu hỏi tự chấm), ${counts.homeToolsCount} công cụ AI & tiện ích học tập, ${counts.courseCount} khóa học và ${counts.ipaSoundCount} âm IPA — luyện thi IELTS thông minh cùng AI cho người Việt.`;
+
+  return buildPublicPageMetadata({
+    title: seo.defaultMetaTitle,
+    description: dynamicSummary,
+    pathname: "/",
+    keywords: seo.defaultKeywords,
+    type: "website",
+    useAbsoluteTitle: true,
+  });
+}
 
 const SKILL_META = {
   reading: { label: "Reading", icon: BookOpen, tone: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
@@ -172,10 +192,7 @@ export default async function HomePage() {
       return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
     })
     .slice(0, 6);
-  const totalObjectiveQuestions = publishedTests.reduce(
-    (sum, item) => sum + item.sections.reduce((sAcc, sec) => sAcc + sec.questions.length, 0),
-    0
-  );
+  const testStats = computeTestCounts(publishedTests);
   const topDaily = dailyState.leaderboard.slice(0, 3);
 
   return (
@@ -217,7 +234,7 @@ export default async function HomePage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
                     <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      {publishedTests.length} {isEn ? "tests" : "đề thi"}
+                      {testStats.publishedTestCount} {isEn ? "tests" : "đề thi"}
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
                       {t("stats.tests")}
@@ -225,7 +242,7 @@ export default async function HomePage() {
                   </div>
                   <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
                     <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                      {totalObjectiveQuestions} {isEn ? "Q" : "câu"}
+                      {testStats.totalObjectiveQuestions} {isEn ? "Q" : "câu"}
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
                       {t("stats.questions")}
@@ -241,7 +258,7 @@ export default async function HomePage() {
                   </div>
                   <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
                     <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      40 {isEn ? "Q/test" : "câu/đề"}
+                      {testStats.maxObjectiveQuestionsPerTest} {isEn ? "Q/test" : "câu/đề"}
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
                       {t("stats.fullFormat")}

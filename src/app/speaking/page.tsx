@@ -3,13 +3,18 @@ import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
 import { checkUsageLimit } from "@/lib/usage-limits";
 import { getUserSpeakingSubmissions } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { SpeakingCheckerClient } from "@/components/speaking-checker-client";
 
-export const metadata = {
-  title: "Chấm điểm IELTS Speaking bằng AI (Parts 1–3)",
-  description:
-    "Ghi âm trực tiếp hoặc tải file audio để chấm IELTS Speaking theo 4 tiêu chí FC, LR, GRA và Phát âm (điểm tham khảo) kèm câu trả lời mẫu Band 8+.",
-};
+export async function generateMetadata() {
+  return buildPublicPageMetadata({
+    title: "Chấm điểm IELTS Speaking bằng AI (Parts 1–3)",
+    description:
+      "Ghi âm trực tiếp hoặc tải file audio để chấm IELTS Speaking theo 4 tiêu chí FC, LR, GRA và Phát âm (điểm tham khảo) kèm câu trả lời mẫu Band 8+.",
+    pathname: "/speaking",
+    type: "website",
+  });
+}
 
 export default async function SpeakingPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);

@@ -3,14 +3,21 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, BookOpen, Clock, Headphones, Mic, PenTool } from "lucide-react";
 import { getIeltsTests } from "@/lib/db";
+import { computeTestCounts } from "@/lib/platform-stats";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export const metadata = {
-  title: "Kho đề luyện thi IELTS chuẩn máy tính (Reading, Listening, Writing, Speaking)",
-  description:
-    "12 bộ đề thi IELTS nguyên bản đầy đủ 4 kỹ năng (Reading 40 câu 3 bài đọc, Listening 40 câu 4 phần kèm file audio thật) với giao diện chuẩn máy tính và giải thích song ngữ VI + EN.",
-};
+export async function generateMetadata() {
+  const published = await getIeltsTests(false);
+  const c = computeTestCounts(published);
+  return buildPublicPageMetadata({
+    title: `Kho ${c.publishedTestCount} đề luyện thi IELTS chuẩn máy tính (4 kỹ năng)`,
+    description: `${c.publishedTestCount} bộ đề thi IELTS nguyên bản (${c.readingTestCount} Reading, ${c.listeningTestCount} Listening, ${c.writingTestCount} Writing, ${c.speakingTestCount} Speaking — tổng ${c.totalObjectiveQuestions} câu hỏi tự chấm) với giao diện chuẩn máy tính và giải thích song ngữ VI + EN.`,
+    pathname: "/tests",
+    type: "website",
+  });
+}
 
 const SKILL_CONFIG = {
   reading: { label: "Reading", icon: BookOpen },

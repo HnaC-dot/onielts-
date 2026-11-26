@@ -219,7 +219,7 @@ export function SeoPanel({
           </span>
         </label>
         <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-          twitter:card = {previewImage ? "summary_large_image" : "summary"}
+          twitter:card = summary_large_image
         </span>
       </div>
 
@@ -257,7 +257,7 @@ export function SeoPanel({
       <div className="space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
         <p className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
           <Share2 className="h-3.5 w-3.5 text-sky-600" />
-          Open Graph &amp; Twitter Card (tùy chỉnh khi chia sẻ Facebook / Zalo / X)
+          Open Graph &amp; Twitter Card riêng cho trang này (Facebook / Zalo / X)
         </p>
         <div className="grid gap-3 md:grid-cols-2">
           <input
@@ -287,7 +287,7 @@ export function SeoPanel({
             type="text"
             value={seoMeta.ogImage ?? ""}
             onChange={(e) => update({ ogImage: e.target.value })}
-            placeholder="URL ảnh OG (mặc định dùng Ảnh đại diện bài viết, khuyến nghị 1200×630px)"
+            placeholder="URL ảnh OG riêng (để trống dùng ảnh bìa hoặc ảnh OG mặc định 1200×630)"
             className="flex-1 min-w-[220px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"
           />
           <Button
@@ -296,7 +296,7 @@ export function SeoPanel({
             variant="outline"
             onClick={() => setOgPickerOpen(true)}
           >
-            <ImageIcon className="h-3.5 w-3.5" /> Chọn ảnh OG
+            <ImageIcon className="h-3.5 w-3.5" /> Chọn ảnh OG riêng
           </Button>
         </div>
       </div>
@@ -326,22 +326,21 @@ export function SeoPanel({
         <div className="space-y-2">
           <p className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
             <Share2 className="h-3.5 w-3.5 text-blue-600" />
-            Xem trước khi chia sẻ Facebook
+            Xem trước khi chia sẻ Facebook / Zalo / X
           </p>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
-            {previewImage ? (
-              <div className="h-36 w-full bg-slate-200 dark:bg-slate-900">
-                <img
-                  src={previewImage}
-                  alt={seoMeta.ogImageAlt || seoMeta.coverImageAlt || previewOgTitle}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="flex h-24 items-center justify-center bg-slate-100 text-[11px] text-slate-400 dark:bg-slate-900">
-                Chưa có ảnh bìa / ảnh OG (nên thêm để hiện ảnh lớn)
-              </div>
-            )}
+            <div className="relative h-36 w-full bg-slate-200 dark:bg-slate-900">
+              <img
+                src={previewImage || "/og-default.png"}
+                alt={seoMeta.ogImageAlt || seoMeta.coverImageAlt || previewOgTitle}
+                className="h-full w-full object-cover"
+              />
+              {!previewImage && (
+                <span className="absolute bottom-2 right-2 rounded-md bg-slate-900/75 px-2 py-0.5 text-[10px] font-semibold text-white">
+                  Ảnh OG mặc định
+                </span>
+              )}
+            </div>
             <div className="p-3 space-y-0.5">
               <p className="text-[10px] uppercase tracking-wide text-slate-500">
                 {siteHost}

@@ -548,9 +548,15 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
     setErrorMsg("");
 
     if (publishTarget && !validationReport.canPublish) {
-      const msg = `Chưa thể xuất bản: ${validationReport.errors[0]}`;
-      setErrorMsg(msg);
-      toast.error(msg);
+      const under40Msg =
+        isObjective && validationReport.questionCount < 40
+          ? `Cảnh báo: Đề ${skill === "reading" ? "Reading" : "Listening"} mới có ${validationReport.questionCount}/40 câu. Chưa thể xuất bản khi dưới 40 câu — hãy bổ sung đủ 40 câu hoặc bấm "Lưu Nháp".`
+          : `Cảnh báo — Chưa thể xuất bản: ${validationReport.errors[0]}`;
+      setErrorMsg(under40Msg);
+      toast.error(under40Msg);
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
       return;
     }
 

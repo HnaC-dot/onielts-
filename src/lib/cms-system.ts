@@ -378,6 +378,7 @@ export async function updatePromoBannerCms(
     };
   }
   const d = parsed.data;
+  const normalizedEndsAt = new Date(d.ends_at).toISOString();
   if (!isSupabaseConfigured()) {
     updateStore((store) => {
       store.promo_banner = {
@@ -388,7 +389,7 @@ export async function updatePromoBannerCms(
         badge_en: d.badge_en,
         cta_vi: d.cta_vi,
         cta_en: d.cta_en,
-        ends_at: d.ends_at,
+        ends_at: normalizedEndsAt,
         is_active: d.is_active,
       };
     });
@@ -404,7 +405,7 @@ export async function updatePromoBannerCms(
         badge_en: d.badge_en,
         cta_vi: d.cta_vi,
         cta_en: d.cta_en,
-        ends_at: d.ends_at,
+        ends_at: normalizedEndsAt,
         is_active: d.is_active,
         updated_at: new Date().toISOString(),
       },
@@ -418,9 +419,9 @@ export async function updatePromoBannerCms(
     action: "promo_banner.update",
     entityType: "promo_banner",
     entityLabel: d.title_vi.slice(0, 80),
-    summary: `Cập nhật banner khuyến mãi (active=${d.is_active})`,
+    summary: `Cập nhật banner khuyến mãi (active=${d.is_active}, hết hạn=${normalizedEndsAt})`,
   });
-  safeRevalidate(["/pricing"]);
+  safeRevalidate(["/pricing", "/admin/pricing"]);
   return { ok: true };
 }
 

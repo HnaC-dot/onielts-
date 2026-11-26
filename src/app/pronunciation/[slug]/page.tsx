@@ -7,7 +7,8 @@ import { Headphones } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { isStaffRole } from "@/lib/admin-auth";
 import { getPronunciationSoundBySlug } from "@/lib/db";
-import { buildBreadcrumbJsonLd, buildNextMetadata } from "@/lib/seo";
+import { buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { PronunciationPracticeClient } from "@/components/pronunciation-practice-client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const sound = await getPronunciationSoundBySlug(slug, false);
   if (!sound) return {};
-  return buildNextMetadata({
+  return buildPublicPageMetadata({
     title: `Cách phát âm ${sound.symbol} (${sound.title_vi})`,
     description: sound.vietnameseTip_vi,
     pathname: `/pronunciation/${sound.slug}`,

@@ -995,7 +995,7 @@ export function SeoCmsClient({
                   },
                   {
                     key: "sitemapIncludePronunciation" as const,
-                    label: "44 âm phát âm IPA (/pronunciation/*)",
+                    label: "Các trang phát âm IPA (/pronunciation/*)",
                   },
                   {
                     key: "sitemapIncludeVideos" as const,

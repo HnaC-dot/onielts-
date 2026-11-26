@@ -3,14 +3,21 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, Calculator, Sparkles, Volume2 } from "lucide-react";
 import { GENERAL_AI_TOOLS } from "@/lib/ai-tools-config";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export const metadata = {
-  title: "Bộ công cụ AI học IELTS",
-  description:
-    "Paraphraser, Summarizer, Translator Anh-Việt, Grammar Checker, Grammar Corrector, Text Improver, Complex Sentence Explainer và Text-to-Speech.",
-};
+const TOTAL_TOOLS_HUB_COUNT = GENERAL_AI_TOOLS.length + 2; // AI tools + Text-to-Speech + Band Calculator
+
+export async function generateMetadata() {
+  const names = GENERAL_AI_TOOLS.map((t) => t.titleVi).join(", ");
+  return buildPublicPageMetadata({
+    title: `Bộ ${TOTAL_TOOLS_HUB_COUNT} công cụ AI & tiện ích học IELTS`,
+    description: `Tập hợp ${TOTAL_TOOLS_HUB_COUNT} công cụ học IELTS gồm ${names}, Chuyển văn bản thành giọng nói và Tính điểm Band IELTS.`,
+    pathname: "/tools",
+    type: "website",
+  });
+}
 
 export default async function ToolsHubPage() {
   const locale = await getLocale();
@@ -24,8 +31,8 @@ export default async function ToolsHubPage() {
         </h1>
         <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
           {isEn
-            ? "Fast, focused AI utilities powered by Gemini to accelerate reading, writing, grammar, and listening practice."
-            : "Tập hợp 8 công cụ AI chuyên sâu cùng công cụ tính điểm Band giúp bạn học nhanh, hiểu sâu và viết chuẩn học thuật."}
+            ? `Explore ${TOTAL_TOOLS_HUB_COUNT} focused AI & study utilities powered by Gemini to accelerate reading, writing, grammar, and listening practice.`
+            : `Tập hợp ${TOTAL_TOOLS_HUB_COUNT} công cụ AI & tiện ích chuyên sâu (gồm ${GENERAL_AI_TOOLS.length} trợ lý AI văn bản, Text-to-Speech và Tính điểm Band) giúp bạn học nhanh, hiểu sâu và viết chuẩn học thuật.`}
         </p>
       </div>
 

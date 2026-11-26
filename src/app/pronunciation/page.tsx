@@ -2,14 +2,19 @@ import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { getPronunciationSounds } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export const metadata = {
-  title: "Luyện phát âm tiếng Anh chuẩn bảng IPA cho người Việt",
-  description:
-    "Bảng ký hiệu ngữ âm IPA đầy đủ nguyên âm đơn, nguyên âm đôi và phụ âm kèm hướng dẫn khẩu hình, mẹo sửa lỗi người Việt và chấm phát âm AI tham khảo.",
-};
+export async function generateMetadata() {
+  const sounds = await getPronunciationSounds(false);
+  return buildPublicPageMetadata({
+    title: `Luyện phát âm tiếng Anh chuẩn bảng IPA (${sounds.length} âm)`,
+    description: `Bảng ký hiệu ngữ âm IPA gồm ${sounds.length} nguyên âm đơn, nguyên âm đôi và phụ âm kèm hướng dẫn khẩu hình, mẹo sửa lỗi người Việt và chấm phát âm AI tham khảo.`,
+    pathname: "/pronunciation",
+    type: "website",
+  });
+}
 
 export default async function PronunciationIndexPage() {
   const [locale, allSounds] = await Promise.all([

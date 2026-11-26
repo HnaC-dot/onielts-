@@ -14,6 +14,7 @@ import {
   getSiteGeneralSettings,
   getSiteSeoSettings,
 } from "@/lib/site-content";
+import { isValidSocialProfileUrl } from "@/lib/system-cms-shared";
 import { GA4_ID_REGEX } from "@/lib/seo-cms-shared";
 import { getAppBaseUrl } from "@/lib/seo";
 import "./globals.css";
@@ -40,8 +41,6 @@ export async function generateMetadata(): Promise<Metadata> {
   ]);
 
   const siteName = general.siteName || "Ôn IELTS";
-  const ogImageUrl = toAbsoluteUrl(seo.defaultOgImage, baseUrl);
-  const ogImageAlt = seo.defaultOgImageAlt || seo.defaultMetaTitle;
 
   return {
     metadataBase: new URL(baseUrl),
@@ -53,22 +52,6 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description: seo.defaultMetaDescription,
     keywords: seo.defaultKeywords.length > 0 ? seo.defaultKeywords : undefined,
-    openGraph: {
-      type: "website",
-      locale: "vi_VN",
-      alternateLocale: ["en_US"],
-      siteName,
-      title: seo.defaultMetaTitle,
-      description: seo.defaultMetaDescription,
-      images: ogImageUrl ? [{ url: ogImageUrl, alt: ogImageAlt }] : undefined,
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: seo.defaultMetaTitle,
-      description: seo.defaultMetaDescription,
-      creator: seo.twitterHandle || undefined,
-      images: ogImageUrl ? [ogImageUrl] : undefined,
-    },
     verification: seo.googleSiteVerification
       ? { google: seo.googleSiteVerification }
       : undefined,
@@ -99,7 +82,7 @@ export default async function RootLayout({
     siteSettings.socialFacebook,
     siteSettings.socialTiktok,
     siteSettings.socialZalo,
-  ].filter((u) => u && /^https?:\/\//i.test(u));
+  ].filter((u) => isValidSocialProfileUrl(u));
 
   const orgLogoUrl = toAbsoluteUrl(
     seoSettings.organizationLogo || siteSettings.logoUrl,
@@ -112,14 +95,12 @@ export default async function RootLayout({
     name: siteSettings.siteName || "Ôn IELTS",
     url: baseUrl,
     logo: orgLogoUrl,
+    email: siteSettings.supportEmail || undefined,
     description:
       siteSettings.taglineVi ||
       seoSettings.defaultMetaDescription ||
       "Nền tảng tự học và luyện thi IELTS toàn diện tích hợp AI cho người học Việt Nam.",
-    sameAs:
-      sameAs.length > 0
-        ? sameAs
-        : ["https://youtube.com", "https://facebook.com", "https://tiktok.com"],
+    sameAs: sameAs.length > 0 ? sameAs : undefined,
   };
 
   const announcementText =

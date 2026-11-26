@@ -1,13 +1,19 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
 import { getDictationLessons } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { DictationClient } from "@/components/dictation-client";
 
-export const metadata = {
-  title: "Chép chính tả (Dictation) & Luyện nói đuổi (Shadowing) IELTS",
-  description:
-    "Luyện nghe sâu từng câu chuẩn giọng Anh – Mỹ – Úc, kiểm tra lỗi sai từng từ và luyện nói đuổi Shadowing cải thiện ngữ điệu Speaking.",
-};
+export async function generateMetadata() {
+  const lessons = await getDictationLessons(false);
+  const totalSentences = lessons.reduce((sum, l) => sum + l.sentences.length, 0);
+  return buildPublicPageMetadata({
+    title: "Chép chính tả (Dictation) & Luyện nói đuổi (Shadowing) IELTS",
+    description: `${lessons.length} bài luyện nghe chép chính tả (${totalSentences} câu chuẩn giọng Anh – Mỹ – Úc) kiểm tra lỗi sai từng từ và chế độ Shadowing cải thiện phát âm Speaking.`,
+    pathname: "/dictation",
+    type: "website",
+  });
+}
 
 export default async function DictationPage({
   searchParams,

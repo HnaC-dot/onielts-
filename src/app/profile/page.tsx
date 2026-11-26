@@ -6,12 +6,20 @@ import { getAuthState } from "@/lib/auth";
 import { getUserWritingSubmissions } from "@/lib/db";
 import { ProfileClient } from "@/components/profile-client";
 import { AuthErrorActions } from "@/components/auth-error-actions";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-export const metadata = {
-  title: "Hồ sơ cá nhân & Quyền riêng tư",
-};
+export async function generateMetadata() {
+  return buildPublicPageMetadata({
+    title: "Hồ sơ cá nhân & Quyền riêng tư",
+    description:
+      "Quản lý thông tin tài khoản, gói Premium, cài đặt quyền riêng tư bài viết Writing và ghi âm Speaking trên Ôn IELTS.",
+    pathname: "/profile",
+    type: "website",
+    noindex: true,
+  });
+}
 
 export default async function ProfilePage() {
   const [locale, authState] = await Promise.all([getLocale(), getAuthState()]);

@@ -24,18 +24,63 @@ export const DEFAULT_SITE_GENERAL_SETTINGS: SiteGeneralSettings = {
   supportEmail: "hotro@onielts.vn",
   hotline: "",
   address: "TP. Hồ Chí Minh, Việt Nam",
-  socialYoutube: "https://youtube.com",
-  socialFacebook: "https://facebook.com",
-  socialTiktok: "https://tiktok.com",
+  socialYoutube: "",
+  socialFacebook: "",
+  socialTiktok: "",
   socialZalo: "",
   announcementEnabled: false,
   announcementTextVi:
-    "Mới: Thử sức Đề thi mỗi ngày 15 phút (UTC+7) & Kho đề 40 câu chuẩn máy tính!",
+    "Mới: Thử sức Đề thi mỗi ngày 15 phút (UTC+7) & Kho đề chuẩn máy tính!",
   announcementTextEn:
-    "New: Join today's 15-minute Daily IELTS Sprint & full 40-question mock tests!",
+    "New: Join today's 15-minute Daily IELTS Sprint & full mock tests!",
   announcementHref: "/daily-exam",
   footerCopyrightVi: "© {year} Ôn IELTS (onielts.vn). Bảo lưu mọi quyền.",
 };
+
+const GENERIC_SOCIAL_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "facebook.com",
+  "www.facebook.com",
+  "m.facebook.com",
+  "fb.com",
+  "www.fb.com",
+  "tiktok.com",
+  "www.tiktok.com",
+  "zalo.me",
+  "www.zalo.me",
+]);
+
+/**
+ * Returns true only for valid http(s) social profile/channel URLs.
+ * Rejects bare generic homepages such as `https://youtube.com` or `https://facebook.com/`.
+ */
+export function isValidSocialProfileUrl(rawUrl?: string | null): boolean {
+  const trimmed = (rawUrl ?? "").trim();
+  if (!trimmed || !/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    const cleanPath = parsed.pathname.replace(/\/+$/, "");
+    if (GENERIC_SOCIAL_HOSTS.has(host) && !cleanPath && !parsed.search) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isPromoBannerActiveNow(
+  banner: { is_active: boolean; ends_at: string },
+  nowMs = Date.now()
+): boolean {
+  if (!banner.is_active) return false;
+  const endMs = Date.parse(banner.ends_at);
+  if (!Number.isFinite(endMs)) return false;
+  return endMs > nowMs;
+}
 
 export const DEFAULT_REFERRAL_CONFIG: ReferralConfigSettings = {
   isEnabled: true,
@@ -255,7 +300,14 @@ export const promoBannerUpdateSchema = z.object({
   badge_en: z.string().trim().max(80).optional().default("Offer"),
   cta_vi: z.string().trim().max(80).optional().default("Xem ưu đãi"),
   cta_en: z.string().trim().max(80).optional().default("Claim Offer"),
-  ends_at: z.string().trim().min(10, "Chọn thời gian kết thúc"),
+  ends_at: z
+    .string()
+    .trim()
+    .min(10, "Chọn thời gian kết thúc")
+    .refine(
+      (v) => Number.isFinite(Date.parse(v)),
+      "Thời gian kết thúc không hợp lệ (hãy chọn đúng ngày giờ)"
+    ),
   is_active: z.boolean(),
 });
 

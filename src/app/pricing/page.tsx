@@ -2,18 +2,27 @@ import React from "react";
 import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getPricingPlans, getPromoBanner } from "@/lib/db";
-import { getPublicFaqs } from "@/lib/site-content";
+import { getPublicFaqs, getServerNowMs } from "@/lib/site-content";
 import { buildFaqPageJsonLd } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { PricingClient } from "@/components/pricing-client";
 import { Card } from "@/components/ui/card";
 
-export const metadata = {
-  title: "Bảng giá gói Ôn IELTS Premium (Thanh toán 1 lần qua VietQR)",
-  description:
-    "Nâng cấp Ôn IELTS Premium với các gói 1, 3, 6, 12 tháng trả một lần qua PayOS VietQR. Không giới hạn chấm AI Writing, Speaking và bài mẫu Band 9.",
-};
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata() {
+  const plans = await getPricingPlans(false);
+  const planCount = plans.length;
+  return buildPublicPageMetadata({
+    title: "Bảng giá gói Ôn IELTS Premium (Thanh toán 1 lần qua VietQR)",
+    description: `Nâng cấp Ôn IELTS Premium với ${planCount} gói linh hoạt thanh toán 1 lần qua PayOS VietQR, không tự động gia hạn. Không giới hạn chấm AI Writing, Speaking và tạo bài mẫu Band 9.`,
+    pathname: "/pricing",
+    type: "website",
+  });
+}
 
 export default async function PricingPage() {
+  const serverNowMs = getServerNowMs();
   const [locale, user, activePlans, banner, allFaqs] = await Promise.all([
     getLocale(),
     getCurrentUser(),
@@ -53,12 +62,17 @@ export default async function PricingPage() {
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
           {isEn
-            ? "Choose 1, 3, 6, or 12 months with instant VietQR activation and zero automatic renewals."
-            : "Chọn gói 1, 3, 6 hoặc 12 tháng phù hợp với ngày thi của bạn. Kích hoạt tức thì qua mã VietQR."}
+            ? "Choose a plan that fits your exam date with instant VietQR activation and zero automatic renewals."
+            : "Chọn gói học phù hợp với ngày thi của bạn. Thanh toán một lần, kích hoạt tức thì qua mã VietQR."}
         </p>
       </div>
 
-      <PricingClient plans={activePlans} banner={banner} user={user} />
+      <PricingClient
+        plans={activePlans}
+        banner={banner}
+        user={user}
+        serverNowMs={serverNowMs}
+      />
 
       {shownFaqs.length > 0 && (
         <section className="mx-auto max-w-4xl space-y-4">

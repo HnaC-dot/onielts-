@@ -156,8 +156,20 @@ export function evaluateSeoChecklist(params: {
   };
 }
 
+export const DEFAULT_FALLBACK_OG_IMAGE = "/og-default.png";
+
 export function getAppBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || "https://onielts.vn").replace(/\/+$/, "");
+}
+
+export function resolveAbsoluteAssetUrl(
+  rawUrl: string | null | undefined,
+  baseUrl = getAppBaseUrl()
+): string | undefined {
+  const trimmed = (rawUrl || "").trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `${baseUrl}${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
 }
 
 export function buildNextMetadata(params: {
@@ -166,35 +178,59 @@ export function buildNextMetadata(params: {
   pathname: string;
   imageUrl?: string | null;
   imageAlt?: string;
+  defaultImageUrl?: string | null;
+  defaultImageAlt?: string;
   seoMeta?: SeoMeta;
   type?: "website" | "article";
   publishedTime?: string;
   authors?: string[];
   keywords?: string[];
+  siteName?: string;
+  twitterHandle?: string;
+  noindex?: boolean;
 }): Metadata {
   const baseUrl = getAppBaseUrl();
   const seo = params.seoMeta ?? {};
+  const siteName = (params.siteName || "Ôn IELTS").trim();
   const metaTitle = (seo.metaTitle || params.title).trim();
   const metaDesc = (seo.metaDescription || params.description).trim();
   const ogTitle = (seo.ogTitle || metaTitle).trim();
   const ogDesc = (seo.ogDescription || metaDesc).trim();
-  const rawImage = (seo.ogImage || params.imageUrl || "").trim();
-  const absoluteImage = rawImage
-    ? rawImage.startsWith("http")
-      ? rawImage
-      : `${baseUrl}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`
-    : undefined;
-  const imageAlt = (seo.ogImageAlt || seo.coverImageAlt || params.imageAlt || ogTitle).trim();
 
+  const rawImage = (
+    seo.ogImage ||
+    params.imageUrl ||
+    params.defaultImageUrl ||
+    DEFAULT_FALLBACK_OG_IMAGE
+  ).trim();
+  const absoluteImage =
+    resolveAbsoluteAssetUrl(rawImage, baseUrl) ||
+    `${baseUrl}${DEFAULT_FALLBACK_OG_IMAGE}`;
+  const imageAlt = (
+    seo.ogImageAlt ||
+    seo.coverImageAlt ||
+    params.imageAlt ||
+    params.defaultImageAlt ||
+    ogTitle
+  ).trim();
+
+  const normalizedPath = params.pathname === "/"
+    ? ""
+    : params.pathname.startsWith("/")
+    ? params.pathname
+    : `/${params.pathname}`;
   const canonical = seo.canonicalUrl?.trim()
     ? seo.canonicalUrl.trim()
-    : `${baseUrl}${params.pathname.startsWith("/") ? "" : "/"}${params.pathname}`;
+    : `${baseUrl}${normalizedPath || "/"}`;
 
   const keywords = [
     ...(seo.primaryKeyword ? [seo.primaryKeyword] : []),
     ...(seo.secondaryKeywords ?? []),
     ...(params.keywords ?? []),
   ].filter(Boolean);
+
+  const allowIndex = params.noindex ? false : seo.robotsIndex !== false;
+  const allowFollow = params.noindex ? false : seo.robotsFollow !== false;
 
   return {
     title: metaTitle,
@@ -204,27 +240,34 @@ export function buildNextMetadata(params: {
       canonical,
     },
     robots: {
-      index: seo.robotsIndex !== false,
-      follow: seo.robotsFollow !== false,
+      index: allowIndex,
+      follow: allowFollow,
     },
     openGraph: {
-      type: params.type ?? "article",
+      type: params.type ?? "website",
       url: canonical,
       title: ogTitle,
       description: ogDesc,
-      siteName: "Ôn IELTS",
+      siteName,
       locale: "vi_VN",
+      alternateLocale: ["en_US"],
       publishedTime: params.publishedTime,
       authors: params.authors,
-      images: absoluteImage
-        ? [{ url: absoluteImage, alt: imageAlt }]
-        : undefined,
+      images: [
+        {
+          url: absoluteImage,
+          width: 1200,
+          height: 630,
+          alt: imageAlt,
+        },
+      ],
     },
     twitter: {
-      card: absoluteImage ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title: ogTitle,
       description: ogDesc,
-      images: absoluteImage ? [absoluteImage] : undefined,
+      creator: params.twitterHandle?.trim() || undefined,
+      images: [absoluteImage],
     },
   };
 }

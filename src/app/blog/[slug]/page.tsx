@@ -12,8 +12,8 @@ import { renderBlogContentToSafeHtml } from "@/lib/sanitize";
 import {
   buildArticleJsonLd,
   buildBreadcrumbJsonLd,
-  buildNextMetadata,
 } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -26,7 +26,7 @@ export async function generateMetadata({
   const post = await getBlogPostBySlug(slug, false);
   if (!post) return {};
 
-  return buildNextMetadata({
+  return buildPublicPageMetadata({
     title: post.title_vi,
     description: post.excerpt_vi,
     pathname: `/blog/${post.slug}`,

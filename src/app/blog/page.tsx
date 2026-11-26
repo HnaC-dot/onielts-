@@ -4,17 +4,20 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, Clock, Crown, Star } from "lucide-react";
 import { getBlogPosts } from "@/lib/db";
-import { buildBreadcrumbJsonLd, buildNextMetadata } from "@/lib/seo";
+import { buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export const metadata = buildNextMetadata({
-  title: "Blog & Kinh nghiệm tự học IELTS",
-  description:
-    "Bài viết nguyên bản hướng dẫn lộ trình ôn thi, quy tắc tính điểm Band, cách sửa lỗi phát âm và mẹo chinh phục IELTS cho người Việt.",
-  pathname: "/blog",
-  type: "website",
-});
+export async function generateMetadata() {
+  const posts = await getBlogPosts(false);
+  return buildPublicPageMetadata({
+    title: "Blog & Kinh nghiệm tự học IELTS",
+    description: `${posts.length} bài viết nguyên bản hướng dẫn lộ trình ôn thi, quy tắc tính điểm Band, cách sửa lỗi phát âm và mẹo chinh phục IELTS cho người Việt.`,
+    pathname: "/blog",
+    type: "website",
+  });
+}
 
 export default async function BlogIndexPage({
   searchParams,

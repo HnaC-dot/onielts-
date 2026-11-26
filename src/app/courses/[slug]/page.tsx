@@ -9,8 +9,8 @@ import { getCourseBySlug, getUserCourseProgress } from "@/lib/db";
 import {
   buildBreadcrumbJsonLd,
   buildCourseJsonLd,
-  buildNextMetadata,
 } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { CoursePlayerClient } from "@/components/course-player-client";
 import { Badge } from "@/components/ui/badge";
 
@@ -22,7 +22,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const course = await getCourseBySlug(slug, false);
   if (!course) return {};
-  return buildNextMetadata({
+  return buildPublicPageMetadata({
     title: course.title_vi,
     description: course.description_vi,
     pathname: `/courses/${course.slug}`,

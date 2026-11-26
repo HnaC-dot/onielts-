@@ -1,13 +1,19 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
 import { getWritingExercises } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { WritingExercisesClient } from "@/components/writing-exercises-client";
 
-export const metadata = {
-  title: "Bài tập nâng cấp câu viết IELTS (Band 5.5 → 8.0+)",
-  description:
-    "Thực hành viết lại từng câu học thuật theo chủ đề Môi trường, Biểu đồ Task 1 và Giáo dục có gợi ý và chấm điểm bằng AI.",
-};
+export async function generateMetadata() {
+  const exercises = await getWritingExercises(false);
+  const totalSentences = exercises.reduce((sum, e) => sum + e.sentences.length, 0);
+  return buildPublicPageMetadata({
+    title: "Bài tập nâng cấp câu viết IELTS (Band 5.5 → 8.0+)",
+    description: `${exercises.length} bộ bài tập nâng cấp câu viết học thuật (${totalSentences} câu thực hành) kèm gợi ý từ vựng, câu mẫu Band 8+ và chấm điểm bằng AI.`,
+    pathname: "/writing/exercises",
+    type: "website",
+  });
+}
 
 export default async function WritingExercisesPage({
   searchParams,

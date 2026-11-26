@@ -228,6 +228,13 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
           }
         }
 
+        // Auto-hide legacy incomplete demo test "custom-reading-demo-04" from public listing
+        await admin
+          .from("ielts_tests")
+          .update({ is_published: false })
+          .eq("slug", "custom-reading-demo-04")
+          .eq("is_published", true);
+
         // 5. Courses
         const { count: courseCount } = await admin
           .from("courses")
@@ -690,10 +697,23 @@ export async function adminTogglePromoCode(id: string, is_active: boolean): Prom
 // =============================================================================
 // 3. IELTS TESTS & TEST ATTEMPTS
 // =============================================================================
+const HIDDEN_LEGACY_DEMO_SLUGS = new Set(["custom-reading-demo-04"]);
+
+function isHiddenIncompleteDemoTest(test: IeltsTest): boolean {
+  if (!HIDDEN_LEGACY_DEMO_SLUGS.has(test.slug)) return false;
+  if (test.skill === "reading" || test.skill === "listening") {
+    const actualQ = test.sections.reduce((s, sec) => s + sec.questions.length, 0);
+    return actualQ < 40;
+  }
+  return false;
+}
+
 export async function getIeltsTests(includeUnpublished = false): Promise<IeltsTest[]> {
   if (!isSupabaseConfigured()) {
     const list = readStore().ielts_tests;
-    return includeUnpublished ? list : list.filter((t) => t.is_published);
+    return includeUnpublished
+      ? list
+      : list.filter((t) => t.is_published && !isHiddenIncompleteDemoTest(t));
   }
   await ensureSupabaseCatalogSeeded();
   const sb = await getReadSupabase();
@@ -705,7 +725,10 @@ export async function getIeltsTests(includeUnpublished = false): Promise<IeltsTe
   }
   const { data, error } = await query;
   if (error || !data || data.length === 0) return FULL_SEED_TESTS;
-  return data.map((row) => mapTestRow(row as Record<string, unknown>));
+  const mapped = data.map((row) => mapTestRow(row as Record<string, unknown>));
+  return includeUnpublished
+    ? mapped
+    : mapped.filter((t) => !isHiddenIncompleteDemoTest(t));
 }
 
 export async function getIeltsTestBySlug(
@@ -715,7 +738,9 @@ export async function getIeltsTestBySlug(
   if (!isSupabaseConfigured()) {
     const found = readStore().ielts_tests.find((t) => t.slug === slug) ?? null;
     if (!found) return null;
-    if (!includeUnpublished && !found.is_published) return null;
+    if (!includeUnpublished && (!found.is_published || isHiddenIncompleteDemoTest(found))) {
+      return null;
+    }
     return found;
   }
   await ensureSupabaseCatalogSeeded();
@@ -732,7 +757,9 @@ export async function getIeltsTestBySlug(
     return FULL_SEED_TESTS.find((t) => t.slug === slug) ?? null;
   }
   const mapped = mapTestRow(data as Record<string, unknown>);
-  if (!includeUnpublished && !mapped.is_published) return null;
+  if (!includeUnpublished && (!mapped.is_published || isHiddenIncompleteDemoTest(mapped))) {
+    return null;
+  }
   return mapped;
 }
 
@@ -752,10 +779,15 @@ export async function adminToggleTestPublish(id: string, is_published: boolean):
 export async function adminCreateTest(
   parsedTest: Partial<IeltsTest>,
   createdBy?: string
-): Promise<void> {
+): Promise<{ is_published: boolean; questionCount: number }> {
   const sections = parsedTest.sections ?? [];
   const qCount =
     sections.flatMap((s) => s.questions).length || parsedTest.questionCount || 1;
+  const isObjective =
+    parsedTest.skill === "reading" || parsedTest.skill === "listening";
+  // Never auto-publish Reading/Listening tests with fewer than 40 questions
+  const shouldPublish = isObjective ? qCount >= 40 && parsedTest.is_published !== false : parsedTest.is_published !== false;
+
   if (!isSupabaseConfigured()) {
     updateStore((store) => {
       store.ielts_tests.unshift({
@@ -770,16 +802,16 @@ export async function adminCreateTest(
         duration_minutes: parsedTest.duration_minutes ?? 60,
         difficulty: parsedTest.difficulty ?? "band_6_7",
         questionCount: qCount,
-        is_published: true,
+        is_published: shouldPublish,
         is_daily_eligible: Boolean(parsedTest.is_daily_eligible),
         sections,
         created_at: new Date().toISOString(),
       });
     });
-    return;
+    return { is_published: shouldPublish, questionCount: qCount };
   }
   const admin = createSupabaseAdminClient();
-  if (!admin) return;
+  if (!admin) return { is_published: shouldPublish, questionCount: qCount };
   await admin.from("ielts_tests").insert({
     slug: parsedTest.slug!,
     skill: parsedTest.skill!,
@@ -797,10 +829,11 @@ export async function adminCreateTest(
       writingPrompt: parsedTest.writingPrompt ?? null,
       speakingPrompts: parsedTest.speakingPrompts ?? null,
     },
-    is_published: true,
+    is_published: shouldPublish,
     is_daily_eligible: Boolean(parsedTest.is_daily_eligible),
     created_by: isValidUuid(createdBy) ? createdBy : null,
   });
+  return { is_published: shouldPublish, questionCount: qCount };
 }
 
 export async function saveTestAttempt(input: {

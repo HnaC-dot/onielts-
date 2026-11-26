@@ -23,6 +23,10 @@ import type {
   StaticPageItem,
 } from "./types";
 
+export function getServerNowMs(): number {
+  return Date.now();
+}
+
 let systemSeedPromise: Promise<void> | null = null;
 
 export async function ensureSystemContentSeeded(): Promise<void> {

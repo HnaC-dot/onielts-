@@ -3,14 +3,15 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { CheckCircle2, HeartHandshake, ShieldCheck, Sparkles } from "lucide-react";
 import { getStaticPageBySlug } from "@/lib/site-content";
-import { buildBreadcrumbJsonLd, buildNextMetadata } from "@/lib/seo";
+import { buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { renderBlogContentToSafeHtml } from "@/lib/sanitize";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export async function generateMetadata() {
   const page = await getStaticPageBySlug("about", false);
-  return buildNextMetadata({
+  return buildPublicPageMetadata({
     title: page?.title_vi || "Giới thiệu về Ôn IELTS",
     description:
       page?.seo_meta?.metaDescription ||

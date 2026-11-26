@@ -281,8 +281,11 @@ export function SettingsCmsClient({
         <Card className="p-5 space-y-3">
           <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
             <Globe className="h-4 w-4 text-emerald-600" />
-            Liên kết Mạng xã hội (chân trang)
+            Liên kết Mạng xã hội (chân trang &amp; JSON-LD)
           </div>
+          <p className="text-[11px] text-slate-500">
+            Nhập đường dẫn kênh/trang chính thức của Ôn IELTS (VD: <code>https://youtube.com/@onielts</code>). Để trống nếu chưa có kênh — link trang chủ chung như <code>https://youtube.com</code> sẽ tự động ẩn ở chân trang.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-bold">YouTube URL</label>

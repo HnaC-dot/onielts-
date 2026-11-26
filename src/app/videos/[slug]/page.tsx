@@ -7,9 +7,9 @@ import { isStaffRole } from "@/lib/admin-auth";
 import { getLearnVideoBySlug } from "@/lib/db";
 import {
   buildBreadcrumbJsonLd,
-  buildNextMetadata,
   buildVideoObjectJsonLd,
 } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { VideoPlayerClient } from "@/components/video-player-client";
 import { Badge } from "@/components/ui/badge";
 
@@ -21,7 +21,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const video = await getLearnVideoBySlug(slug, false);
   if (!video) return {};
-  return buildNextMetadata({
+  return buildPublicPageMetadata({
     title: video.title_vi,
     description: video.description_vi,
     pathname: `/videos/${video.slug}`,

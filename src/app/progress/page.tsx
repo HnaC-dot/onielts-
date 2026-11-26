@@ -12,13 +12,21 @@ import {
   getUserTestAttempts,
   getUserWritingSubmissions,
 } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-export const metadata = {
-  title: "Bảng điều khiển Tiến độ & Phân tích lỗi sai IELTS",
-};
+export async function generateMetadata() {
+  return buildPublicPageMetadata({
+    title: "Bảng điều khiển Tiến độ & Phân tích lỗi sai IELTS",
+    description:
+      "Theo dõi biểu đồ tiến độ luyện đề, phân tích dạng câu hay sai, chuỗi streak, số thẻ Flashcard và lịch sử chấm bài AI cá nhân.",
+    pathname: "/progress",
+    type: "website",
+    noindex: true,
+  });
+}
 
 export default async function ProgressPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);

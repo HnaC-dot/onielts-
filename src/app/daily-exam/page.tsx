@@ -3,13 +3,18 @@ import { getCurrentUser } from "@/lib/auth";
 import { getDailyExamState } from "@/lib/db";
 import { sanitizeTestForClient } from "@/lib/test-grader";
 import { getVietnamDateString } from "@/lib/utils";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { DailyExamClient } from "@/components/daily-exam-client";
 
-export const metadata = {
-  title: "Đề thi IELTS mỗi ngày (Múi giờ Việt Nam UTC+7)",
-  description:
-    "Thử thách 1 đề rút gọn 15 phút bấm giờ máy chủ mỗi ngày theo múi giờ Asia/Ho_Chi_Minh, tích lũy chuỗi streak và leo bảng xếp hạng.",
-};
+export async function generateMetadata() {
+  return buildPublicPageMetadata({
+    title: "Đề thi IELTS mỗi ngày (Múi giờ Việt Nam UTC+7)",
+    description:
+      "Thử thách 1 đề rút gọn 15 phút bấm giờ máy chủ mỗi ngày theo múi giờ Asia/Ho_Chi_Minh, tích lũy chuỗi streak và leo bảng xếp hạng Ôn IELTS.",
+    pathname: "/daily-exam",
+    type: "website",
+  });
+}
 
 export default async function DailyExamPage() {
   const vnToday = getVietnamDateString();

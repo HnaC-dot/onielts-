@@ -7,7 +7,8 @@ import { getAuthState } from "@/lib/auth";
 import { isStaffRole } from "@/lib/admin-auth";
 import { getIeltsTestBySlug } from "@/lib/db";
 import { sanitizeTestForClient } from "@/lib/test-grader";
-import { buildBreadcrumbJsonLd, buildNextMetadata } from "@/lib/seo";
+import { buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { TestEngineClient } from "@/components/test-engine-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,15 @@ export async function generateMetadata({
   const { slug } = await params;
   const test = await getIeltsTestBySlug(slug, false);
   if (!test) return {};
-  return buildNextMetadata({
+  const actualQ =
+    test.skill === "reading" || test.skill === "listening"
+      ? test.sections.reduce((sum, s) => sum + s.questions.length, 0) || test.questionCount
+      : test.questionCount;
+  return buildPublicPageMetadata({
     title: test.title_vi,
     description:
       test.description_vi ||
-      `Luyện đề thi IELTS ${test.skill.toUpperCase()} (${test.module === "academic" ? "Academic" : "General"}) ${test.questionCount} câu, ${test.duration_minutes} phút tự chấm điểm trên Ôn IELTS.`,
+      `Luyện đề thi IELTS ${test.skill.toUpperCase()} (${test.module === "academic" ? "Academic" : "General"}) ${actualQ} câu, ${test.duration_minutes} phút tự chấm điểm trên Ôn IELTS.`,
     pathname: `/tests/${test.slug}`,
     seoMeta: test.seo_meta,
     type: "website",

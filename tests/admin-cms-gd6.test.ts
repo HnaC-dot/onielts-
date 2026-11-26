@@ -240,8 +240,10 @@ describe("GĐ6 Site-wide SEO & Redirect 301 Validation", () => {
 
     const layoutFile = read("src/app/layout.tsx");
     expect(layoutFile).toContain("export async function generateMetadata");
-    expect(layoutFile).toContain("summary_large_image");
     expect(layoutFile).toContain("googleSiteVerification");
     expect(layoutFile).toContain("GA4_ID_REGEX");
+
+    const seoLib = read("src/lib/seo.ts");
+    expect(seoLib).toContain("summary_large_image");
   });
 });

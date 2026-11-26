@@ -172,8 +172,13 @@ export function AdminClient(props: AdminClientProps) {
       toast.error(msg);
       return false;
     }
-    setNotice(successMsg);
-    toast.success(successMsg);
+    if (data.warning) {
+      setNotice(String(data.warning));
+      toast.info(String(data.warning));
+    } else {
+      setNotice(successMsg);
+      toast.success(successMsg);
+    }
     router.refresh();
     return true;
   };

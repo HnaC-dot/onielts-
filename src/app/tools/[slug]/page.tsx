@@ -1,6 +1,7 @@
 import React from "react";
 import { notFound } from "next/navigation";
 import { GENERAL_AI_TOOLS, getGeneralAiTool } from "@/lib/ai-tools-config";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { AiToolWorkbench } from "@/components/ai-tool-workbench";
 
 export async function generateMetadata({
@@ -11,10 +12,12 @@ export async function generateMetadata({
   const { slug } = await params;
   const tool = getGeneralAiTool(slug);
   if (!tool) return {};
-  return {
+  return buildPublicPageMetadata({
     title: tool.titleVi,
     description: tool.descriptionVi,
-  };
+    pathname: `/tools/${tool.slug}`,
+    type: "website",
+  });
 }
 
 export default async function DynamicAiToolPage({

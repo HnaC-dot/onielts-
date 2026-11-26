@@ -2,7 +2,19 @@ import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { getPronunciationSounds } from "@/lib/db";
+import { getPlatformCounts } from "@/lib/platform-stats";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
+
+export async function generateMetadata() {
+  const counts = await getPlatformCounts();
+  return buildPublicPageMetadata({
+    title: "Sơ đồ trang Ôn IELTS (HTML Sitemap)",
+    description: `Danh mục toàn bộ ${counts.publishedTestCount} đề thi IELTS, ${counts.homeToolsCount} công cụ AI, ${counts.courseCount} khóa học, ${counts.ipaSoundCount} âm IPA và ${counts.blogPostCount} bài viết trên Ôn IELTS.`,
+    pathname: "/sitemap-html",
+    type: "website",
+  });
+}
 
 export default async function HtmlSitemapPage() {
   const [locale, pronunciationSounds] = await Promise.all([

@@ -3,6 +3,7 @@ import React from "react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { getSiteGeneralSettings } from "@/lib/site-content";
+import { isValidSocialProfileUrl } from "@/lib/system-cms-shared";
 import { BrandLogo } from "./brand-logo";
 
 export async function SiteFooter() {
@@ -32,7 +33,7 @@ export async function SiteFooter() {
     { label: "Facebook", href: settings.socialFacebook },
     { label: "TikTok", href: settings.socialTiktok },
     { label: "Zalo", href: settings.socialZalo },
-  ].filter((s) => s.href && /^https?:\/\//i.test(s.href));
+  ].filter((s) => isValidSocialProfileUrl(s.href));
 
   return (
     <footer className="mt-20 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
@@ -54,22 +55,37 @@ export async function SiteFooter() {
             <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
               {tagline}
             </p>
-            {(settings.supportEmail || settings.hotline) && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {settings.supportEmail && (
-                  <span>
-                    Email:{" "}
-                    <a
-                      href={`mailto:${settings.supportEmail}`}
-                      className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
-                    >
-                      {settings.supportEmail}
-                    </a>
-                  </span>
+            {(settings.supportEmail || settings.hotline || settings.address) && (
+              <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                {(settings.supportEmail || settings.hotline) && (
+                  <p>
+                    {settings.supportEmail && (
+                      <span>
+                        Email:{" "}
+                        <a
+                          href={`mailto:${settings.supportEmail.trim()}`}
+                          className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+                        >
+                          {settings.supportEmail.trim()}
+                        </a>
+                      </span>
+                    )}
+                    {settings.supportEmail && settings.hotline ? " · " : ""}
+                    {settings.hotline && (
+                      <span>
+                        Hotline:{" "}
+                        <a
+                          href={`tel:${settings.hotline.replace(/[^\d+]/g, "")}`}
+                          className="font-semibold text-slate-700 hover:underline dark:text-slate-300"
+                        >
+                          {settings.hotline.trim()}
+                        </a>
+                      </span>
+                    )}
+                  </p>
                 )}
-                {settings.supportEmail && settings.hotline ? " · " : ""}
-                {settings.hotline && <span>Hotline: {settings.hotline}</span>}
-              </p>
+                {settings.address && <p>{settings.address.trim()}</p>}
+              </div>
             )}
             <p className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs leading-relaxed text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
               {disclaimer}
@@ -79,9 +95,9 @@ export async function SiteFooter() {
                 {socials.map((s) => (
                   <a
                     key={s.label}
-                    href={s.href}
+                    href={s.href.trim()}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="rounded-lg border border-slate-200 px-3 py-1.5 hover:border-emerald-500 hover:text-emerald-600 dark:border-slate-800"
                   >
                     {s.label}

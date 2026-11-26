@@ -3,13 +3,18 @@ import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
 import { checkUsageLimit } from "@/lib/usage-limits";
 import { getUserWritingSubmissions } from "@/lib/db";
+import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { WritingCheckerClient } from "@/components/writing-checker-client";
 
-export const metadata = {
-  title: "Chấm điểm IELTS Writing bằng AI (Task 1 & Task 2)",
-  description:
-    "Chấm bài IELTS Academic Task 1 (kèm ảnh biểu đồ), General Task 1 và Task 2 theo 4 tiêu chí kèm highlight lỗi trực tiếp, nâng cấp từ vựng và bài viết lại Band 8+.",
-};
+export async function generateMetadata() {
+  return buildPublicPageMetadata({
+    title: "Chấm điểm IELTS Writing bằng AI (Task 1 & Task 2)",
+    description:
+      "Chấm bài IELTS Academic Task 1 (kèm ảnh biểu đồ), General Task 1 và Task 2 theo 4 tiêu chí kèm highlight lỗi trực tiếp, nâng cấp từ vựng và bài viết lại Band 8+.",
+    pathname: "/writing",
+    type: "website",
+  });
+}
 
 export default async function WritingPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);
