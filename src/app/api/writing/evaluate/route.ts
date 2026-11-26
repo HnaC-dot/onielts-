@@ -155,7 +155,7 @@ function buildMockWritingEvaluation(
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   const clientKey = getRequestClientKey(req, user?.id);
-  const rate = checkRateLimit(clientKey, 15, 60_000);
+  const rate = await checkRateLimit(clientKey, 15, 60_000);
   if (!rate.allowed) {
     return NextResponse.json(
       { error: `Vui lòng chờ ${rate.retryAfterSec} giây trước khi chấm bài tiếp.` },

@@ -30,7 +30,7 @@ export async function POST(
 
   const user = await getCurrentUser();
   const clientKey = getRequestClientKey(req, user?.id);
-  const rate = checkRateLimit(clientKey, 20, 60_000);
+  const rate = await checkRateLimit(clientKey, 20, 60_000);
   if (!rate.allowed) {
     return NextResponse.json(
       {

@@ -14,7 +14,7 @@ const contactSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const rate = checkRateLimit(getRequestClientKey(req), 10, 60_000);
+  const rate = await checkRateLimit(getRequestClientKey(req), 10, 60_000);
   if (!rate.allowed) {
     return NextResponse.json({ error: "Vui lòng thử lại sau ít phút." }, { status: 429 });
   }

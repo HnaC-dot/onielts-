@@ -58,7 +58,7 @@ const BUILTIN_LEXICON: Record<string, z.infer<typeof flashcardFillSchema>> = {
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  const rate = checkRateLimit(getRequestClientKey(req, user?.id), 30, 60_000);
+  const rate = await checkRateLimit(getRequestClientKey(req, user?.id), 30, 60_000);
   if (!rate.allowed) {
     return NextResponse.json({ error: "Quá nhiều yêu cầu, vui lòng đợi vài giây." }, { status: 429 });
   }

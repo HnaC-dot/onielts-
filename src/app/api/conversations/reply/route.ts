@@ -29,7 +29,7 @@ const replySchema = z.object({
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   const clientKey = getRequestClientKey(req, user?.id);
-  const rate = checkRateLimit(clientKey, 25, 60_000);
+  const rate = await checkRateLimit(clientKey, 25, 60_000);
   if (!rate.allowed) {
     return NextResponse.json({ error: "Bạn nhắn quá nhanh, chờ vài giây nhé." }, { status: 429 });
   }

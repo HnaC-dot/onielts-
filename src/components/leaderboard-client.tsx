@@ -17,12 +17,14 @@ export interface StreakLeaderRow {
   avgBand: number;
   examsDone: number;
   points: number;
+  isDemo?: boolean;
 }
 
 export function LeaderboardClient({
   examDate,
   dailyRows,
   streakBoards,
+  showingDemoData = false,
 }: {
   examDate: string;
   dailyRows: DailyExamAttempt[];
@@ -31,6 +33,7 @@ export function LeaderboardClient({
     monthly: StreakLeaderRow[];
     yearly: StreakLeaderRow[];
   };
+  showingDemoData?: boolean;
 }) {
   const locale = useLocale();
   const isEn = locale === "en";
@@ -52,6 +55,17 @@ export function LeaderboardClient({
 
   return (
     <div className="space-y-6">
+      {showingDemoData && (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          {isEn
+            ? "Local development preview: no real learner data yet, so sample demo seed entries are labeled below. Demo entries are automatically hidden in production."
+            : "Chế độ xem thử cục bộ (Dev): chưa có dữ liệu học viên thật nên các dòng mẫu bên dưới được gắn nhãn Demo. Tài khoản mẫu luôn bị ẩn trên môi trường production."}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           {tabs.map((item) => (
@@ -81,7 +95,7 @@ export function LeaderboardClient({
       {tab === "daily" ? (
         <Card className="overflow-hidden">
           <div className="border-b border-slate-100 bg-slate-50/70 px-6 py-4 dark:border-slate-800 dark:bg-slate-900/60">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
                 <Trophy className="h-4 w-4 text-amber-500" />
                 {isEn ? `Daily Exam Standings (${examDate} UTC+7)` : `Xếp hạng Đề thi ngày ${examDate} (UTC+7)`}
@@ -101,6 +115,7 @@ export function LeaderboardClient({
             ) : (
               dailyRows.map((row, idx) => {
                 const pct = Math.round((row.raw_score / Math.max(1, row.max_score)) * 100);
+                const isDemoRow = row.user_id.startsWith("demo-");
                 return (
                   <div key={row.id} className="flex items-center justify-between px-6 py-4">
                     <div className="flex items-center gap-3.5">
@@ -118,9 +133,12 @@ export function LeaderboardClient({
                         #{idx + 1}
                       </span>
                       <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">
-                          {row.display_name}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">
+                            {row.display_name}
+                          </p>
+                          {isDemoRow && <Badge variant="amber">Demo</Badge>}
+                        </div>
                         <p className="text-xs text-slate-500">
                           {isEn ? `Accuracy ${pct}%` : `Độ chính xác ${pct}%`}
                         </p>
@@ -172,9 +190,12 @@ export function LeaderboardClient({
                       #{idx + 1}
                     </span>
                     <div>
-                      <p className="text-sm font-bold text-slate-900 dark:text-white">
-                        {row.name}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                          {row.name}
+                        </p>
+                        {row.isDemo && <Badge variant="amber">Demo</Badge>}
+                      </div>
                       <p className="text-xs text-slate-500">
                         {row.examsDone} {isEn ? "active days" : "ngày hoạt động"}
                         {row.avgBand > 0 ? ` · Band ${row.avgBand.toFixed(1)}` : ""}

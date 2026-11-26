@@ -31,7 +31,7 @@ const mentorReplySchema = z.object({
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   const clientKey = getRequestClientKey(req, user?.id);
-  const rate = checkRateLimit(clientKey, 20, 60_000);
+  const rate = await checkRateLimit(clientKey, 20, 60_000);
   if (!rate.allowed) {
     return NextResponse.json({ error: "Vui lòng đợi vài giây trước khi nhắn tiếp." }, { status: 429 });
   }

@@ -27,7 +27,9 @@ describe("Engineering Security & Isolation Guardrails", () => {
           content.includes("SUPABASE_SERVICE_ROLE_KEY") ||
           content.includes("GEMINI_API_KEY") ||
           content.includes("PAYOS_CHECKSUM_KEY") ||
-          content.includes("PAYOS_API_KEY")
+          content.includes("PAYOS_API_KEY") ||
+          content.includes("UPSTASH_REDIS_REST_TOKEN") ||
+          content.includes("TURNSTILE_SECRET_KEY")
         ) {
           violations.push(path.relative(process.cwd(), file));
         }
