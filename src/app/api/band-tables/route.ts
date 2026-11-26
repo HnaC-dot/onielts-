@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { readStore } from "@/lib/store";
+import { getBandConversionTables } from "@/lib/db";
 
 export async function GET() {
-  const store = readStore();
-  return NextResponse.json({
-    rows: store.band_conversion_tables,
-  });
+  const rows = await getBandConversionTables();
+  return NextResponse.json({ rows });
 }

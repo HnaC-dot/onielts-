@@ -78,7 +78,7 @@ export interface LocalStoreData {
 
 const STORE_DIR = path.join(process.cwd(), ".local-data");
 const STORE_PATH = path.join(STORE_DIR, "store.json");
-const CURRENT_STORE_VERSION = 2;
+const CURRENT_STORE_VERSION = 3;
 
 function buildInitialStore(): LocalStoreData {
   return {
@@ -92,53 +92,7 @@ function buildInitialStore(): LocalStoreData {
     ai_usage_logs: [],
     ielts_tests: structuredClone(FULL_SEED_TESTS),
     test_attempts: [],
-    daily_exam_attempts: [
-      {
-        id: "seed-daily-1",
-        exam_date: "2026-11-25",
-        test_slug: "academic-reading-01-urban-microclimates",
-        user_id: "demo-premium-002",
-        display_name: "Trần Hoàng Nam",
-        started_at: "2026-11-25T01:00:00.000Z",
-        submitted_at: "2026-11-25T01:09:42.000Z",
-        answers: {},
-        raw_score: 10,
-        max_score: 10,
-        band_score: 9.0,
-        duration_seconds: 582,
-        is_completed: true,
-      },
-      {
-        id: "seed-daily-2",
-        exam_date: "2026-11-25",
-        test_slug: "academic-reading-01-urban-microclimates",
-        user_id: "seed-user-vy",
-        display_name: "Lê Thảo Vy",
-        started_at: "2026-11-25T01:20:00.000Z",
-        submitted_at: "2026-11-25T01:30:18.000Z",
-        answers: {},
-        raw_score: 9,
-        max_score: 10,
-        band_score: 8.0,
-        duration_seconds: 618,
-        is_completed: true,
-      },
-      {
-        id: "seed-daily-3",
-        exam_date: "2026-11-25",
-        test_slug: "academic-reading-01-urban-microclimates",
-        user_id: "seed-user-khoi",
-        display_name: "Phạm Đức Khôi",
-        started_at: "2026-11-25T02:00:00.000Z",
-        submitted_at: "2026-11-25T02:11:05.000Z",
-        answers: {},
-        raw_score: 8,
-        max_score: 10,
-        band_score: 7.0,
-        duration_seconds: 665,
-        is_completed: true,
-      },
-    ],
+    daily_exam_attempts: [],
     writing_submissions: [],
     speaking_submissions: [],
     flashcard_sets: structuredClone(DEFAULT_FLASHCARD_SETS),

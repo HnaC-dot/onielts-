@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Thao tác quá nhanh, vui lòng chờ vài giây." }, { status: 429 });
   }
 
-  const usage = checkUsageLimit(user, "generator", clientKey);
+  const usage = await checkUsageLimit(user, "generator", clientKey);
   if (!usage.allowed) {
     return NextResponse.json(
       { error: "Đã hết lượt tạo câu trả lời mẫu miễn phí hôm nay.", limitReached: true, usage },

@@ -17,6 +17,7 @@ export default function AuthPage() {
   const router = useRouter();
   const supabaseReady = isSupabaseClientConfigured();
 
+  const [demoEnabled, setDemoEnabled] = useState(false);
   const [email, setEmail] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -25,11 +26,30 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    let active = true;
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
     if (ref && /^[a-z0-9_-]{3,32}$/i.test(ref)) {
       document.cookie = `onielts_ref=${encodeURIComponent(ref.toUpperCase())}; path=/; max-age=2592000; samesite=lax`;
     }
+    const oauthFailed = params.get("error") === "oauth_failed";
+
+    fetch("/api/auth/session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!active) return;
+        if (oauthFailed) {
+          setErrorMsg("Đăng nhập Google chưa hoàn tất. Vui lòng thử lại hoặc dùng Email OTP.");
+        }
+        if (d && typeof d.demoEnabled === "boolean") {
+          setDemoEnabled(d.demoEnabled);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleGoogleLogin = async () => {
@@ -37,15 +57,21 @@ export default function AuthPage() {
     if (supabaseReady) {
       const supabase = createSupabaseBrowserClient();
       if (supabase) {
-        await supabase.auth.signInWithOAuth({
+        const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: `${window.location.origin}/` },
+          options: { redirectTo: `${window.location.origin}/auth/callback` },
         });
+        if (error) {
+          setErrorMsg(error.message || "Không thể kết nối Google Sign-In.");
+        }
         return;
       }
     }
-    // Demo fallback when Supabase OAuth is not configured
-    await handleDemoSwitch("demo-free-001");
+    if (demoEnabled) {
+      await handleDemoSwitch("demo-free-001");
+      return;
+    }
+    setErrorMsg("Đăng nhập Google chưa được kích hoạt trên hệ thống.");
   };
 
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -98,6 +124,7 @@ export default function AuthPage() {
   };
 
   const handleDemoSwitch = async (userId: string) => {
+    if (!demoEnabled) return;
     setLoading(true);
     setErrorMsg("");
     try {
@@ -106,10 +133,13 @@ export default function AuthPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "demo_switch", userId }),
       });
-      if (res.ok) {
-        router.push("/");
-        router.refresh();
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error || "Chế độ dùng thử không khả dụng.");
+        return;
       }
+      router.push("/");
+      router.refresh();
     } finally {
       setLoading(false);
     }
@@ -204,7 +234,7 @@ export default function AuthPage() {
                 maxLength={6}
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="123456"
+                placeholder="000000"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-lg font-bold tracking-widest text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-white"
               />
             </div>
@@ -221,7 +251,7 @@ export default function AuthPage() {
           </p>
         )}
 
-        {!supabaseReady && (
+        {demoEnabled && (
           <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
             <p className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
               {t("demoTitle")}

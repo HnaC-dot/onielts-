@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Vui lòng chờ một lát rồi thử lại." }, { status: 429 });
   }
 
-  const usage = checkUsageLimit(user, "generator", clientKey);
+  const usage = await checkUsageLimit(user, "generator", clientKey);
   if (!usage.allowed) {
     return NextResponse.json(
       { error: "Đã hết lượt tạo bài mẫu miễn phí hôm nay.", limitReached: true, usage },
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       sample: aiRes.data,
-      usage: checkUsageLimit(user, "generator", clientKey),
+      usage: await checkUsageLimit(user, "generator", clientKey),
       mocked: aiRes.mocked,
     });
   } catch {

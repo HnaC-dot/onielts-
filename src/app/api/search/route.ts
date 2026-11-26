@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { readStore } from "@/lib/store";
+import {
+  getBlogPosts,
+  getCourses,
+  getDictationLessons,
+  getIeltsTests,
+  getLearnVideos,
+  getPronunciationSounds,
+} from "@/lib/db";
 import { DEFAULT_CONVERSATION_TOPICS } from "@/lib/seed-data";
 
 const STATIC_TOOLS = [
@@ -21,7 +28,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ results: STATIC_TOOLS.slice(0, 6) });
   }
 
-  const store = readStore();
+  const [tests, courses, sounds, dictations, videos, posts] = await Promise.all([
+    getIeltsTests(false),
+    getCourses(),
+    getPronunciationSounds(),
+    getDictationLessons(),
+    getLearnVideos(),
+    getBlogPosts(false),
+  ]);
+
   const results: { title: string; href: string; category: string; subtitle?: string }[] = [];
 
   for (const item of STATIC_TOOLS) {
@@ -30,12 +45,11 @@ export async function GET(req: Request) {
     }
   }
 
-  for (const t of store.ielts_tests) {
+  for (const t of tests) {
     if (
-      t.is_published &&
-      (t.title_vi.toLowerCase().includes(q) ||
-        t.title_en.toLowerCase().includes(q) ||
-        t.skill.includes(q))
+      t.title_vi.toLowerCase().includes(q) ||
+      t.title_en.toLowerCase().includes(q) ||
+      t.skill.includes(q)
     ) {
       results.push({
         title: t.title_vi,
@@ -45,13 +59,13 @@ export async function GET(req: Request) {
     }
   }
 
-  for (const c of store.courses) {
-    if (c.is_published && (c.title_vi.toLowerCase().includes(q) || c.title_en.toLowerCase().includes(q))) {
+  for (const c of courses) {
+    if (c.title_vi.toLowerCase().includes(q) || c.title_en.toLowerCase().includes(q)) {
       results.push({ title: c.title_vi, href: `/courses/${c.slug}`, category: "Khóa học" });
     }
   }
 
-  for (const p of store.pronunciation_sounds) {
+  for (const p of sounds) {
     if (
       p.symbol.toLowerCase().includes(q) ||
       p.title_vi.toLowerCase().includes(q) ||
@@ -75,7 +89,7 @@ export async function GET(req: Request) {
     }
   }
 
-  for (const d of store.dictation_lessons) {
+  for (const d of dictations) {
     if (d.title_vi.toLowerCase().includes(q) || d.title_en.toLowerCase().includes(q)) {
       results.push({
         title: d.title_vi,
@@ -85,7 +99,7 @@ export async function GET(req: Request) {
     }
   }
 
-  for (const v of store.learn_videos) {
+  for (const v of videos) {
     if (v.title_vi.toLowerCase().includes(q) || v.title_en.toLowerCase().includes(q)) {
       results.push({
         title: v.title_vi,
@@ -95,8 +109,8 @@ export async function GET(req: Request) {
     }
   }
 
-  for (const post of store.blog_posts) {
-    if (post.is_published && (post.title_vi.toLowerCase().includes(q) || post.title_en.toLowerCase().includes(q))) {
+  for (const post of posts) {
+    if (post.title_vi.toLowerCase().includes(q) || post.title_en.toLowerCase().includes(q)) {
       results.push({
         title: post.title_vi,
         href: `/blog/${post.slug}`,

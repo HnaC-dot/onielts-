@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, BookOpen, Clock } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore } from "@/lib/store";
+import { getCourses, getUserCourseProgress } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -14,10 +14,13 @@ export const metadata = {
 };
 
 export default async function CoursesIndexPage() {
-  const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);
+  const [locale, user, courses] = await Promise.all([
+    getLocale(),
+    getCurrentUser(),
+    getCourses(),
+  ]);
   const isEn = locale === "en";
-  const store = readStore();
-  const userId = user?.id ?? "demo-free-001";
+  const courseProgress = await getUserCourseProgress(user?.id ?? null);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-8">
@@ -33,12 +36,8 @@ export default async function CoursesIndexPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {store.courses
-          .filter((c) => c.is_published)
-          .map((course) => {
-            const prog = store.course_progress.find(
-              (p) => p.user_id === userId && p.course_id === course.id
-            );
+        {courses.map((course) => {
+            const prog = courseProgress.find((p) => p.course_id === course.id);
             const pct = prog?.progress_percent ?? 0;
 
             return (

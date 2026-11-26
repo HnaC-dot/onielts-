@@ -131,8 +131,8 @@ export function DailyExamClient({
                 </p>
                 <p className="text-xs text-emerald-100">
                   {isEn
-                    ? `Score: ${attempt.raw_score}/${attempt.max_score} (Band ${attempt.band_score.toFixed(1)}) · Time: ${formatDuration(attempt.duration_seconds)}`
-                    : `Kết quả: ${attempt.raw_score}/${attempt.max_score} câu (Band ${attempt.band_score.toFixed(1)}) · Thời gian: ${formatDuration(attempt.duration_seconds)}`}
+                    ? `Score: ${attempt.raw_score}/${attempt.max_score} (${Math.round((attempt.raw_score / Math.max(1, attempt.max_score)) * 100)}%) · Time: ${formatDuration(attempt.duration_seconds)}`
+                    : `Kết quả: ${attempt.raw_score}/${attempt.max_score} câu (${Math.round((attempt.raw_score / Math.max(1, attempt.max_score)) * 100)}%) · Thời gian: ${formatDuration(attempt.duration_seconds)}`}
                 </p>
               </div>
               <Link href="/leaderboard">
@@ -166,7 +166,7 @@ export function DailyExamClient({
         {error && <p className="mt-3 text-xs font-semibold text-amber-200">{error}</p>}
       </div>
 
-      {/* Live Daily Top 5 Preview */}
+      {/* Live Daily Top 10 Preview */}
       <Card className="p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -180,36 +180,47 @@ export function DailyExamClient({
           </Link>
         </div>
 
-        <div className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
-          {topDaily.map((row, idx) => (
-            <div key={row.id} className="flex items-center justify-between py-3 text-sm">
-              <div className="flex items-center gap-3">
-                <span
-                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
-                    idx === 0
-                      ? "bg-amber-100 text-amber-800"
-                      : idx === 1
-                      ? "bg-slate-200 text-slate-800"
-                      : "bg-emerald-50 text-emerald-800"
-                  }`}
-                >
-                  #{idx + 1}
-                </span>
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  {row.display_name}
-                </span>
-              </div>
-              <div className="flex items-center gap-3 text-xs">
-                <Badge>
-                  {row.raw_score}/{row.max_score} · Band {row.band_score.toFixed(1)}
-                </Badge>
-                <span className="font-mono text-slate-500">
-                  {formatDuration(row.duration_seconds)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+        {topDaily.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">
+            {isEn
+              ? "No submissions recorded yet today. Be the first to set today's benchmark!"
+              : "Chưa có thí sinh nào nộp Đề hôm nay. Hãy là người đầu tiên lập thành tích!"}
+          </p>
+        ) : (
+          <div className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
+            {topDaily.map((row, idx) => {
+              const pct = Math.round((row.raw_score / Math.max(1, row.max_score)) * 100);
+              return (
+                <div key={row.id} className="flex items-center justify-between py-3 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                        idx === 0
+                          ? "bg-amber-100 text-amber-800"
+                          : idx === 1
+                          ? "bg-slate-200 text-slate-800"
+                          : "bg-emerald-50 text-emerald-800"
+                      }`}
+                    >
+                      #{idx + 1}
+                    </span>
+                    <span className="font-semibold text-slate-900 dark:text-white">
+                      {row.display_name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <Badge>
+                      {row.raw_score}/{row.max_score} ({pct}%)
+                    </Badge>
+                    <span className="font-mono text-slate-500">
+                      {formatDuration(row.duration_seconds)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
     </div>
   );

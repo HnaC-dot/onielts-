@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { readStore, updateStore } from "@/lib/store";
+import { getCurrentUser } from "@/lib/auth";
+import {
+  createFeatureRequest,
+  getFeatureRequests,
+  voteFeatureRequest,
+} from "@/lib/db";
 
 const createSchema = z.object({
   title: z.string().trim().min(4).max(160),
@@ -12,8 +17,8 @@ const voteSchema = z.object({
 });
 
 export async function GET() {
-  const store = readStore();
-  return NextResponse.json({ items: store.feature_requests });
+  const items = await getFeatureRequests();
+  return NextResponse.json({ items });
 }
 
 export async function POST(req: Request) {
@@ -21,19 +26,17 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Tiêu đề hoặc mô tả quá ngắn." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Tiêu đề hoặc mô tả quá ngắn." },
+        { status: 400 }
+      );
     }
-    const item = updateStore((store) => {
-      const created = {
-        id: `fr-${Date.now()}`,
-        title: parsed.data.title,
-        description: parsed.data.description,
-        votes: 1,
-        status: "open" as const,
-        created_at: new Date().toISOString(),
-      };
-      store.feature_requests.unshift(created);
-      return created;
+    const user = await getCurrentUser();
+    const item = await createFeatureRequest({
+      userId: user?.id ?? null,
+      email: user?.email ?? null,
+      title: parsed.data.title,
+      description: parsed.data.description,
     });
     return NextResponse.json({ ok: true, item }, { status: 201 });
   } catch {
@@ -48,12 +51,7 @@ export async function PATCH(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
-    const updated = updateStore((store) => {
-      const found = store.feature_requests.find((i) => i.id === parsed.data.id);
-      if (!found) return null;
-      found.votes += 1;
-      return found;
-    });
+    const updated = await voteFeatureRequest(parsed.data.id);
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ ok: true, item: updated });
   } catch {

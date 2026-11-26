@@ -15,7 +15,14 @@ export interface QuestionGradeDetail {
 export interface GradedTestResult {
   rawScore: number;
   maxScore: number;
-  bandScore: number;
+  accuracyPercent: number;
+  isFullIeltsTest: boolean;
+  /**
+   * Official IELTS Band score (0.0–9.0) is ONLY assigned on full 40-question tests.
+   * For shorter practice sprints (< 40 questions), bandScore is null so learners
+   * are never misled by inflated Band 9.0 scores from tiny question sets.
+   */
+  bandScore: number | null;
   breakdownByType: Record<string, { correct: number; total: number }>;
   details: QuestionGradeDetail[];
 }
@@ -28,7 +35,10 @@ export function normalizeAnswer(raw: string): string {
     .replace(/\s+/g, " ");
 }
 
-export function isAnswerCorrect(userAnswer: string, acceptedAnswers: string[]): boolean {
+export function isAnswerCorrect(
+  userAnswer: string,
+  acceptedAnswers: string[]
+): boolean {
   const normUser = normalizeAnswer(userAnswer);
   if (!normUser) return false;
   return acceptedAnswers.some((acc) => {
@@ -74,6 +84,10 @@ export function gradeObjectiveTest(
   }
 
   const maxScore = allQuestions.length;
+  const accuracyPercent =
+    maxScore > 0 ? Math.round((rawScore / maxScore) * 100) : 0;
+  const isFullIeltsTest = maxScore >= 40;
+
   const conversionSkill =
     test.skill === "listening"
       ? "listening"
@@ -82,13 +96,15 @@ export function gradeObjectiveTest(
       : "reading_academic";
 
   const bandScore =
-    maxScore > 0
+    isFullIeltsTest && maxScore > 0
       ? convertRawToBand(rawScore, conversionSkill, conversionTable, maxScore)
-      : 0;
+      : null;
 
   return {
     rawScore,
     maxScore,
+    accuracyPercent,
+    isFullIeltsTest,
     bandScore,
     breakdownByType,
     details,

@@ -2,14 +2,14 @@ import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, BookOpen, Clock, Headphones, Mic, PenTool } from "lucide-react";
-import { readStore } from "@/lib/store";
+import { getIeltsTests } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export const metadata = {
   title: "Kho đề luyện thi IELTS chuẩn máy tính (Reading, Listening, Writing, Speaking)",
   description:
-    "12+ bộ đề thi IELTS nguyên bản đầy đủ 4 kỹ năng với giao diện chia 2 cột chuẩn máy tính, chấm điểm tự động và giải thích song ngữ VI + EN.",
+    "12 bộ đề thi IELTS nguyên bản đầy đủ 4 kỹ năng (Reading 40 câu 3 bài đọc, Listening 40 câu 4 phần kèm file audio thật) với giao diện chuẩn máy tính và giải thích song ngữ VI + EN.",
 };
 
 const SKILL_CONFIG = {
@@ -24,12 +24,13 @@ export default async function TestsCatalogPage({
 }: {
   searchParams: Promise<{ skill?: string }>;
 }) {
-  const [locale, params] = await Promise.all([getLocale(), searchParams]);
+  const [locale, params, published] = await Promise.all([
+    getLocale(),
+    searchParams,
+    getIeltsTests(false),
+  ]);
   const isEn = locale === "en";
   const selectedSkill = params.skill ?? "all";
-  const store = readStore();
-
-  const published = store.ielts_tests.filter((t) => t.is_published);
   const filtered =
     selectedSkill === "all"
       ? published

@@ -1,11 +1,23 @@
 import type { MetadataRoute } from "next";
-import { readStore } from "@/lib/store";
+import {
+  getBlogPosts,
+  getCourses,
+  getIeltsTests,
+  getLearnVideos,
+  getPronunciationSounds,
+} from "@/lib/db";
 import { GENERAL_AI_TOOLS } from "@/lib/ai-tools-config";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://onielts.vn";
-  const store = readStore();
   const now = new Date();
+  const [tests, courses, sounds, videos, posts] = await Promise.all([
+    getIeltsTests(false),
+    getCourses(),
+    getPronunciationSounds(),
+    getLearnVideos(),
+    getBlogPosts(false),
+  ]);
 
   const staticRoutes = [
     "",
@@ -51,19 +63,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
   for (const t of GENERAL_AI_TOOLS) {
     entries.push({ url: `${baseUrl}/tools/${t.slug}`, lastModified: now, priority: 0.8 });
   }
-  for (const test of store.ielts_tests.filter((i) => i.is_published)) {
+  for (const test of tests) {
     entries.push({ url: `${baseUrl}/tests/${test.slug}`, lastModified: now, priority: 0.85 });
   }
-  for (const c of store.courses.filter((i) => i.is_published)) {
+  for (const c of courses) {
     entries.push({ url: `${baseUrl}/courses/${c.slug}`, lastModified: now, priority: 0.8 });
   }
-  for (const p of store.pronunciation_sounds) {
+  for (const p of sounds) {
     entries.push({ url: `${baseUrl}/pronunciation/${p.slug}`, lastModified: now, priority: 0.75 });
   }
-  for (const v of store.learn_videos) {
+  for (const v of videos) {
     entries.push({ url: `${baseUrl}/videos/${v.slug}`, lastModified: now, priority: 0.75 });
   }
-  for (const post of store.blog_posts.filter((i) => i.is_published)) {
+  for (const post of posts) {
     entries.push({ url: `${baseUrl}/blog/${post.slug}`, lastModified: now, priority: 0.8 });
   }
 

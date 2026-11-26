@@ -2,7 +2,7 @@ import React from "react";
 import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
 import { checkUsageLimit } from "@/lib/usage-limits";
-import { readStore } from "@/lib/store";
+import { getUserSpeakingSubmissions } from "@/lib/db";
 import { SpeakingCheckerClient } from "@/components/speaking-checker-client";
 
 export const metadata = {
@@ -14,16 +14,18 @@ export const metadata = {
 export default async function SpeakingPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);
   const isEn = locale === "en";
-  const usage = checkUsageLimit(user, "speaking_eval", user?.id ?? "guest");
-  const store = readStore();
-  const userId = user?.id ?? "demo-free-001";
-  const submissions = store.speaking_submissions.filter((s) => s.user_id === userId);
+  const [usage, submissions] = await Promise.all([
+    checkUsageLimit(user, "speaking_eval", user?.id ?? "guest"),
+    getUserSpeakingSubmissions(user?.id ?? null),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-          {isEn ? "AI IELTS Speaking Checker (Parts 1–3)" : "Chấm điểm IELTS Speaking bằng AI (Parts 1–3)"}
+          {isEn
+            ? "AI IELTS Speaking Checker (Parts 1–3)"
+            : "Chấm điểm IELTS Speaking bằng AI (Parts 1–3)"}
         </h1>
         <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
           {isEn

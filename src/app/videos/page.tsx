@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { Play } from "lucide-react";
-import { readStore } from "@/lib/store";
+import { getLearnVideos } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -13,7 +13,7 @@ export const metadata = {
 };
 
 export default async function VideosIndexPage() {
-  const [locale, store] = await Promise.all([getLocale(), Promise.resolve(readStore())]);
+  const [locale, videos] = await Promise.all([getLocale(), getLearnVideos()]);
   const isEn = locale === "en";
 
   return (
@@ -30,7 +30,7 @@ export default async function VideosIndexPage() {
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {store.learn_videos.map((v) => (
+        {videos.map((v) => (
           <Link key={v.id} href={`/videos/${v.slug}`}>
             <Card className="overflow-hidden h-full transition hover:border-emerald-400 hover:shadow-md">
               <div className="relative flex h-44 items-center justify-center bg-slate-900 text-white">

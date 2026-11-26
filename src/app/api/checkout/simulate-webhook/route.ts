@@ -1,22 +1,21 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore } from "@/lib/store";
-import { isPayosConfigured, signPayosData } from "@/lib/payments/payos";
-import { processVerifiedPayosWebhook } from "@/lib/payments/process-webhook";
+import { findOrderByCodeForUser, fulfillPaidOrderIdempotent } from "@/lib/db";
+import { isPayosSandboxAllowed } from "@/lib/payments/payos";
 
 const schema = z.object({
   orderCode: z.number().int().positive(),
 });
 
 /**
- * Sandbox-only helper to test the full HMAC-signed PayOS webhook flow when
- * live production PayOS keys are absent or PAYOS_SANDBOX !== "false".
+ * Local-development ONLY sandbox webhook simulator.
+ * Strictly blocked (403) in production and whenever live PayOS keys exist.
  */
 export async function POST(req: Request) {
-  if (isPayosConfigured() && process.env.PAYOS_SANDBOX === "false") {
+  if (!isPayosSandboxAllowed()) {
     return NextResponse.json(
-      { error: "Chế độ mô phỏng bị tắt ở môi trường Production." },
+      { error: "Chế độ mô phỏng thanh toán bị khóa ở môi trường Production." },
       { status: 403 }
     );
   }
@@ -33,26 +32,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Mã đơn hàng không hợp lệ." }, { status: 400 });
     }
 
-    const store = readStore();
-    const order = store.orders.find(
-      (o) => o.order_code === parsed.data.orderCode && o.user_id === user.id
-    );
+    const order = await findOrderByCodeForUser(parsed.data.orderCode, user.id);
     if (!order) {
       return NextResponse.json({ error: "Không tìm thấy đơn hàng." }, { status: 404 });
     }
 
-    const webhookData = {
+    const result = await fulfillPaidOrderIdempotent({
       orderCode: order.order_code,
-      amount: order.amount_vnd,
-      code: "00",
-      desc: "Sandbox VietQR transfer completed",
-      reference: `SANDBOX-${order.order_code}`,
-    };
-    const signature = signPayosData(webhookData);
-    const result = processVerifiedPayosWebhook(
-      { code: "00", data: webhookData, signature },
-      signature
-    );
+      amountVnd: order.amount_vnd,
+      eventId: `SANDBOX-${order.order_code}`,
+    });
 
     return NextResponse.json(result, { status: result.status });
   } catch {

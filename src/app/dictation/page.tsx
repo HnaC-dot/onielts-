@@ -1,6 +1,6 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
-import { readStore } from "@/lib/store";
+import { getDictationLessons } from "@/lib/db";
 import { DictationClient } from "@/components/dictation-client";
 
 export const metadata = {
@@ -14,9 +14,12 @@ export default async function DictationPage({
 }: {
   searchParams: Promise<{ lesson?: string }>;
 }) {
-  const [locale, params] = await Promise.all([getLocale(), searchParams]);
+  const [locale, params, lessons] = await Promise.all([
+    getLocale(),
+    searchParams,
+    getDictationLessons(),
+  ]);
   const isEn = locale === "en";
-  const store = readStore();
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 space-y-6">
@@ -31,10 +34,7 @@ export default async function DictationPage({
         </p>
       </div>
 
-      <DictationClient
-        lessons={store.dictation_lessons}
-        initialSlug={params.lesson}
-      />
+      <DictationClient lessons={lessons} initialSlug={params.lesson} />
     </div>
   );
 }

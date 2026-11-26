@@ -1,6 +1,6 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
-import { readStore } from "@/lib/store";
+import { getBandConversionTables } from "@/lib/db";
 import { BandCalculatorClient } from "@/components/band-calculator-client";
 
 export const metadata = {
@@ -10,9 +10,11 @@ export const metadata = {
 };
 
 export default async function BandCalculatorPage() {
-  const locale = await getLocale();
+  const [locale, rows] = await Promise.all([
+    getLocale(),
+    getBandConversionTables(),
+  ]);
   const isEn = locale === "en";
-  const store = readStore();
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-6">
@@ -27,7 +29,7 @@ export default async function BandCalculatorPage() {
         </p>
       </div>
 
-      <BandCalculatorClient conversionRows={store.band_conversion_tables} />
+      <BandCalculatorClient conversionRows={rows} />
     </div>
   );
 }

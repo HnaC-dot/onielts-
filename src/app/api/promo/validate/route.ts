@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { readStore } from "@/lib/store";
+import { findActivePromoCode } from "@/lib/db";
 
 const schema = z.object({
   code: z.string().trim().min(2).max(40),
@@ -14,19 +14,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Mã giảm giá không hợp lệ." }, { status: 400 });
     }
 
-    const codeUpper = parsed.data.code.toUpperCase();
-    const store = readStore();
-    const promo = store.promo_codes.find(
-      (c) => c.code.toUpperCase() === codeUpper && c.is_active
-    );
+    const promo = await findActivePromoCode(parsed.data.code);
     if (!promo) {
-      return NextResponse.json({ error: "Mã giảm giá không tồn tại hoặc đã ngừng áp dụng." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Mã giảm giá không tồn tại hoặc đã ngừng áp dụng." },
+        { status: 404 }
+      );
     }
     if (promo.expires_at && new Date(promo.expires_at).getTime() < Date.now()) {
       return NextResponse.json({ error: "Mã giảm giá đã hết hạn." }, { status: 400 });
     }
     if (promo.max_uses && promo.current_uses >= promo.max_uses) {
-      return NextResponse.json({ error: "Mã giảm giá đã hết lượt sử dụng." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Mã giảm giá đã hết lượt sử dụng." },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({

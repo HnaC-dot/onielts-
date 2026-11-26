@@ -6,18 +6,31 @@ import type {
   VerifiedWebhookPayload,
 } from "./types";
 
-const SANDBOX_FALLBACK_CHECKSUM_KEY = "onielts_sandbox_dev_checksum_key";
-
-export function getPayosChecksumKey(): string {
-  return process.env.PAYOS_CHECKSUM_KEY?.trim() || SANDBOX_FALLBACK_CHECKSUM_KEY;
+/**
+ * Returns the configured PayOS HMAC-SHA256 checksum key or null if unset.
+ * Never falls back to a hardcoded secret string (fail-closed in all environments).
+ */
+export function getPayosChecksumKey(): string | null {
+  const key = process.env.PAYOS_CHECKSUM_KEY?.trim();
+  return key && key.length > 0 ? key : null;
 }
 
 export function isPayosConfigured(): boolean {
   return Boolean(
     process.env.PAYOS_CLIENT_ID?.trim() &&
       process.env.PAYOS_API_KEY?.trim() &&
-      process.env.PAYOS_CHECKSUM_KEY?.trim()
+      getPayosChecksumKey()
   );
+}
+
+/**
+ * Sandbox checkout/webhook simulation is strictly disabled in production
+ * and whenever real PayOS credentials are configured.
+ */
+export function isPayosSandboxAllowed(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  if (isPayosConfigured()) return false;
+  return process.env.PAYOS_SANDBOX === "true";
 }
 
 /**
@@ -42,19 +55,26 @@ export function buildPayosCanonicalString(data: Record<string, unknown>): string
 
 export function signPayosData(
   data: Record<string, unknown>,
-  checksumKey: string = getPayosChecksumKey()
+  checksumKey?: string
 ): string {
+  const resolvedKey = (checksumKey ?? getPayosChecksumKey() ?? "").trim();
+  if (!resolvedKey) {
+    throw new Error("PAYOS_CHECKSUM_KEY is not configured.");
+  }
   const canonical = buildPayosCanonicalString(data);
-  return crypto.createHmac("sha256", checksumKey).update(canonical).digest("hex");
+  return crypto.createHmac("sha256", resolvedKey).update(canonical).digest("hex");
 }
 
 export function verifyPayosSignature(
   data: Record<string, unknown>,
   providedSignature: string,
-  checksumKey: string = getPayosChecksumKey()
+  checksumKey?: string
 ): boolean {
   if (!providedSignature || typeof providedSignature !== "string") return false;
-  const expected = signPayosData(data, checksumKey);
+  const resolvedKey = (checksumKey ?? getPayosChecksumKey() ?? "").trim();
+  if (!resolvedKey) return false; // Fail closed when secret is absent
+
+  const expected = signPayosData(data, resolvedKey);
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(providedSignature.trim().toLowerCase(), "utf8");
   if (a.length !== b.length) return false;
@@ -108,6 +128,7 @@ export const payosProvider: PaymentProvider = {
       });
       const json = (await res.json()) as {
         code?: string;
+        desc?: string;
         data?: { checkoutUrl?: string; qrCode?: string };
       };
       if (res.ok && json.code === "00" && json.data?.checkoutUrl) {
@@ -119,9 +140,14 @@ export const payosProvider: PaymentProvider = {
           sandboxMocked: false,
         };
       }
+      throw new Error(json.desc || "PayOS payment request failed.");
     }
 
-    // Sandbox / Mocked VietQR checkout when PayOS keys are not yet configured
+    if (!isPayosSandboxAllowed()) {
+      throw new Error("PAYOS_NOT_CONFIGURED");
+    }
+
+    // Explicit local-dev sandbox checkout (only when NODE_ENV !== "production" && PAYOS_SANDBOX === "true")
     return {
       provider: "mock",
       orderCode: input.orderCode,
@@ -135,10 +161,13 @@ export const payosProvider: PaymentProvider = {
     body: Record<string, unknown>,
     signature: string
   ): VerifiedWebhookPayload | null {
+    const key = getPayosChecksumKey();
+    if (!key) return null; // Fail closed whenever PAYOS_CHECKSUM_KEY is unset
+
     const data = body.data as Record<string, unknown> | undefined;
     if (!data || typeof data !== "object") return null;
 
-    const valid = verifyPayosSignature(data, signature);
+    const valid = verifyPayosSignature(data, signature, key);
     if (!valid) return null;
 
     const orderCode = Number(data.orderCode);

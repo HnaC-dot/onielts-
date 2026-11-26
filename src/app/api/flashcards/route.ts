@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore, updateStore } from "@/lib/store";
+import { isSupabaseConfigured } from "@/lib/supabase/server";
+import { createFlashcardItem, getFlashcardsForUser } from "@/lib/db";
 
 const createCardSchema = z.object({
   term: z.string().trim().min(1).max(120),
@@ -16,18 +17,8 @@ const createCardSchema = z.object({
 
 export async function GET() {
   const user = await getCurrentUser();
-  const store = readStore();
-  const userId = user?.id ?? "demo-free-001";
-
-  const sets = store.flashcard_sets.filter(
-    (s) => s.user_id === userId || s.is_public
-  );
-  const allowedSetIds = new Set(sets.map((s) => s.id));
-  const cards = store.flashcards.filter(
-    (c) => c.user_id === userId || allowedSetIds.has(c.set_id)
-  );
-
-  return NextResponse.json({ sets, cards });
+  const data = await getFlashcardsForUser(user?.id ?? null);
+  return NextResponse.json(data);
 }
 
 export async function POST(req: Request) {
@@ -42,59 +33,17 @@ export async function POST(req: Request) {
     }
 
     const user = await getCurrentUser();
-    const userId = user?.id ?? "demo-free-001";
-    const data = parsed.data;
+    if (isSupabaseConfigured() && !user) {
+      return NextResponse.json(
+        { error: "Vui lòng đăng nhập để lưu Flashcard vào tài khoản của bạn." },
+        { status: 401 }
+      );
+    }
 
-    const result = updateStore((store) => {
-      let targetSetId = data.set_id;
-      if (data.new_set_title && data.new_set_title.length > 0) {
-        const newSet = {
-          id: `set-${Date.now()}`,
-          user_id: userId,
-          title: data.new_set_title,
-          description: "Bộ thẻ tự tạo từ công cụ lưu nhanh Ôn IELTS",
-          is_public: false,
-          created_at: new Date().toISOString(),
-        };
-        store.flashcard_sets.unshift(newSet);
-        targetSetId = newSet.id;
-      } else if (!targetSetId || !store.flashcard_sets.some((s) => s.id === targetSetId)) {
-        const firstOwned = store.flashcard_sets.find((s) => s.user_id === userId);
-        if (firstOwned) {
-          targetSetId = firstOwned.id;
-        } else {
-          const fallbackSet = {
-            id: `set-${Date.now()}`,
-            user_id: userId,
-            title: "Từ vựng IELTS của tôi",
-            description: "Các từ mới lưu trong quá trình ôn luyện",
-            is_public: false,
-            created_at: new Date().toISOString(),
-          };
-          store.flashcard_sets.unshift(fallbackSet);
-          targetSetId = fallbackSet.id;
-        }
-      }
-
-      const card = {
-        id: `fc-${Date.now()}`,
-        set_id: targetSetId!,
-        user_id: userId,
-        term: data.term,
-        phonetic: data.phonetic,
-        part_of_speech: data.part_of_speech,
-        definition_vi: data.definition_vi,
-        definition_en: data.definition_en,
-        example_sentence: data.example_sentence,
-        ease_factor: 2.5,
-        interval_days: 0,
-        repetitions: 0,
-        next_review_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      };
-      store.flashcards.unshift(card);
-      return { card, setId: targetSetId };
-    });
+    const result = await createFlashcardItem(user?.id ?? null, parsed.data);
+    if (!result) {
+      return NextResponse.json({ error: "Không thể lưu thẻ" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch {

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore } from "@/lib/store";
+import { getCourseBySlug, getUserCourseProgress } from "@/lib/db";
 import { CoursePlayerClient } from "@/components/course-player-client";
 import { Badge } from "@/components/ui/badge";
 
@@ -13,7 +13,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const course = readStore().courses.find((c) => c.slug === slug);
+  const course = await getCourseBySlug(slug);
   if (!course) return {};
   return { title: course.title_vi, description: course.description_vi };
 }
@@ -24,20 +24,23 @@ export default async function CourseDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);
+  const [locale, user, course] = await Promise.all([
+    getLocale(),
+    getCurrentUser(),
+    getCourseBySlug(slug),
+  ]);
   const isEn = locale === "en";
-  const store = readStore();
-  const course = store.courses.find((c) => c.slug === slug);
   if (!course) notFound();
 
-  const userId = user?.id ?? "demo-free-001";
-  const prog = store.course_progress.find(
-    (p) => p.user_id === userId && p.course_id === course.id
-  );
+  const progressList = await getUserCourseProgress(user?.id ?? null);
+  const prog = progressList.find((p) => p.course_id === course.id);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-6">
-      <Link href="/courses" className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-400">
+      <Link
+        href="/courses"
+        className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+      >
         ← {isEn ? "All Courses" : "Tất cả Khóa học"}
       </Link>
 

@@ -2,7 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { updateStore } from "./store";
+import { insertAiUsageLog } from "./db";
 
 /**
  * =============================================================================
@@ -59,7 +59,7 @@ function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function logAiUsage(params: {
+async function logAiUsage(params: {
   userId: string;
   feature: string;
   skill?: string | null;
@@ -76,9 +76,8 @@ function logAiUsage(params: {
       (params.completionTokens / 1_000_000) * COST_PER_1M_OUTPUT_USD
     ).toFixed(6)
   );
-  updateStore((store) => {
-    store.ai_usage_logs.unshift({
-      id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  try {
+    await insertAiUsageLog({
       user_id: params.userId,
       feature: params.feature,
       skill: params.skill ?? null,
@@ -89,13 +88,10 @@ function logAiUsage(params: {
       estimated_cost_usd: costUsd,
       cached: params.cached,
       latency_ms: params.latencyMs,
-      created_at: new Date().toISOString(),
     });
-    // Cap local log array to 2000 entries
-    if (store.ai_usage_logs.length > 2000) {
-      store.ai_usage_logs = store.ai_usage_logs.slice(0, 2000);
-    }
-  });
+  } catch {
+    // Never break AI evaluation responses if logging fails transiently
+  }
 }
 
 export interface StructuredAiRequest<T> {
@@ -156,7 +152,7 @@ export async function generateStructuredAi<T>(
   if (cacheKey) {
     const hit = memoryCache.get(cacheKey);
     if (hit && hit.expiresAt > Date.now()) {
-      logAiUsage({
+      await logAiUsage({
         userId: req.userId,
         feature: req.feature,
         skill: req.skill,
@@ -181,7 +177,7 @@ export async function generateStructuredAi<T>(
     const validated = req.schema.parse(rawMock);
     const pTok = estimateTokens(req.systemPrompt + req.userPrompt);
     const cTok = estimateTokens(JSON.stringify(validated));
-    logAiUsage({
+    await logAiUsage({
       userId: req.userId,
       feature: req.feature,
       skill: req.skill,
@@ -250,7 +246,7 @@ export async function generateStructuredAi<T>(
         response.usageMetadata?.candidatesTokenCount ??
         estimateTokens(rawText);
 
-      logAiUsage({
+      await logAiUsage({
         userId: req.userId,
         feature: req.feature,
         skill: req.skill,

@@ -40,7 +40,7 @@ export async function POST(
     );
   }
 
-  const usage = checkUsageLimit(user, "general_tool", clientKey);
+  const usage = await checkUsageLimit(user, "general_tool", clientKey);
   if (!usage.allowed) {
     return NextResponse.json(
       {
@@ -77,7 +77,7 @@ export async function POST(
     const aiRes = await generateStructuredAi({
       feature: `tool:${tool.slug}`,
       skill: "general_tool",
-      userId: user?.id ?? "guest",
+      userId: user?.id ?? clientKey,
       systemPrompt: tool.systemPrompt,
       userPrompt: `Selected options: ${optionsSummary || "default"}\n\nLearner text:\n${safeInput}`,
       schema: generalToolOutputSchema,

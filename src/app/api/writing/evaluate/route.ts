@@ -5,7 +5,7 @@ import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 import { checkUsageLimit } from "@/lib/usage-limits";
 import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
 import { calculateCriterionBand } from "@/lib/band-calculator";
-import { updateStore } from "@/lib/store";
+import { saveWritingSubmission } from "@/lib/db";
 import type { WritingEvaluation } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -163,7 +163,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const usage = checkUsageLimit(user, "writing_eval", clientKey);
+  const usage = await checkUsageLimit(user, "writing_eval", clientKey);
   if (!usage.allowed) {
     return NextResponse.json(
       {
@@ -229,25 +229,17 @@ Identify specific exact substrings from the essay as inlineErrors with correctio
     });
 
     // Persist submission — ALWAYS PRIVATE BY DEFAULT (is_public: false)
-    const submission = updateStore((store) => {
-      const record = {
-        id: `ws-${Date.now()}`,
-        user_id: user?.id ?? "demo-free-001",
-        task_type: taskType,
-        prompt_text: promptText,
-        chart_image_name: chartImageName ?? null,
-        essay_text: essayText,
-        word_count: wordCount,
-        overall_band: aiRes.data.overallBand,
-        evaluation: aiRes.data,
-        is_public: false,
-        created_at: new Date().toISOString(),
-      };
-      store.writing_submissions.unshift(record);
-      return record;
+    const submission = await saveWritingSubmission({
+      userId: user?.id ?? null,
+      taskType,
+      promptText,
+      chartImageName: chartImageName ?? null,
+      essayText,
+      wordCount,
+      evaluation: aiRes.data,
     });
 
-    const updatedUsage = checkUsageLimit(user, "writing_eval", clientKey);
+    const updatedUsage = await checkUsageLimit(user, "writing_eval", clientKey);
 
     return NextResponse.json({
       ok: true,

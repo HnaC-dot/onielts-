@@ -1,13 +1,15 @@
 import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
-import { readStore } from "@/lib/store";
+import { getPronunciationSounds } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 
 export default async function HtmlSitemapPage() {
-  const locale = await getLocale();
+  const [locale, pronunciationSounds] = await Promise.all([
+    getLocale(),
+    getPronunciationSounds(),
+  ]);
   const isEn = locale === "en";
-  const store = readStore();
 
   const groups = [
     {
@@ -107,7 +109,7 @@ export default async function HtmlSitemapPage() {
             {isEn ? "IPA Pronunciation Pages" : "Trang từng âm IPA"}
           </h2>
           <div className="mt-3 flex flex-wrap gap-2">
-            {store.pronunciation_sounds.map((s) => (
+            {pronunciationSounds.map((s) => (
               <Link
                 key={s.slug}
                 href={`/pronunciation/${s.slug}`}

@@ -52,13 +52,13 @@
     "ctaPrimary": "Dùng thử Premium",
     "ctaSecondary": "Làm đề miễn phí ngay",
     "stats": {
-      "learners": "Học viên đang ôn luyện",
-      "questions": "Câu hỏi luyện tập gốc",
-      "aiChecks": "Bài viết & nói đã chấm AI",
-      "bandGain": "Mức tăng trung bình sau 8 tuần"
+      "tests": "Bộ đề thi nguyên bản (4 kỹ năng)",
+      "questions": "Câu hỏi Reading & Listening tự chấm",
+      "tools": "Công cụ AI & tiện ích học tập",
+      "fullFormat": "Chuẩn đề Reading & Listening có MP3 thật"
     },
-    "testimonialsTitle": "Học viên nói gì về Ôn IELTS",
-    "testimonialsSubtitle": "Câu chuyện thật từ cộng đồng tự học IELTS trên khắp Việt Nam",
+    "testimonialsTitle": "Ví dụ minh họa lộ trình tự học",
+    "testimonialsSubtitle": "Các tình huống ví dụ minh họa cách sử dụng tính năng của Ôn IELTS (dữ liệu mẫu, không phải đánh giá khách hàng thật)",
     "latestTestsTitle": "Đề thi IELTS mới nhất",
     "latestTestsSubtitle": "Giao diện thi trên máy tính chân thực, tự động chấm điểm và phân tích lỗi sai theo từng dạng câu hỏi",
     "viewAll": "Xem tất cả",

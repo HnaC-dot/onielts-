@@ -1,5 +1,5 @@
 import "server-only";
-import { readStore } from "./store";
+import { getUserAiUsageLogsSince } from "./db";
 import type { SessionUser } from "./types";
 
 export type MeteredFeature =
@@ -31,7 +31,10 @@ export const FREE_LIMITS: Record<
 
 function isSameUtcMonth(iso: string, now: Date): boolean {
   const d = new Date(iso);
-  return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() === now.getUTCMonth();
+  return (
+    d.getUTCFullYear() === now.getUTCFullYear() &&
+    d.getUTCMonth() === now.getUTCMonth()
+  );
 }
 
 function isSameVietnamDay(iso: string, now: Date): boolean {
@@ -45,15 +48,15 @@ function isSameVietnamDay(iso: string, now: Date): boolean {
 }
 
 /**
- * Server-side usage limit enforcement.
+ * Server-side usage limit enforcement backed by Supabase ai_usage_logs (or local dev store).
  * Free users: 2 AI evaluations per skill per month, daily limits on tools/generators.
  * Premium & Admin users: unlimited.
  */
-export function checkUsageLimit(
+export async function checkUsageLimit(
   user: SessionUser | null,
   feature: MeteredFeature,
   fallbackActorId: string = "guest"
-): UsageCheckResult {
+): Promise<UsageCheckResult> {
   const isPremium = Boolean(user?.isPremium);
   const config = FREE_LIMITS[feature];
 
@@ -70,10 +73,14 @@ export function checkUsageLimit(
 
   const actorId = user?.id ?? fallbackActorId;
   const now = new Date();
-  const store = readStore();
+  const sinceDate =
+    config.period === "monthly"
+      ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+      : new Date(now.getTime() - 36 * 60 * 60 * 1000);
 
-  const matchingLogs = store.ai_usage_logs.filter((log) => {
-    if (log.user_id !== actorId) return false;
+  const logs = await getUserAiUsageLogsSince(actorId, sinceDate.toISOString());
+
+  const matchingLogs = logs.filter((log) => {
     const matchesFeature =
       feature === "general_tool"
         ? log.feature.startsWith("tool:")

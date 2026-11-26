@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore } from "@/lib/store";
+import { getUserWritingSubmissions } from "@/lib/db";
 import { ProfileClient } from "@/components/profile-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,8 +30,7 @@ export default async function ProfilePage() {
     );
   }
 
-  const store = readStore();
-  const submissions = store.writing_submissions.filter((s) => s.user_id === user.id);
+  const submissions = await getUserWritingSubmissions(user.id, false);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-6">

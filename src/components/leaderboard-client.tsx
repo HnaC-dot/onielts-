@@ -92,40 +92,53 @@ export function LeaderboardClient({
             </div>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {dailyRows.map((row, idx) => (
-              <div key={row.id} className="flex items-center justify-between px-6 py-4">
-                <div className="flex items-center gap-3.5">
-                  <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold ${
-                      idx === 0
-                        ? "bg-amber-100 text-amber-800"
-                        : idx === 1
-                        ? "bg-slate-200 text-slate-800"
-                        : idx === 2
-                        ? "bg-orange-100 text-orange-800"
-                        : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                    }`}
-                  >
-                    #{idx + 1}
-                  </span>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white">
-                      {row.display_name}
-                    </p>
-                    <p className="text-xs text-slate-500">Band {row.band_score.toFixed(1)}</p>
+            {dailyRows.length === 0 ? (
+              <p className="px-6 py-8 text-center text-sm text-slate-500">
+                {isEn
+                  ? "No learners have submitted today's Daily Exam yet. Start now to claim #1!"
+                  : "Chưa có học viên nào nộp Đề thi hôm nay. Tham gia ngay để đứng đầu bảng!"}
+              </p>
+            ) : (
+              dailyRows.map((row, idx) => {
+                const pct = Math.round((row.raw_score / Math.max(1, row.max_score)) * 100);
+                return (
+                  <div key={row.id} className="flex items-center justify-between px-6 py-4">
+                    <div className="flex items-center gap-3.5">
+                      <span
+                        className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold ${
+                          idx === 0
+                            ? "bg-amber-100 text-amber-800"
+                            : idx === 1
+                            ? "bg-slate-200 text-slate-800"
+                            : idx === 2
+                            ? "bg-orange-100 text-orange-800"
+                            : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                        }`}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                          {row.display_name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {isEn ? `Accuracy ${pct}%` : `Độ chính xác ${pct}%`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs">
+                      <Badge>
+                        {row.raw_score} / {row.max_score}
+                      </Badge>
+                      <span className="inline-flex items-center gap-1 font-mono font-semibold text-slate-600 dark:text-slate-400">
+                        <Clock className="h-3.5 w-3.5" />
+                        {formatDuration(row.duration_seconds)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-4 text-xs">
-                  <Badge>
-                    {row.raw_score} / {row.max_score}
-                  </Badge>
-                  <span className="inline-flex items-center gap-1 font-mono font-semibold text-slate-600 dark:text-slate-400">
-                    <Clock className="h-3.5 w-3.5" />
-                    {formatDuration(row.duration_seconds)}
-                  </span>
-                </div>
-              </div>
-            ))}
+                );
+              })
+            )}
           </div>
         </Card>
       ) : (
@@ -139,34 +152,45 @@ export function LeaderboardClient({
             </p>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {activeStreakRows.map((row, idx) => (
-              <div key={row.id} className="flex items-center justify-between px-6 py-4">
-                <div className="flex items-center gap-3.5">
-                  <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold ${
-                      idx === 0
-                        ? "bg-amber-100 text-amber-800"
-                        : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                    }`}
-                  >
-                    #{idx + 1}
-                  </span>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white">{row.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {row.examsDone} {isEn ? "exams completed" : "đề hoàn thành"} · Avg Band {row.avgBand.toFixed(1)}
-                    </p>
+            {activeStreakRows.length === 0 ? (
+              <p className="px-6 py-8 text-center text-sm text-slate-500">
+                {isEn
+                  ? "Complete tests daily to build your streak and appear on the board."
+                  : "Hoàn thành bài luyện mỗi ngày để tích lũy chuỗi ngày học và ghi danh lên bảng."}
+              </p>
+            ) : (
+              activeStreakRows.map((row, idx) => (
+                <div key={row.id} className="flex items-center justify-between px-6 py-4">
+                  <div className="flex items-center gap-3.5">
+                    <span
+                      className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold ${
+                        idx === 0
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      }`}
+                    >
+                      #{idx + 1}
+                    </span>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">
+                        {row.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {row.examsDone} {isEn ? "active days" : "ngày hoạt động"}
+                        {row.avgBand > 0 ? ` · Band ${row.avgBand.toFixed(1)}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                      <Flame className="h-3.5 w-3.5" />
+                      {row.streakDays} {isEn ? "day streak" : "ngày liên tiếp"}
+                    </span>
+                    <Badge>{row.points} pts</Badge>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                    <Flame className="h-3.5 w-3.5" />
-                    {row.streakDays} {isEn ? "day streak" : "ngày liên tiếp"}
-                  </span>
-                  <Badge>{row.points} pts</Badge>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </Card>
       )}

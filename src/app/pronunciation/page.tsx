@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
-import { readStore } from "@/lib/store";
+import { getPronunciationSounds } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -12,7 +12,10 @@ export const metadata = {
 };
 
 export default async function PronunciationIndexPage() {
-  const [locale, store] = await Promise.all([getLocale(), Promise.resolve(readStore())]);
+  const [locale, allSounds] = await Promise.all([
+    getLocale(),
+    getPronunciationSounds(),
+  ]);
   const isEn = locale === "en";
 
   const groups = [
@@ -35,7 +38,7 @@ export default async function PronunciationIndexPage() {
       </div>
 
       {groups.map((g) => {
-        const sounds = store.pronunciation_sounds.filter((s) => s.category === g.id);
+        const sounds = allSounds.filter((s) => s.category === g.id);
         return (
           <section key={g.id} className="space-y-4">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">{g.label}</h2>

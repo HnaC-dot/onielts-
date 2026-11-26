@@ -1,7 +1,7 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore } from "@/lib/store";
+import { getFlashcardsForUser } from "@/lib/db";
 import { FlashcardsClient } from "@/components/flashcards-client";
 
 export const metadata = {
@@ -13,22 +13,15 @@ export const metadata = {
 export default async function FlashcardsPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);
   const isEn = locale === "en";
-  const store = readStore();
-  const userId = user?.id ?? "demo-free-001";
-
-  const sets = store.flashcard_sets.filter(
-    (s) => s.user_id === userId || s.is_public
-  );
-  const setIds = new Set(sets.map((s) => s.id));
-  const cards = store.flashcards.filter(
-    (c) => c.user_id === userId || setIds.has(c.set_id)
-  );
+  const { sets, cards } = await getFlashcardsForUser(user?.id ?? null);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-          {isEn ? "IELTS Flashcards & Spaced Repetition" : "Flashcards IELTS & Lặp lại ngắt quãng"}
+          {isEn
+            ? "IELTS Flashcards & Spaced Repetition"
+            : "Flashcards IELTS & Lặp lại ngắt quãng"}
         </h1>
         <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
           {isEn

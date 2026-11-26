@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore, updateStore } from "@/lib/store";
+import { isSupabaseConfigured } from "@/lib/supabase/server";
+import {
+  getUserWritingSubmissions,
+  toggleWritingSubmissionPrivacy,
+} from "@/lib/db";
 
 const togglePrivacySchema = z.object({
   id: z.string().min(1),
@@ -10,18 +14,18 @@ const togglePrivacySchema = z.object({
 
 export async function GET() {
   const user = await getCurrentUser();
-  const userId = user?.id ?? "demo-free-001";
-  const store = readStore();
-  // Enforce owner-only private read + public opt-in read
-  const submissions = store.writing_submissions.filter(
-    (s) => s.user_id === userId || (user?.role === "admin")
+  const submissions = await getUserWritingSubmissions(
+    user?.id ?? null,
+    user?.role === "admin"
   );
   return NextResponse.json({ submissions });
 }
 
 export async function PATCH(req: Request) {
   const user = await getCurrentUser();
-  const userId = user?.id ?? "demo-free-001";
+  if (isSupabaseConfigured() && !user) {
+    return NextResponse.json({ error: "Vui lòng đăng nhập." }, { status: 401 });
+  }
 
   try {
     const body = await req.json();
@@ -30,21 +34,25 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
     }
 
-    const updated = updateStore((store) => {
-      const target = store.writing_submissions.find(
-        (s) => s.id === parsed.data.id && (s.user_id === userId || user?.role === "admin")
-      );
-      if (!target) return null;
-      target.is_public = parsed.data.is_public;
-      return target;
-    });
+    const updated = await toggleWritingSubmissionPrivacy(
+      parsed.data.id,
+      user?.id ?? null,
+      user?.role === "admin",
+      parsed.data.is_public
+    );
 
     if (!updated) {
-      return NextResponse.json({ error: "Không tìm thấy bài viết thuộc quyền sở hữu của bạn." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Không tìm thấy bài viết thuộc quyền sở hữu của bạn." },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({ ok: true, submission: updated });
   } catch {
-    return NextResponse.json({ error: "Không thể cập nhật quyền riêng tư." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Không thể cập nhật quyền riêng tư." },
+      { status: 500 }
+    );
   }
 }

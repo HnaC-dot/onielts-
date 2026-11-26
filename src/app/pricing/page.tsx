@@ -1,7 +1,7 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore } from "@/lib/store";
+import { getPricingPlans, getPromoBanner } from "@/lib/db";
 import { PricingClient } from "@/components/pricing-client";
 
 export const metadata = {
@@ -11,13 +11,13 @@ export const metadata = {
 };
 
 export default async function PricingPage() {
-  const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);
+  const [locale, user, activePlans, banner] = await Promise.all([
+    getLocale(),
+    getCurrentUser(),
+    getPricingPlans(false),
+    getPromoBanner(),
+  ]);
   const isEn = locale === "en";
-  const store = readStore();
-
-  const activePlans = store.pricing_plans
-    .filter((p) => p.is_active)
-    .sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 space-y-8">
@@ -34,11 +34,7 @@ export default async function PricingPage() {
         </p>
       </div>
 
-      <PricingClient
-        plans={activePlans}
-        banner={store.promo_banner}
-        user={user}
-      />
+      <PricingClient plans={activePlans} banner={banner} user={user} />
     </div>
   );
 }

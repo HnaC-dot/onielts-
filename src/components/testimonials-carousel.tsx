@@ -32,8 +32,13 @@ export function TestimonialsCarousel({ items, locale }: TestimonialsCarouselProp
             className="flex flex-col justify-between p-6 transition hover:shadow-md"
           >
             <div>
-              <div className="flex items-center justify-between gap-2">
-                <Badge>{item.target_achieved}</Badge>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Badge variant="secondary">
+                    {locale === "en" ? "Example" : "Ví dụ minh họa"}
+                  </Badge>
+                  <Badge>{item.target_achieved}</Badge>
+                </div>
                 <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 dark:text-slate-400">
                   {item.previous_band.toFixed(1)}
                   <ArrowRight className="h-3 w-3 text-emerald-600" />

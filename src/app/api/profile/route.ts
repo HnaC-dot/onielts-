@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { updateStore } from "@/lib/store";
+import { updateOwnProfile } from "@/lib/db";
 
 const updateProfileSchema = z.object({
   full_name: z.string().trim().min(2).max(100),
@@ -19,20 +19,13 @@ export async function PATCH(req: Request) {
     const body = await req.json();
     const parsed = updateProfileSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Thông tin hồ sơ không hợp lệ." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Thông tin hồ sơ không hợp lệ." },
+        { status: 400 }
+      );
     }
 
-    const updated = updateStore((store) => {
-      const profile = store.profiles.find((p) => p.id === user.id);
-      if (!profile) return null;
-      profile.full_name = parsed.data.full_name;
-      profile.target_band = parsed.data.target_band;
-      if (parsed.data.current_band !== undefined) {
-        profile.current_band = parsed.data.current_band;
-      }
-      return profile;
-    });
-
+    const updated = await updateOwnProfile(user.id, parsed.data);
     if (!updated) {
       return NextResponse.json({ error: "Không tìm thấy hồ sơ." }, { status: 404 });
     }

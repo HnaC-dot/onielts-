@@ -3,7 +3,15 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { BookOpen, Flame, Layers, PenTool, Target } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
-import { readStore } from "@/lib/store";
+import { isSupabaseConfigured } from "@/lib/supabase/server";
+import {
+  getCourses,
+  getFlashcardsForUser,
+  getUserCourseProgress,
+  getUserSpeakingSubmissions,
+  getUserTestAttempts,
+  getUserWritingSubmissions,
+} from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,15 +23,43 @@ export const metadata = {
 export default async function ProgressPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);
   const isEn = locale === "en";
-  const store = readStore();
-  const userId = user?.id ?? "demo-free-001";
-  const profile = store.profiles.find((p) => p.id === userId);
 
-  const testAttempts = store.test_attempts.filter((a) => a.user_id === userId);
-  const writingSubs = store.writing_submissions.filter((s) => s.user_id === userId);
-  const speakingSubs = store.speaking_submissions.filter((s) => s.user_id === userId);
-  const flashcards = store.flashcards.filter((c) => c.user_id === userId);
-  const courseProgs = store.course_progress.filter((p) => p.user_id === userId);
+  if (!user && isSupabaseConfigured()) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <Card className="p-8 space-y-4">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">
+            {isEn
+              ? "Sign in to track your IELTS progress"
+              : "Đăng nhập để lưu và theo dõi tiến độ học tập"}
+          </h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {isEn
+              ? "Your completed tests, mistake analytics, flashcards, and streaks sync automatically across devices."
+              : "Kết quả bài thi, phân tích dạng câu hay sai, thẻ Flashcard và chuỗi ngày học được đồng bộ trực tiếp vào tài khoản của bạn."}
+          </p>
+          <Link href="/auth">
+            <Button>{isEn ? "Sign in" : "Đăng nhập ngay"}</Button>
+          </Link>
+        </Card>
+      </div>
+    );
+  }
+
+  const userId = user?.id ?? null;
+  const [testAttempts, writingSubs, speakingSubs, fcData, courseProgs, courses] =
+    await Promise.all([
+      getUserTestAttempts(userId),
+      getUserWritingSubmissions(userId),
+      getUserSpeakingSubmissions(userId),
+      getFlashcardsForUser(userId),
+      getUserCourseProgress(userId),
+      getCourses(),
+    ]);
+
+  const flashcards = userId
+    ? fcData.cards.filter((c) => c.user_id === userId)
+    : fcData.cards;
 
   // Aggregate mistake analytics across all test attempts by question type
   const typeTotals: Record<string, { correct: number; total: number }> = {};
@@ -40,11 +76,16 @@ export default async function ProgressPage() {
       ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
       : "—";
 
+  // Only average official full 40-question Reading/Listening band scores
   const readingAvg = avgSkill(
-    testAttempts.filter((a) => a.skill === "reading").map((a) => a.band_score)
+    testAttempts
+      .filter((a) => a.skill === "reading" && a.max_score >= 40)
+      .map((a) => a.band_score)
   );
   const listeningAvg = avgSkill(
-    testAttempts.filter((a) => a.skill === "listening").map((a) => a.band_score)
+    testAttempts
+      .filter((a) => a.skill === "listening" && a.max_score >= 40)
+      .map((a) => a.band_score)
   );
   const writingAvg = avgSkill(writingSubs.map((s) => s.overall_band));
   const speakingAvg = avgSkill(speakingSubs.map((s) => s.overall_band));
@@ -54,11 +95,13 @@ export default async function ProgressPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {isEn ? "Learning Progress & Mistake Analytics" : "Tiến độ học tập & Phân tích lỗi sai"}
+            {isEn
+              ? "Learning Progress & Mistake Analytics"
+              : "Tiến độ học tập & Phân tích lỗi sai"}
           </h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {profile?.full_name ?? "Học viên"} · Mục tiêu Band{" "}
-            <strong>{(profile?.target_band ?? 7.0).toFixed(1)}</strong>
+            {user?.full_name ?? "Học viên"} · Mục tiêu Band{" "}
+            <strong>{(user?.target_band ?? 7.0).toFixed(1)}</strong>
           </p>
         </div>
         <Link href="/tests">
@@ -74,7 +117,7 @@ export default async function ProgressPage() {
             <Flame className="h-4 w-4 text-amber-500" />
           </div>
           <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
-            {profile?.streak_count ?? 1} {isEn ? "days" : "ngày"}
+            {user?.streak_count ?? 1} {isEn ? "days" : "ngày"}
           </p>
         </Card>
         <Card className="p-5">
@@ -109,8 +152,8 @@ export default async function ProgressPage() {
       {/* 4 Skill Averages */}
       <div className="grid gap-4 sm:grid-cols-4">
         {[
-          { label: "Reading Avg", val: readingAvg, href: "/tests?skill=reading" },
-          { label: "Listening Avg", val: listeningAvg, href: "/tests?skill=listening" },
+          { label: "Reading Avg (40Q)", val: readingAvg, href: "/tests?skill=reading" },
+          { label: "Listening Avg (40Q)", val: listeningAvg, href: "/tests?skill=listening" },
           { label: "Writing AI Avg", val: writingAvg, href: "/writing" },
           { label: "Speaking AI Avg", val: speakingAvg, href: "/speaking" },
         ].map((sk) => (
@@ -175,7 +218,7 @@ export default async function ProgressPage() {
             {isEn ? "Course Progress" : "Tiến độ Khóa học"}
           </h2>
           <div className="space-y-3">
-            {store.courses.map((course) => {
+            {courses.map((course) => {
               const prog = courseProgs.find((p) => p.course_id === course.id);
               const pct = prog?.progress_percent ?? 0;
               return (
@@ -185,7 +228,9 @@ export default async function ProgressPage() {
                   className="block rounded-xl border border-slate-200 p-3.5 hover:border-emerald-400 dark:border-slate-800"
                 >
                   <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="truncate pr-2">{isEn ? course.title_en : course.title_vi}</span>
+                    <span className="truncate pr-2">
+                      {isEn ? course.title_en : course.title_vi}
+                    </span>
                     <Badge>{pct}%</Badge>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">

@@ -5,7 +5,7 @@ import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 import { checkUsageLimit } from "@/lib/usage-limits";
 import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
 import { calculateCriterionBand } from "@/lib/band-calculator";
-import { updateStore } from "@/lib/store";
+import { saveSpeakingSubmission } from "@/lib/db";
 import type { SpeakingEvaluation } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const usage = checkUsageLimit(user, "speaking_eval", clientKey);
+  const usage = await checkUsageLimit(user, "speaking_eval", clientKey);
   if (!usage.allowed) {
     return NextResponse.json(
       {
@@ -180,27 +180,18 @@ Provide actionable Vietnamese feedback and a natural Band 8.0+ improved spoken a
       mockFallback: () => buildMockSpeakingEvaluation(part, promptText, transcriptHint),
     });
 
-    const submission = updateStore((store) => {
-      const record = {
-        id: `ss-${Date.now()}`,
-        user_id: user?.id ?? "demo-free-001",
-        part,
-        prompt_text: promptText,
-        audio_duration_sec: durationSec,
-        transcript: aiRes.data.transcript,
-        overall_band: aiRes.data.overallBand,
-        evaluation: aiRes.data,
-        is_public: false,
-        created_at: new Date().toISOString(),
-      };
-      store.speaking_submissions.unshift(record);
-      return record;
+    const submission = await saveSpeakingSubmission({
+      userId: user?.id ?? null,
+      part,
+      promptText,
+      durationSec,
+      evaluation: aiRes.data,
     });
 
     return NextResponse.json({
       ok: true,
       submission,
-      usage: checkUsageLimit(user, "speaking_eval", clientKey),
+      usage: await checkUsageLimit(user, "speaking_eval", clientKey),
       mocked: aiRes.mocked,
     });
   } catch {

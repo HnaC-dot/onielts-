@@ -5,6 +5,7 @@ import {
   createOrFindDemoEmailUser,
   DEMO_USER_COOKIE,
   getCurrentUser,
+  isDemoAuthEnabled,
   REFERRAL_COOKIE,
 } from "@/lib/auth";
 import { createSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
@@ -34,6 +35,7 @@ export async function GET() {
   return NextResponse.json({
     user,
     supabaseConfigured: isSupabaseConfigured(),
+    demoEnabled: isDemoAuthEnabled(),
   });
 }
 
@@ -49,23 +51,31 @@ export async function POST(req: Request) {
     }
 
     const data = parsed.data;
+    const supabaseActive = isSupabaseConfigured();
+    const demoAllowed = isDemoAuthEnabled();
 
     if (data.action === "logout") {
-      if (isSupabaseConfigured()) {
+      if (supabaseActive) {
         const supabase = await createSupabaseServerClient();
         await supabase?.auth.signOut();
       }
       const res = NextResponse.json({ ok: true });
-      res.cookies.set(DEMO_USER_COOKIE, "logged_out", {
+      res.cookies.set(DEMO_USER_COOKIE, "", {
         path: "/",
         httpOnly: true,
         sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge: 0,
       });
       return res;
     }
 
     if (data.action === "demo_switch") {
+      if (!demoAllowed) {
+        return NextResponse.json(
+          { error: "Chế độ tài khoản dùng thử đã bị khóa trên môi trường này." },
+          { status: 403 }
+        );
+      }
       const store = readStore();
       const target = store.profiles.find((p) => p.id === data.userId);
       if (!target) {
@@ -82,50 +92,74 @@ export async function POST(req: Request) {
     }
 
     if (data.action === "send_otp") {
-      if (isSupabaseConfigured()) {
+      if (supabaseActive) {
         const supabase = await createSupabaseServerClient();
-        if (supabase) {
-          const { error } = await supabase.auth.signInWithOtp({
-            email: data.email,
-            options: { shouldCreateUser: true },
-          });
-          if (error) {
-            return NextResponse.json({ error: error.message }, { status: 400 });
-          }
-          return NextResponse.json({
-            ok: true,
-            mode: "supabase",
-            message: "Đã gửi mã OTP tới email của bạn.",
-          });
+        if (!supabase) {
+          return NextResponse.json(
+            { error: "Không thể kết nối máy chủ xác thực." },
+            { status: 503 }
+          );
         }
+        const { error } = await supabase.auth.signInWithOtp({
+          email: data.email,
+          options: { shouldCreateUser: true },
+        });
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        return NextResponse.json({
+          ok: true,
+          mode: "supabase",
+          message: "Đã gửi mã OTP 6 số tới email của bạn. Vui lòng kiểm tra hộp thư.",
+        });
       }
+
+      if (!demoAllowed) {
+        return NextResponse.json(
+          { error: "Hệ thống đăng nhập chưa được cấu hình Supabase Auth." },
+          { status: 503 }
+        );
+      }
+
       return NextResponse.json({
         ok: true,
         mode: "demo",
-        demoOtp: "123456",
-        message: "Chế độ dùng thử cục bộ: nhập mã OTP 123456 để đăng nhập.",
+        message: "Chế độ phát triển cục bộ: nhập mã OTP 123456 để đăng nhập.",
       });
     }
 
     if (data.action === "verify_otp") {
-      if (isSupabaseConfigured()) {
+      if (supabaseActive) {
         const supabase = await createSupabaseServerClient();
-        if (supabase) {
-          const { error } = await supabase.auth.verifyOtp({
-            email: data.email,
-            token: data.code,
-            type: "email",
-          });
-          if (error) {
-            return NextResponse.json({ error: error.message }, { status: 400 });
-          }
-          return NextResponse.json({ ok: true, mode: "supabase" });
+        if (!supabase) {
+          return NextResponse.json(
+            { error: "Không thể kết nối máy chủ xác thực." },
+            { status: 503 }
+          );
         }
+        const { error } = await supabase.auth.verifyOtp({
+          email: data.email,
+          token: data.code,
+          type: "email",
+        });
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        // Trigger profile provisioning on first OTP sign-in
+        await getCurrentUser();
+        return NextResponse.json({ ok: true, mode: "supabase" });
+      }
+
+      if (!demoAllowed) {
+        return NextResponse.json(
+          { error: "Hệ thống đăng nhập chưa được cấu hình Supabase Auth." },
+          { status: 503 }
+        );
       }
 
       if (data.code !== "123456") {
         return NextResponse.json(
-          { error: "Mã OTP không đúng (mã dùng thử cục bộ là 123456)" },
+          { error: "Mã OTP không đúng (chế độ dev cục bộ: 123456)" },
           { status: 400 }
         );
       }

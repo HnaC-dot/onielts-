@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale } from "next-intl/server";
 import { Clock } from "lucide-react";
-import { readStore } from "@/lib/store";
+import { getBlogPosts } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -13,7 +13,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const post = readStore().blog_posts.find((p) => p.slug === slug);
+  const posts = await getBlogPosts(false);
+  const post = posts.find((p) => p.slug === slug);
   if (!post) return {};
   return {
     title: post.title_vi,
@@ -27,9 +28,9 @@ export default async function BlogDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [locale, store] = await Promise.all([getLocale(), Promise.resolve(readStore())]);
+  const [locale, posts] = await Promise.all([getLocale(), getBlogPosts(false)]);
   const isEn = locale === "en";
-  const post = store.blog_posts.find((p) => p.slug === slug);
+  const post = posts.find((p) => p.slug === slug);
   if (!post) notFound();
 
   const content = isEn ? post.content_en : post.content_vi;

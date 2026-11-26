@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale } from "next-intl/server";
-import { readStore } from "@/lib/store";
+import { getLearnVideos } from "@/lib/db";
 import { VideoPlayerClient } from "@/components/video-player-client";
 import { Badge } from "@/components/ui/badge";
 
@@ -12,7 +12,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const video = readStore().learn_videos.find((v) => v.slug === slug);
+  const videos = await getLearnVideos();
+  const video = videos.find((v) => v.slug === slug);
   if (!video) return {};
   return { title: video.title_vi, description: video.description_vi };
 }
@@ -23,9 +24,9 @@ export default async function VideoDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [locale, store] = await Promise.all([getLocale(), Promise.resolve(readStore())]);
+  const [locale, videos] = await Promise.all([getLocale(), getLearnVideos()]);
   const isEn = locale === "en";
-  const video = store.learn_videos.find((v) => v.slug === slug);
+  const video = videos.find((v) => v.slug === slug);
   if (!video) notFound();
 
   return (

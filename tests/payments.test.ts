@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   computeExtendedPremiumExpiry,
   payosProvider,
@@ -16,6 +16,10 @@ describe("PayOS Payment Adapter — Signature Verification & Premium Expiry", ()
     reference: "FT263290001",
   };
 
+  afterEach(() => {
+    delete process.env.PAYOS_CHECKSUM_KEY;
+  });
+
   it("produces and verifies valid PayOS HMAC-SHA256 signatures", () => {
     const sig = signPayosData(sampleData, secret);
     expect(verifyPayosSignature(sampleData, sig, secret)).toBe(true);
@@ -28,7 +32,15 @@ describe("PayOS Payment Adapter — Signature Verification & Premium Expiry", ()
     expect(verifyPayosSignature(sampleData, "deadbeef", secret)).toBe(false);
   });
 
-  it("verifies full PayOS webhook envelope via provider adapter", () => {
+  it("fails closed (rejects all webhooks) when PAYOS_CHECKSUM_KEY is not configured", () => {
+    delete process.env.PAYOS_CHECKSUM_KEY;
+    const forgedSig = signPayosData(sampleData, "some_random_guess");
+    expect(verifyPayosSignature(sampleData, forgedSig)).toBe(false);
+    expect(payosProvider.verifyWebhook({ code: "00", data: sampleData }, forgedSig)).toBeNull();
+  });
+
+  it("verifies full PayOS webhook envelope when PAYOS_CHECKSUM_KEY is configured", () => {
+    process.env.PAYOS_CHECKSUM_KEY = secret;
     const sig = signPayosData(sampleData);
     const verified = payosProvider.verifyWebhook({ code: "00", data: sampleData }, sig);
     expect(verified).not.toBeNull();

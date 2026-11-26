@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bạn nhắn quá nhanh, chờ vài giây nhé." }, { status: 429 });
   }
 
-  const usage = checkUsageLimit(user, "conversation", clientKey);
+  const usage = await checkUsageLimit(user, "conversation", clientKey);
   if (!usage.allowed) {
     return NextResponse.json(
       { error: "Đã hết lượt hội thoại AI miễn phí hôm nay.", limitReached: true, usage },

@@ -2,7 +2,7 @@ import React from "react";
 import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
 import { checkUsageLimit } from "@/lib/usage-limits";
-import { readStore } from "@/lib/store";
+import { getUserWritingSubmissions } from "@/lib/db";
 import { WritingCheckerClient } from "@/components/writing-checker-client";
 
 export const metadata = {
@@ -14,10 +14,10 @@ export const metadata = {
 export default async function WritingPage() {
   const [locale, user] = await Promise.all([getLocale(), getCurrentUser()]);
   const isEn = locale === "en";
-  const usage = checkUsageLimit(user, "writing_eval", user?.id ?? "guest");
-  const store = readStore();
-  const userId = user?.id ?? "demo-free-001";
-  const submissions = store.writing_submissions.filter((s) => s.user_id === userId);
+  const [usage, submissions] = await Promise.all([
+    checkUsageLimit(user, "writing_eval", user?.id ?? "guest"),
+    getUserWritingSubmissions(user?.id ?? null),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-6">

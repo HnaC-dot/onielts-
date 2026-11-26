@@ -22,7 +22,16 @@ import {
   Volume2,
   Wand2,
 } from "lucide-react";
-import { readStore } from "@/lib/store";
+import {
+  getCourses,
+  getDailyExamState,
+  getDictationLessons,
+  getIeltsTests,
+  getLearnVideos,
+  getPronunciationSounds,
+  getSampleTestimonials,
+  getWritingExercises,
+} from "@/lib/db";
 import { DEFAULT_CONVERSATION_TOPICS } from "@/lib/seed-data";
 import { getVietnamDateString, formatDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -122,20 +131,38 @@ const LEARNING_TOOLS = [
 ];
 
 export default async function HomePage() {
-  const [t, locale] = await Promise.all([
+  const vnToday = getVietnamDateString();
+  const [
+    t,
+    locale,
+    publishedTests,
+    dailyState,
+    courses,
+    writingExercises,
+    pronunciationSounds,
+    dictationLessons,
+    learnVideos,
+    sampleTestimonials,
+  ] = await Promise.all([
     getTranslations("home"),
     getLocale(),
+    getIeltsTests(false),
+    getDailyExamState(vnToday, null),
+    getCourses(),
+    getWritingExercises(),
+    getPronunciationSounds(),
+    getDictationLessons(),
+    getLearnVideos(),
+    getSampleTestimonials(),
   ]);
-  const store = readStore();
   const isEn = locale === "en";
-  const vnToday = getVietnamDateString();
 
-  const publishedTests = store.ielts_tests.filter((item) => item.is_published);
   const latestTests = publishedTests.slice(0, 4);
-  const topDaily = [...store.daily_exam_attempts]
-    .filter((a) => a.is_completed)
-    .sort((a, b) => b.raw_score - a.raw_score || a.duration_seconds - b.duration_seconds)
-    .slice(0, 3);
+  const totalObjectiveQuestions = publishedTests.reduce(
+    (sum, item) => sum + item.sections.reduce((sAcc, sec) => sAcc + sec.questions.length, 0),
+    0
+  );
+  const topDaily = dailyState.leaderboard.slice(0, 3);
 
   return (
     <div className="pb-12">
@@ -170,21 +197,21 @@ export default async function HomePage() {
               </p>
             </div>
 
-            {/* Clean interactive summary card */}
+            {/* Honest, dynamically computed platform metrics */}
             <div className="lg:col-span-5">
               <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
                     <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      48.500+
+                      {publishedTests.length} {isEn ? "tests" : "đề thi"}
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {t("stats.learners")}
+                      {t("stats.tests")}
                     </p>
                   </div>
                   <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
                     <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                      2.400+
+                      {totalObjectiveQuestions} {isEn ? "Q" : "câu"}
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
                       {t("stats.questions")}
@@ -192,18 +219,18 @@ export default async function HomePage() {
                   </div>
                   <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
                     <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                      165.000+
+                      {LEARNING_TOOLS.length}
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {t("stats.aiChecks")}
+                      {t("stats.tools")}
                     </p>
                   </div>
                   <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
                     <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      +1.2 Band
+                      40 {isEn ? "Q/test" : "câu/đề"}
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {t("stats.bandGain")}
+                      {t("stats.fullFormat")}
                     </p>
                   </div>
                 </div>
@@ -230,20 +257,22 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* 2. TESTIMONIALS CAROUSEL */}
+      {/* 2. ILLUSTRATIVE STUDY JOURNEYS (CLEARLY LABELED EXAMPLES) */}
       <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
         <div className="mb-7">
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {t("testimonialsTitle")}
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+              {t("testimonialsTitle")}
+            </h2>
+            <Badge variant="secondary">
+              {isEn ? "Illustrative Examples" : "Dữ liệu ví dụ minh họa"}
+            </Badge>
+          </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             {t("testimonialsSubtitle")}
           </p>
         </div>
-        <TestimonialsCarousel
-          items={store.testimonials.filter((item) => item.is_published)}
-          locale={locale}
-        />
+        <TestimonialsCarousel items={sampleTestimonials} locale={locale} />
       </section>
 
       {/* 3. LATEST IELTS TESTS (Reading, Listening, Writing, Speaking) */}
@@ -367,22 +396,30 @@ export default async function HomePage() {
                   <span>{isEn ? "Score · Time" : "Điểm · Thời gian"}</span>
                 </div>
                 <div className="mt-3 space-y-2.5">
-                  {topDaily.map((entry, idx) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-center justify-between rounded-xl bg-white/10 px-3.5 py-2.5 text-sm"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-300/20 text-xs font-bold text-amber-200">
-                          #{idx + 1}
-                        </span>
-                        <span className="font-semibold">{entry.display_name}</span>
-                      </div>
-                      <span className="text-xs font-medium text-emerald-100">
-                        {entry.raw_score}/{entry.max_score} · {formatDuration(entry.duration_seconds)}
-                      </span>
+                  {topDaily.length === 0 ? (
+                    <div className="rounded-xl bg-white/10 px-4 py-4 text-xs text-emerald-100/90">
+                      {isEn
+                        ? "No submissions yet today. Take today's 15-minute sprint to claim the #1 spot!"
+                        : "Chưa có thí sinh nộp bài hôm nay. Hãy tham gia thử thách 15 phút để trở thành người dẫn đầu đầu tiên!"}
                     </div>
-                  ))}
+                  ) : (
+                    topDaily.map((entry, idx) => (
+                      <div
+                        key={entry.id}
+                        className="flex items-center justify-between rounded-xl bg-white/10 px-3.5 py-2.5 text-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-300/20 text-xs font-bold text-amber-200">
+                            #{idx + 1}
+                          </span>
+                          <span className="font-semibold">{entry.display_name}</span>
+                        </div>
+                        <span className="text-xs font-medium text-emerald-100">
+                          {entry.raw_score}/{entry.max_score} · {formatDuration(entry.duration_seconds)}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -439,33 +476,31 @@ export default async function HomePage() {
         viewAllHref="/courses"
         viewAllLabel={t("viewAll")}
       >
-        {store.courses
-          .filter((c) => c.is_published)
-          .map((course) => (
-            <Link
-              key={course.id}
-              href={`/courses/${course.slug}`}
-              className="min-w-[290px] max-w-[330px] shrink-0 snap-start"
-            >
-              <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
-                <div className="flex items-center justify-between">
-                  <Badge>Target {course.target_band}</Badge>
-                  <span className="text-xs text-slate-500">
-                    {course.lessons.length} {isEn ? "lessons" : "bài học"}
-                  </span>
-                </div>
-                <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
-                  {isEn ? course.title_en : course.title_vi}
-                </h3>
-                <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                  {isEn ? course.description_en : course.description_vi}
-                </p>
-                <div className="mt-4 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                  {course.level} · {course.duration_hours}h →
-                </div>
-              </Card>
-            </Link>
-          ))}
+        {courses.map((course) => (
+          <Link
+            key={course.id}
+            href={`/courses/${course.slug}`}
+            className="min-w-[290px] max-w-[330px] shrink-0 snap-start"
+          >
+            <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
+              <div className="flex items-center justify-between">
+                <Badge>Target {course.target_band}</Badge>
+                <span className="text-xs text-slate-500">
+                  {course.lessons.length} {isEn ? "lessons" : "bài học"}
+                </span>
+              </div>
+              <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                {isEn ? course.title_en : course.title_vi}
+              </h3>
+              <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                {isEn ? course.description_en : course.description_vi}
+              </p>
+              <div className="mt-4 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                {course.level} · {course.duration_hours}h →
+              </div>
+            </Card>
+          </Link>
+        ))}
       </HorizontalCarouselSection>
 
       {/* 6B. AI CONVERSATIONS CAROUSEL */}
@@ -514,7 +549,7 @@ export default async function HomePage() {
         viewAllHref="/writing/exercises"
         viewAllLabel={t("viewAll")}
       >
-        {store.writing_exercises.map((ex) => (
+        {writingExercises.map((ex) => (
           <Link
             key={ex.id}
             href={`/writing/exercises?slug=${ex.slug}`}
@@ -543,7 +578,7 @@ export default async function HomePage() {
         viewAllHref="/pronunciation"
         viewAllLabel={t("viewAll")}
       >
-        {store.pronunciation_sounds.map((sound) => (
+        {pronunciationSounds.map((sound) => (
           <Link
             key={sound.slug}
             href={`/pronunciation/${sound.slug}`}
@@ -571,7 +606,7 @@ export default async function HomePage() {
         viewAllHref="/dictation"
         viewAllLabel={t("viewAll")}
       >
-        {store.dictation_lessons.map((lesson) => (
+        {dictationLessons.map((lesson) => (
           <Link
             key={lesson.id}
             href={`/dictation?lesson=${lesson.slug}`}
@@ -600,7 +635,7 @@ export default async function HomePage() {
         viewAllHref="/videos"
         viewAllLabel={t("viewAll")}
       >
-        {store.learn_videos.map((video) => (
+        {learnVideos.map((video) => (
           <Link
             key={video.id}
             href={`/videos/${video.slug}`}

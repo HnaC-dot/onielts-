@@ -1,6 +1,6 @@
 import React from "react";
 import { getLocale } from "next-intl/server";
-import { readStore } from "@/lib/store";
+import { getWritingExercises } from "@/lib/db";
 import { WritingExercisesClient } from "@/components/writing-exercises-client";
 
 export const metadata = {
@@ -14,9 +14,12 @@ export default async function WritingExercisesPage({
 }: {
   searchParams: Promise<{ slug?: string }>;
 }) {
-  const [locale, params] = await Promise.all([getLocale(), searchParams]);
+  const [locale, params, exercises] = await Promise.all([
+    getLocale(),
+    searchParams,
+    getWritingExercises(),
+  ]);
   const isEn = locale === "en";
-  const store = readStore();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 space-y-6">
@@ -31,10 +34,7 @@ export default async function WritingExercisesPage({
         </p>
       </div>
 
-      <WritingExercisesClient
-        exercises={store.writing_exercises}
-        initialSlug={params.slug}
-      />
+      <WritingExercisesClient exercises={exercises} initialSlug={params.slug} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { updateStore } from "@/lib/store";
+import { createContactMessage } from "@/lib/db";
 import { verifyBotProtection } from "@/lib/bot-protection";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
@@ -38,18 +38,11 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const item = updateStore((store) => {
-      const msg = {
-        id: `msg-${Date.now()}`,
-        name: parsed.data.name,
-        email: parsed.data.email,
-        subject: parsed.data.subject,
-        message: parsed.data.message,
-        status: "new" as const,
-        created_at: new Date().toISOString(),
-      };
-      store.contact_messages.unshift(msg);
-      return msg;
+    const item = await createContactMessage({
+      name: parsed.data.name,
+      email: parsed.data.email,
+      subject: parsed.data.subject,
+      message: parsed.data.message,
     });
     return NextResponse.json({ ok: true, id: item.id }, { status: 201 });
   } catch {

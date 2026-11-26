@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale } from "next-intl/server";
-import { readStore } from "@/lib/store";
+import { getPronunciationSounds } from "@/lib/db";
 import { PronunciationPracticeClient } from "@/components/pronunciation-practice-client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const sound = readStore().pronunciation_sounds.find((s) => s.slug === slug);
+  const sounds = await getPronunciationSounds();
+  const sound = sounds.find((s) => s.slug === slug);
   if (!sound) return {};
   return {
     title: `Cách phát âm ${sound.symbol} (${sound.title_vi})`,
@@ -27,9 +28,12 @@ export default async function PronunciationDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [locale, store] = await Promise.all([getLocale(), Promise.resolve(readStore())]);
+  const [locale, sounds] = await Promise.all([
+    getLocale(),
+    getPronunciationSounds(),
+  ]);
   const isEn = locale === "en";
-  const sound = store.pronunciation_sounds.find((s) => s.slug === slug);
+  const sound = sounds.find((s) => s.slug === slug);
   if (!sound) notFound();
 
   return (

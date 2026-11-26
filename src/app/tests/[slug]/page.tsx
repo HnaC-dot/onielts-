@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, Mic, PenTool } from "lucide-react";
-import { readStore } from "@/lib/store";
+import { getIeltsTestBySlug } from "@/lib/db";
 import { TestEngineClient } from "@/components/test-engine-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const test = readStore().ielts_tests.find((t) => t.slug === slug);
+  const test = await getIeltsTestBySlug(slug);
   if (!test) return {};
   return {
     title: test.title_vi,
@@ -29,9 +29,8 @@ export default async function TestDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [locale, store] = await Promise.all([getLocale(), Promise.resolve(readStore())]);
+  const [locale, test] = await Promise.all([getLocale(), getIeltsTestBySlug(slug)]);
   const isEn = locale === "en";
-  const test = store.ielts_tests.find((t) => t.slug === slug);
   if (!test) notFound();
 
   if (test.skill === "reading" || test.skill === "listening") {

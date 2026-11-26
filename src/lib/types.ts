@@ -138,6 +138,7 @@ export interface TestSection {
   title: string;
   instruction?: string;
   passage?: string;
+  audioUrl?: string;
   audioScript?: string;
   diagramLabel?: string;
   diagramSvgType?: "campus_map" | "water_cycle" | "museum_floor";

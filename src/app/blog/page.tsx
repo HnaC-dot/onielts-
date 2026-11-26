@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, Clock } from "lucide-react";
-import { readStore } from "@/lib/store";
+import { getBlogPosts } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -13,9 +13,8 @@ export const metadata = {
 };
 
 export default async function BlogIndexPage() {
-  const [locale, store] = await Promise.all([getLocale(), Promise.resolve(readStore())]);
+  const [locale, posts] = await Promise.all([getLocale(), getBlogPosts(false)]);
   const isEn = locale === "en";
-  const posts = store.blog_posts.filter((p) => p.is_published);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-8">

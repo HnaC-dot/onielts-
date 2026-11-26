@@ -52,13 +52,13 @@
     "ctaPrimary": "Try Premium",
     "ctaSecondary": "Start a Free Test",
     "stats": {
-      "learners": "Active learners",
-      "questions": "Original practice questions",
-      "aiChecks": "AI evaluations completed",
-      "bandGain": "Average gain in 8 weeks"
+      "tests": "Original practice tests (4 skills)",
+      "questions": "Auto-graded Reading & Listening questions",
+      "tools": "AI tools & study utilities",
+      "fullFormat": "Full IELTS test format with real MP3 audio"
     },
-    "testimonialsTitle": "Loved by Vietnamese IELTS learners",
-    "testimonialsSubtitle": "Real milestones achieved with disciplined daily practice and AI guidance",
+    "testimonialsTitle": "Illustrative Study Journeys (Examples)",
+    "testimonialsSubtitle": "Sample usage scenarios showing how learners combine Ôn IELTS tools (illustrative examples, not verified customer reviews)",
     "latestTestsTitle": "Latest IELTS Practice Tests",
     "latestTestsSubtitle": "Authentic computer-delivered interface with instant grading and question-type analytics",
     "viewAll": "View all",

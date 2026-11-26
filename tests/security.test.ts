@@ -56,4 +56,38 @@ describe("Engineering Security & Isolation Guardrails", () => {
     expect(aiSource).toContain("UNTRUSTED LEARNER SUBMISSION DATA ONLY");
     expect(aiSource).toContain("[redacted_tag]");
   });
+
+  it("contains zero hardcoded PayOS fallback checksum secrets", () => {
+    const payosSource = fs.readFileSync(
+      path.resolve(process.cwd(), "src/lib/payments/payos.ts"),
+      "utf-8"
+    );
+    expect(payosSource).not.toContain("onielts_sandbox_dev_checksum_key");
+    expect(payosSource).not.toContain("SANDBOX_FALLBACK_CHECKSUM_KEY");
+  });
+
+  it("blocks demo_switch and demo OTP in production and when Supabase is configured", () => {
+    const authSource = fs.readFileSync(
+      path.resolve(process.cwd(), "src/lib/auth.ts"),
+      "utf-8"
+    );
+    const sessionRouteSource = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/api/auth/session/route.ts"),
+      "utf-8"
+    );
+    expect(authSource).toContain('if (process.env.NODE_ENV === "production") return false;');
+    expect(authSource).toContain("if (isSupabaseConfigured()) return false;");
+    expect(sessionRouteSource).toContain("if (!demoAllowed)");
+  });
+
+  it("never exposes unverified fake marketing numbers on the homepage", () => {
+    const homeSource = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/page.tsx"),
+      "utf-8"
+    );
+    expect(homeSource).not.toContain("48.500+");
+    expect(homeSource).not.toContain("2.400+");
+    expect(homeSource).not.toContain("165.000+");
+    expect(homeSource).not.toContain("+1.2 Band");
+  });
 });
