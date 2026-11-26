@@ -13,6 +13,9 @@
   --primary-hover: #047857;
   --primary-soft: #ecfdf5;
   --primary-foreground: #ffffff;
+  --secondary: #0284c7;
+  --cms-radius: 16px;
+  --cms-font-sans: var(--font-be-vietnam-pro), ui-sans-serif, system-ui, sans-serif;
 }
 
 .dark {
@@ -26,6 +29,7 @@
   --primary-hover: #059669;
   --primary-soft: #064e3b;
   --primary-foreground: #022c22;
+  --secondary: #0284c7;
 }
 
 @theme inline {
@@ -39,7 +43,8 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-foreground: var(--primary-foreground);
-  --font-sans: var(--font-be-vietnam-pro), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --color-secondary: var(--secondary);
+  --font-sans: var(--cms-font-sans), var(--font-be-vietnam-pro), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
 html {
@@ -49,7 +54,7 @@ html {
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--font-be-vietnam-pro), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--cms-font-sans), var(--font-be-vietnam-pro), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

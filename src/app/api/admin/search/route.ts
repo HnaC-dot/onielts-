@@ -47,6 +47,7 @@ const ADMIN_QUICK_LINKS: Array<{
   { title: "Hộp thư Liên hệ & Đề xuất tính năng", keywords: "inbox hop thu contact lien he feature request de xuat", href: "/admin/inbox" },
   { title: "Trang tĩnh (/about, /legal/*) & FAQs", keywords: "pages trang tinh about legal privacy terms faq", href: "/admin/pages" },
   { title: "Cài đặt chung Website (Logo, Banner, MXH)", keywords: "settings cai dat chung logo hotline email thong bao", href: "/admin/settings", adminOnly: true },
+  { title: "Giao diện & Trang chủ (Theme, Menu, Footer, Bảo trì)", keywords: "appearance giao dien trang chu theme font logo favicon menu sidebar header footer banner popup chat zalo messenger cookie 404 bao tri maintenance ui text", href: "/admin/appearance", adminOnly: true },
   { title: "SEO toàn trang, Sitemap, Robots & Redirect 301", keywords: "seo redirect 301 302 sitemap robots ga4 google analytics search console og meta", href: "/admin/seo", adminOnly: true },
   { title: "Quản trị nhanh (Legacy 6 Tab)", keywords: "legacy tab ai band pricing tests blog users", href: "/admin/legacy" },
 ];

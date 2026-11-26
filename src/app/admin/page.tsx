@@ -18,6 +18,7 @@ import {
   Image as ImageIcon,
   Inbox,
   MessageSquare,
+  Palette,
   PenTool,
   Settings,
   Users,
@@ -85,6 +86,14 @@ const ROADMAP_MODULES = [
     href: "/admin/seo",
     icon: Globe,
   },
+  {
+    phase: "UI",
+    status: "active" as const,
+    title: "Giao diện & Trang chủ (CMS Builder)",
+    desc: "Kéo-thả khối Trang chủ, màu/font/bo góc CSS variables, Logo sáng/tối, sửa tên Menu VI/EN, Footer, Banner/Popup hẹn giờ, Chat nổi, 404, Bảo trì, Văn bản VI/EN & Lịch sử phiên bản.",
+    href: "/admin/appearance",
+    icon: Palette,
+  },
 ];
 
 export default async function AdminDashboardPage() {
@@ -112,7 +121,7 @@ export default async function AdminDashboardPage() {
           </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             {isAdmin
-              ? "Toàn quyền quản trị đề thi, nội dung học tập, người dùng, doanh thu và nhật ký hệ thống."
+              ? "Toàn quyền quản trị đề thi, nội dung học tập, giao diện trang chủ, người dùng, doanh thu và nhật ký hệ thống."
               : "Quyền Biên tập viên (Editor): quản lý nội dung đề thi, blog và tài liệu học tập (không đổi cài đặt hệ thống hay xóa user)."}
           </p>
         </div>
@@ -136,6 +145,14 @@ export default async function AdminDashboardPage() {
               Viết bài Blog
             </Button>
           </Link>
+          {isAdmin && (
+            <Link href="/admin/appearance">
+              <Button size="sm" variant="outline">
+                <Palette className="h-4 w-4" />
+                Giao diện & Trang chủ
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 

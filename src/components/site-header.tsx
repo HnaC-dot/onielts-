@@ -7,42 +7,40 @@ import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import {
   AlertTriangle,
-  BookOpen,
-  Calculator,
   ChevronDown,
   Crown,
-  Flame,
   Gift,
   Globe,
-  Headphones,
   Layers,
   LayoutDashboard,
   LogOut,
   Menu,
-  MessageSquare,
-  Mic,
   Moon,
-  PenTool,
   Search,
   Shield,
-  Sparkles,
   Sun,
-  Trophy,
   User,
-  Video,
-  Volume2,
-  Wrench,
   X,
 } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
+import { DynamicMenuIcon } from "./admin/icon-registry";
 import { Button } from "./ui/button";
 import { openAddFlashcardModal } from "./flashcard-quick-add";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  DEFAULT_BRANDING_CONFIG,
+  DEFAULT_PUBLIC_HEADER_MENU,
+  isSafeNavHref,
+  type BrandingConfig,
+  type PublicHeaderMenuItem,
+} from "@/lib/appearance-shared";
 import type { AuthResolutionStatus, SessionUser } from "@/lib/types";
 
 interface SiteHeaderProps {
   user: SessionUser | null;
   authStatus?: AuthResolutionStatus;
+  branding?: BrandingConfig;
+  headerMenu?: PublicHeaderMenuItem[];
 }
 
 interface SearchResult {
@@ -51,14 +49,25 @@ interface SearchResult {
   category: string;
 }
 
-export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
+function isExternalUrl(href: string): boolean {
+  return /^https?:\/\//i.test(href.trim());
+}
+
+export function SiteHeader({
+  user,
+  authStatus,
+  branding = DEFAULT_BRANDING_CONFIG,
+  headerMenu = DEFAULT_PUBLIC_HEADER_MENU,
+}: SiteHeaderProps) {
   const t = useTranslations("nav");
   const locale = useLocale();
+  const isEn = locale === "en";
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  const [openMenu, setOpenMenu] = useState<"ielts" | "writing" | "tools" | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [expandedMobileId, setExpandedMobileId] = useState<string | null>(null);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -66,6 +75,9 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
   const headerRef = useRef<HTMLDivElement>(null);
+
+  const visibleNavItems = (headerMenu.length > 0 ? headerMenu : DEFAULT_PUBLIC_HEADER_MENU)
+    .filter((item) => item.visible && isSafeNavHref(item.href));
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
@@ -75,7 +87,7 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (headerRef.current && !headerRef.current.contains(e.target as Node)) {
-        setOpenMenu(null);
+        setOpenMenuId(null);
         setAvatarOpen(false);
       }
     };
@@ -85,7 +97,7 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
         setSearchOpen((v) => !v);
       }
       if (e.key === "Escape") {
-        setOpenMenu(null);
+        setOpenMenuId(null);
         setAvatarOpen(false);
         setSearchOpen(false);
       }
@@ -143,7 +155,7 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
   };
 
   const navLinkCls =
-    "inline-flex items-center gap-0.5 rounded-lg px-2 py-1.5 text-[12.5px] font-medium text-slate-700 transition hover:bg-slate-100 hover:text-emerald-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-emerald-400 whitespace-nowrap";
+    "inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12.5px] font-medium text-slate-700 transition hover:bg-slate-100 hover:text-emerald-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-emerald-400 whitespace-nowrap";
 
   return (
     <header
@@ -152,260 +164,135 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
     >
       <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-2 px-4 sm:px-6">
         <div className="flex items-center gap-2 min-w-0">
-          <Link href="/" className="shrink-0" aria-label="Ôn IELTS">
-            <BrandLogo />
+          <Link
+            href="/"
+            className="shrink-0"
+            aria-label={branding.siteName || "Ôn IELTS"}
+          >
+            <BrandLogo branding={branding} />
           </Link>
 
-          {/* Desktop 9-item Mega Navigation */}
+          {/* Dynamic Desktop Navigation (CMS-driven) */}
           <nav className="hidden xl:flex items-center gap-0" aria-label="Main navigation">
-            {/* 1. IELTS mega-menu */}
-            <div className="relative">
-              <button
-                type="button"
-                id="nav-ielts-trigger"
-                onClick={() => setOpenMenu(openMenu === "ielts" ? null : "ielts")}
-                className={navLinkCls + " cursor-pointer"}
-              >
-                {t("ielts")}
-                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-              </button>
-              {openMenu === "ielts" && (
-                <div className="absolute left-0 top-full mt-2 w-[540px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-800 dark:bg-slate-900">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Link
-                      href="/tests?skill=reading"
-                      onClick={() => setOpenMenu(null)}
-                      className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/70"
-                    >
-                      <BookOpen className="mt-0.5 h-5 w-5 text-emerald-600 shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {t("menu.readingTests")}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {t("menu.readingDesc")}
-                        </p>
-                      </div>
-                    </Link>
-                    <Link
-                      href="/tests?skill=listening"
-                      onClick={() => setOpenMenu(null)}
-                      className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/70"
-                    >
-                      <Headphones className="mt-0.5 h-5 w-5 text-emerald-600 shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {t("menu.listeningTests")}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {t("menu.listeningDesc")}
-                        </p>
-                      </div>
-                    </Link>
-                    <Link
-                      href="/writing"
-                      onClick={() => setOpenMenu(null)}
-                      className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/70"
-                    >
-                      <PenTool className="mt-0.5 h-5 w-5 text-emerald-600 shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {t("menu.writingTests")}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {t("menu.writingDesc")}
-                        </p>
-                      </div>
-                    </Link>
-                    <Link
-                      href="/speaking"
-                      onClick={() => setOpenMenu(null)}
-                      className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/70"
-                    >
-                      <Mic className="mt-0.5 h-5 w-5 text-emerald-600 shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {t("menu.speakingTests")}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {t("menu.speakingDesc")}
-                        </p>
-                      </div>
-                    </Link>
-                    <Link
-                      href="/daily-exam"
-                      onClick={() => setOpenMenu(null)}
-                      className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/70"
-                    >
-                      <Flame className="mt-0.5 h-5 w-5 text-amber-500 shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {t("menu.dailyExams")}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {t("menu.dailyExamsDesc")}
-                        </p>
-                      </div>
-                    </Link>
-                    <Link
-                      href="/leaderboard"
-                      onClick={() => setOpenMenu(null)}
-                      className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/70"
-                    >
-                      <Trophy className="mt-0.5 h-5 w-5 text-amber-500 shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {t("menu.leaderboard")}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {t("menu.leaderboardDesc")}
-                        </p>
-                      </div>
-                    </Link>
-                  </div>
-                  <div className="mt-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
-                    <Link
-                      href="/band-calculator"
-                      onClick={() => setOpenMenu(null)}
-                      className="flex items-center justify-between rounded-xl bg-emerald-50/70 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100/80 dark:bg-emerald-950/50 dark:text-emerald-300"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <Calculator className="h-4 w-4" />
-                        {t("menu.bandCalculator")}
-                      </span>
-                      <span className="text-xs font-normal opacity-80">6.25 → 6.5</span>
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
+            {visibleNavItems.map((item, idx) => {
+              const label = isEn ? item.labelEn || item.labelVi : item.labelVi;
+              const visibleChildren = (item.children ?? []).filter(
+                (c) => c.visible && isSafeNavHref(c.href)
+              );
 
-            {/* 2. Courses */}
-            <Link href="/courses" className={navLinkCls}>
-              {t("courses")}
-            </Link>
-
-            {/* 3. AI Conversations */}
-            <Link href="/conversations" className={navLinkCls}>
-              {t("conversations")}
-            </Link>
-
-            {/* 4. Writing mega-menu */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setOpenMenu(openMenu === "writing" ? null : "writing")}
-                className={navLinkCls + " cursor-pointer"}
-              >
-                {t("writing")}
-                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-              </button>
-              {openMenu === "writing" && (
-                <div className="absolute left-0 top-full mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900">
-                  <Link
-                    href="/writing"
-                    onClick={() => setOpenMenu(null)}
-                    className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    {t("menu.writingChecker")}
+              if (visibleChildren.length === 0) {
+                if (isExternalUrl(item.href)) {
+                  return (
+                    <a
+                      key={item.id}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={navLinkCls}
+                    >
+                      {label}
+                    </a>
+                  );
+                }
+                return (
+                  <Link key={item.id} href={item.href} className={navLinkCls}>
+                    {label}
                   </Link>
-                  <Link
-                    href="/writing/generator"
-                    onClick={() => setOpenMenu(null)}
-                    className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                );
+              }
+
+              const isOpen = openMenuId === item.id;
+              const isWide = visibleChildren.length >= 5;
+              const alignRight = idx >= visibleNavItems.length - 2;
+              const triggerId =
+                item.id === "hdr-ielts"
+                  ? "nav-ielts-trigger"
+                  : item.id === "hdr-tools"
+                  ? "nav-tools-trigger"
+                  : undefined;
+
+              return (
+                <div key={item.id} className="relative">
+                  <button
+                    type="button"
+                    id={triggerId}
+                    onClick={() => setOpenMenuId(isOpen ? null : item.id)}
+                    className={navLinkCls + " cursor-pointer"}
                   >
-                    {t("menu.writingGenerator")}
-                  </Link>
-                  <Link
-                    href="/writing/exercises"
-                    onClick={() => setOpenMenu(null)}
-                    className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    {t("menu.writingExercises")}
-                  </Link>
-                </div>
-              )}
-            </div>
+                    {label}
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 opacity-70 transition-transform ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
 
-            {/* 5. Pronunciation */}
-            <Link href="/pronunciation" className={navLinkCls}>
-              {t("pronunciation")}
-            </Link>
-
-            {/* 6. Dictation/Shadowing */}
-            <Link href="/dictation" className={navLinkCls}>
-              {t("dictation")}
-            </Link>
-
-            {/* 7. Flashcards */}
-            <Link href="/flashcards" className={navLinkCls}>
-              {t("flashcards")}
-            </Link>
-
-            {/* 8. Videos */}
-            <Link href="/videos" className={navLinkCls}>
-              {t("videos")}
-            </Link>
-
-            {/* 9. Tools mega-menu */}
-            <div className="relative">
-              <button
-                type="button"
-                id="nav-tools-trigger"
-                onClick={() => setOpenMenu(openMenu === "tools" ? null : "tools")}
-                className={navLinkCls + " cursor-pointer"}
-              >
-                {t("tools")}
-                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-              </button>
-              {openMenu === "tools" && (
-                <div className="absolute right-0 top-full mt-2 w-[420px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-800 dark:bg-slate-900">
-                  <div className="grid grid-cols-2 gap-1.5 text-sm">
-                    <Link href="/tools/paraphraser" onClick={() => setOpenMenu(null)} className="rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                      Paraphraser
-                    </Link>
-                    <Link href="/tools/summarizer" onClick={() => setOpenMenu(null)} className="rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                      Summarizer
-                    </Link>
-                    <Link href="/tools/translator" onClick={() => setOpenMenu(null)} className="rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                      Translator (EN⇄VI)
-                    </Link>
-                    <Link href="/tools/grammar-checker" onClick={() => setOpenMenu(null)} className="rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                      Grammar Checker
-                    </Link>
-                    <Link href="/tools/grammar-corrector" onClick={() => setOpenMenu(null)} className="rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                      Grammar Corrector
-                    </Link>
-                    <Link href="/tools/text-improver" onClick={() => setOpenMenu(null)} className="rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                      Text Improver
-                    </Link>
-                    <Link href="/tools/complex-sentence-explainer" onClick={() => setOpenMenu(null)} className="rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                      Complex Sentence
-                    </Link>
-                    <Link href="/tools/text-to-speech" onClick={() => setOpenMenu(null)} className="rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                      Text-to-Speech
-                    </Link>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 dark:border-slate-800">
-                    <Link
-                      href="/mentor"
-                      onClick={() => setOpenMenu(null)}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+                  {isOpen && (
+                    <div
+                      className={`absolute top-full mt-2 rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900 ${
+                        alignRight ? "right-0" : "left-0"
+                      } ${isWide ? "w-[480px] p-4" : "w-64 p-2"}`}
                     >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      {t("menu.mentorAi")}
-                    </Link>
-                    <Link
-                      href="/tools"
-                      onClick={() => setOpenMenu(null)}
-                      className="text-xs font-medium text-slate-600 hover:text-emerald-700 dark:text-slate-400"
-                    >
-                      {t("menu.allTools")} →
-                    </Link>
-                  </div>
+                      <div className={isWide ? "grid grid-cols-2 gap-1.5" : "space-y-0.5"}>
+                        {visibleChildren.map((child) => {
+                          const cLabel = isEn
+                            ? child.labelEn || child.labelVi
+                            : child.labelVi;
+                          const cDesc = isEn
+                            ? child.descEn || child.descVi
+                            : child.descVi;
+                          const childInner = (
+                            <>
+                              {child.icon && (
+                                <DynamicMenuIcon
+                                  name={child.icon}
+                                  className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                  {cLabel}
+                                </p>
+                                {cDesc && (
+                                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                    {cDesc}
+                                  </p>
+                                )}
+                              </div>
+                            </>
+                          );
+
+                          if (isExternalUrl(child.href)) {
+                            return (
+                              <a
+                                key={child.id}
+                                href={child.href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => setOpenMenuId(null)}
+                                className="flex items-start gap-2.5 rounded-xl px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                              >
+                                {childInner}
+                              </a>
+                            );
+                          }
+                          return (
+                            <Link
+                              key={child.id}
+                              href={child.href}
+                              onClick={() => setOpenMenuId(null)}
+                              className="flex items-start gap-2.5 rounded-xl px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                            >
+                              {childInner}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })}
           </nav>
         </div>
 
@@ -581,61 +468,129 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
         </div>
       </div>
 
-      {/* Mobile Navigation Drawer */}
+      {/* Dynamic Mobile Navigation Drawer */}
       {mobileOpen && (
-        <div className="border-t border-slate-200 bg-white px-4 py-4 xl:hidden dark:border-slate-800 dark:bg-slate-950">
+        <div className="max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 py-4 xl:hidden dark:border-slate-800 dark:bg-slate-950">
           <div className="grid grid-cols-2 gap-2 text-sm font-medium">
-            <Link href="/tests" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <BookOpen className="h-4 w-4 text-emerald-600" /> {t("ielts")}
-            </Link>
-            <Link href="/courses" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <Layers className="h-4 w-4 text-emerald-600" /> {t("courses")}
-            </Link>
-            <Link href="/conversations" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <MessageSquare className="h-4 w-4 text-emerald-600" /> {t("conversations")}
-            </Link>
-            <Link href="/writing" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <PenTool className="h-4 w-4 text-emerald-600" /> {t("writing")}
-            </Link>
-            <Link href="/pronunciation" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <Volume2 className="h-4 w-4 text-emerald-600" /> {t("pronunciation")}
-            </Link>
-            <Link href="/dictation" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <Headphones className="h-4 w-4 text-emerald-600" /> {t("dictation")}
-            </Link>
-            <Link href="/flashcards" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <Layers className="h-4 w-4 text-emerald-600" /> {t("flashcards")}
-            </Link>
-            <Link href="/videos" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <Video className="h-4 w-4 text-emerald-600" /> {t("videos")}
-            </Link>
-            <Link href="/tools" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <Wrench className="h-4 w-4 text-emerald-600" /> {t("tools")}
-            </Link>
-            <Link href="/band-calculator" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-              <Calculator className="h-4 w-4 text-emerald-600" /> Band Calc
-            </Link>
+            {visibleNavItems.map((item) => {
+              const label = isEn ? item.labelEn || item.labelVi : item.labelVi;
+              const visibleChildren = (item.children ?? []).filter(
+                (c) => c.visible && isSafeNavHref(c.href)
+              );
+              const isExpanded = expandedMobileId === item.id;
+
+              if (visibleChildren.length > 0) {
+                return (
+                  <div
+                    key={item.id}
+                    className="col-span-2 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-900"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <Link
+                        href={item.href}
+                        onClick={() => setMobileOpen(false)}
+                        className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100"
+                      >
+                        <DynamicMenuIcon
+                          name={item.icon}
+                          className="h-4 w-4 text-emerald-600 shrink-0"
+                        />
+                        <span>{label}</span>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedMobileId(isExpanded ? null : item.id)
+                        }
+                        aria-label={label}
+                        className="rounded-lg p-1 text-slate-500 hover:bg-slate-200/70 dark:hover:bg-slate-800 cursor-pointer"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${
+                            isExpanded ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-slate-200/70 pt-2 dark:border-slate-800">
+                        {visibleChildren.map((child) => (
+                          <Link
+                            key={child.id}
+                            href={child.href}
+                            onClick={() => setMobileOpen(false)}
+                            className="rounded-lg bg-white px-2.5 py-2 text-xs font-medium text-slate-700 hover:text-emerald-700 dark:bg-slate-950 dark:text-slate-300"
+                          >
+                            {isEn ? child.labelEn || child.labelVi : child.labelVi}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              if (isExternalUrl(item.href)) {
+                return (
+                  <a
+                    key={item.id}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900"
+                  >
+                    <DynamicMenuIcon
+                      name={item.icon}
+                      className="h-4 w-4 text-emerald-600 shrink-0"
+                    />
+                    <span className="truncate">{label}</span>
+                  </a>
+                );
+              }
+
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900"
+                >
+                  <DynamicMenuIcon
+                    name={item.icon}
+                    className="h-4 w-4 text-emerald-600 shrink-0"
+                  />
+                  <span className="truncate">{label}</span>
+                </Link>
+              );
+            })}
           </div>
+
           {!user && authStatus === "profile_error" ? (
             <div className="mt-3">
               <Link href="/profile" onClick={() => setMobileOpen(false)} className="block">
-                <Button variant="outline" className="w-full border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-300">
+                <Button
+                  variant="outline"
+                  className="w-full border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-300"
+                >
                   <AlertTriangle className="h-4 w-4" />
                   {locale === "en" ? "Profile error — Retry" : "Lỗi tải hồ sơ — Thử lại"}
                 </Button>
               </Link>
             </div>
-          ) : !user && (
-            <div className="mt-3 flex gap-2">
-              <Link href="/auth" onClick={() => setMobileOpen(false)} className="flex-1">
-                <Button variant="outline" className="w-full">
-                  {t("login")}
-                </Button>
-              </Link>
-              <Link href="/pricing" onClick={() => setMobileOpen(false)} className="flex-1">
-                <Button className="w-full">{t("tryPremium")}</Button>
-              </Link>
-            </div>
+          ) : (
+            !user && (
+              <div className="mt-3 flex gap-2">
+                <Link href="/auth" onClick={() => setMobileOpen(false)} className="flex-1">
+                  <Button variant="outline" className="w-full">
+                    {t("login")}
+                  </Button>
+                </Link>
+                <Link href="/pricing" onClick={() => setMobileOpen(false)} className="flex-1">
+                  <Button className="w-full">{t("tryPremium")}</Button>
+                </Link>
+              </div>
+            )
           )}
         </div>
       )}
@@ -671,7 +626,9 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
             <div className="mt-3 max-h-80 overflow-y-auto space-y-1">
               {searchResults.length === 0 ? (
                 <p className="py-6 text-center text-sm text-slate-500">
-                  {locale === "vi" ? "Không tìm thấy kết quả phù hợp." : "No matching results found."}
+                  {locale === "vi"
+                    ? "Không tìm thấy kết quả phù hợp."
+                    : "No matching results found."}
                 </p>
               ) : (
                 searchResults.map((item) => (

@@ -10,6 +10,7 @@ import {
 import { getLocale } from "next-intl/server";
 import { getAuthState } from "@/lib/auth";
 import { isStaffRole } from "@/lib/admin-auth";
+import { getEffectiveAppearance } from "@/lib/cms-appearance";
 import {
   isServiceRoleConfigured,
   isSupabaseConfigured,
@@ -237,9 +238,20 @@ export default async function AdminLayout({
     );
   }
 
+  const { config: appearance } = await getEffectiveAppearance(
+    user.role === "admin"
+  );
+
   return (
     <ToastProvider>
-      <AdminShell user={user}>{children}</AdminShell>
+      <AdminShell
+        user={user}
+        adminMenu={appearance.menus.adminSidebar}
+        locale={locale}
+        siteName={appearance.branding.siteName}
+      >
+        {children}
+      </AdminShell>
     </ToastProvider>
   );
 }

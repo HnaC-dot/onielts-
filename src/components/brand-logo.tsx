@@ -1,12 +1,63 @@
+/* eslint-disable @next/next/no-img-element */
 import React from "react";
 import { cn } from "@/lib/utils";
+import type { BrandingConfig } from "@/lib/appearance-shared";
 
 interface BrandLogoProps {
   className?: string;
   compact?: boolean;
+  branding?: Pick<BrandingConfig, "siteName" | "logoLightUrl" | "logoDarkUrl">;
 }
 
-export function BrandLogo({ className, compact = false }: BrandLogoProps) {
+function renderStyledSiteName(siteName: string) {
+  const trimmed = siteName.trim() || "Ôn IELTS";
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 2) {
+    const first = parts[0];
+    const rest = parts.slice(1).join(" ");
+    return (
+      <>
+        {first}{" "}
+        <span className="text-emerald-600 dark:text-emerald-400">{rest}</span>
+      </>
+    );
+  }
+  return trimmed;
+}
+
+export function BrandLogo({
+  className,
+  compact = false,
+  branding,
+}: BrandLogoProps) {
+  const siteName = branding?.siteName?.trim() || "Ôn IELTS";
+  const lightUrl = branding?.logoLightUrl?.trim() || "";
+  const darkUrl = branding?.logoDarkUrl?.trim() || "";
+
+  if (lightUrl || darkUrl) {
+    const resolvedLight = lightUrl || darkUrl;
+    const resolvedDark = darkUrl || lightUrl;
+    return (
+      <span className={cn("inline-flex items-center gap-2.5 select-none", className)}>
+        <img
+          src={resolvedLight}
+          alt={siteName}
+          className={cn(
+            "h-8 w-auto max-w-[160px] object-contain",
+            darkUrl && lightUrl ? "dark:hidden" : ""
+          )}
+        />
+        {darkUrl && lightUrl && (
+          <img
+            src={resolvedDark}
+            alt={siteName}
+            className="hidden h-8 w-auto max-w-[160px] object-contain dark:block"
+          />
+        )}
+      </span>
+    );
+  }
+
   return (
     <span className={cn("inline-flex items-center gap-2.5 select-none", className)}>
       <svg
@@ -18,7 +69,7 @@ export function BrandLogo({ className, compact = false }: BrandLogoProps) {
         aria-hidden="true"
         className="shrink-0"
       >
-        <rect width="64" height="64" rx="16" fill="#059669" />
+        <rect width="64" height="64" rx="16" fill="var(--primary, #059669)" />
         <path
           d="M16 22C16 19.7909 17.7909 18 20 18H30C32.2091 18 34 19.7909 34 22V46C34 44.3431 32.6569 43 31 43H18C16.8954 43 16 42.1046 16 41V22Z"
           fill="#FFFFFF"
@@ -39,7 +90,7 @@ export function BrandLogo({ className, compact = false }: BrandLogoProps) {
       {!compact && (
         <span className="flex flex-col leading-none">
           <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-            Ôn <span className="text-emerald-600 dark:text-emerald-400">IELTS</span>
+            {renderStyledSiteName(siteName)}
           </span>
           <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
             onielts.vn

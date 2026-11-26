@@ -36,6 +36,7 @@ const ENTITY_FILTERS = [
   { value: "static_page", label: "Trang tĩnh & Pháp lý" },
   { value: "faq", label: "Câu hỏi FAQ" },
   { value: "site_settings", label: "Cài đặt chung / SEO / Referral" },
+  { value: "appearance", label: "Giao diện & Trang chủ" },
   { value: "seo_redirect", label: "Redirect 301 / 302" },
 ];
 

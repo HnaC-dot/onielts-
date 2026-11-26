@@ -4,48 +4,23 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity,
-  BookOpen,
-  Calculator,
-  CalendarDays,
-  CreditCard,
+  ChevronRight,
   ExternalLink,
-  FileCode2,
-  FileText,
-  Globe,
-  GraduationCap,
-  Headphones,
-  Image as ImageIcon,
-  Inbox,
-  LayoutDashboard,
   Lock,
   Menu,
-  MessageSquare,
-  PenTool,
   Search,
-  Settings,
   Shield,
-  SlidersHorizontal,
-  Users,
-  Video,
-  Volume2,
   X,
 } from "lucide-react";
 import type { SessionUser } from "@/lib/types";
+import {
+  DEFAULT_ADMIN_SIDEBAR_MENU,
+  isSafeNavHref,
+  resolveAdminRouteBreadcrumb,
+  type AdminMenuGroup,
+} from "@/lib/appearance-shared";
+import { DynamicMenuIcon } from "@/components/admin/icon-registry";
 import { Badge } from "@/components/ui/badge";
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  adminOnly?: boolean;
-  phaseBadge?: string;
-}
-
-interface NavGroup {
-  title: string;
-  items: NavItem[];
-}
 
 interface QuickSearchHit {
   type: "module" | "test" | "blog" | "course" | "user";
@@ -54,59 +29,40 @@ interface QuickSearchHit {
   href: string;
 }
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    title: "Tổng quan",
-    items: [
-      { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-      { label: "Nhật ký hoạt động", href: "/admin/audit", icon: Activity },
-      { label: "Quản trị nhanh (6 Tab)", href: "/admin/legacy", icon: SlidersHorizontal },
-    ],
-  },
-  {
-    title: "Đề thi & Nội dung",
-    items: [
-      { label: "Đề thi IELTS", href: "/admin/tests", icon: BookOpen },
-      { label: "Đề thi mỗi ngày", href: "/admin/daily-exam", icon: CalendarDays },
-      { label: "Bảng quy đổi Band", href: "/admin/band-tables", icon: Calculator, adminOnly: true },
-      { label: "Thư viện Media", href: "/admin/media", icon: ImageIcon },
-      { label: "Blog & Mẹo thi", href: "/admin/blog", icon: FileText },
-    ],
-  },
-  {
-    title: "Học tập & Luyện tập",
-    items: [
-      { label: "Khóa học & Bài học", href: "/admin/courses", icon: GraduationCap },
-      { label: "Hội thoại AI", href: "/admin/conversations", icon: MessageSquare },
-      { label: "Nâng cấp câu viết", href: "/admin/writing-exercises", icon: PenTool },
-      { label: "Phát âm IPA", href: "/admin/pronunciation", icon: Volume2 },
-      { label: "Chép chính tả", href: "/admin/dictation", icon: Headphones },
-      { label: "Video tương tác", href: "/admin/videos", icon: Video },
-    ],
-  },
-  {
-    title: "Hệ thống & SEO",
-    items: [
-      { label: "Người dùng & Premium", href: "/admin/users", icon: Users, adminOnly: true },
-      { label: "Gói giá & Referral", href: "/admin/pricing", icon: CreditCard, adminOnly: true },
-      { label: "Hộp thư & Phản hồi", href: "/admin/inbox", icon: Inbox },
-      { label: "Trang tĩnh & FAQs", href: "/admin/pages", icon: FileCode2 },
-      { label: "Cài đặt chung", href: "/admin/settings", icon: Settings, adminOnly: true },
-      { label: "SEO & Redirect 301", href: "/admin/seo", icon: Globe, adminOnly: true },
-    ],
-  },
-];
-
 export function AdminShell({
   user,
+  adminMenu = DEFAULT_ADMIN_SIDEBAR_MENU,
+  locale = "vi",
+  siteName = "Ôn IELTS",
   children,
 }: {
   user: SessionUser;
+  adminMenu?: AdminMenuGroup[];
+  locale?: string;
+  siteName?: string;
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/admin";
   const isAdmin = user.role === "admin";
+  const isEn = locale === "en";
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const menuGroups =
+    adminMenu && adminMenu.length > 0 ? adminMenu : DEFAULT_ADMIN_SIDEBAR_MENU;
+  const visibleGroups = menuGroups.filter((g) => g.visible);
+
+  // Shared VI/EN name resolution across Sidebar, Breadcrumb, and Page Title
+  const breadcrumb = resolveAdminRouteBreadcrumb(pathname, menuGroups, locale);
+
+  // Sync browser tab title with customized CMS menu label so renaming a module
+  // reflects simultaneously in Sidebar, Breadcrumb, and Page Title (without changing URL)
+  useEffect(() => {
+    if (!breadcrumb.itemLabel) return;
+    const prefix = breadcrumb.subLabel
+      ? `${breadcrumb.subLabel} · ${breadcrumb.itemLabel}`
+      : breadcrumb.itemLabel;
+    document.title = `${prefix} | CMS ${siteName}`;
+  }, [breadcrumb.itemLabel, breadcrumb.subLabel, siteName]);
 
   // Global quick search state
   const [query, setQuery] = useState("");
@@ -173,17 +129,23 @@ export function AdminShell({
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-slate-900 dark:text-white">
-              Ôn IELTS CMS
+              {siteName} CMS
             </p>
             <p className="truncate text-[11px] text-slate-500">
-              {isAdmin ? "Quản trị viên (Toàn quyền)" : "Biên tập viên (Editor)"}
+              {isAdmin
+                ? isEn
+                  ? "Administrator (Full Access)"
+                  : "Quản trị viên (Toàn quyền)"
+                : isEn
+                ? "Content Editor"
+                : "Biên tập viên (Editor)"}
             </p>
           </div>
         </div>
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
-          aria-label="Đóng thanh điều hướng"
+          aria-label={isEn ? "Close navigation" : "Đóng thanh điều hướng"}
           className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 lg:hidden dark:hover:bg-slate-800 cursor-pointer"
         >
           <X className="h-4 w-4" />
@@ -194,69 +156,106 @@ export function AdminShell({
         aria-label="Admin CMS Navigation"
         className="flex-1 overflow-y-auto px-3 py-4 space-y-5"
       >
-        {NAV_GROUPS.map((group) => (
-          <div key={group.title} className="space-y-1">
-            <p className="px-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              {group.title}
-            </p>
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const lockedForEditor = Boolean(item.adminOnly && !isAdmin);
-              const baseHref = item.href.split(/[?#]/)[0];
-              const isActive =
-                !item.href.includes("#") &&
-                !item.href.includes("?") &&
-                (baseHref === "/admin"
-                  ? pathname === "/admin"
-                  : pathname === baseHref || pathname.startsWith(`${baseHref}/`));
+        {visibleGroups.map((group) => {
+          const visibleItems = group.items.filter(
+            (it) => it.visible && isSafeNavHref(it.href)
+          );
+          if (visibleItems.length === 0) return null;
+          const groupLabel = isEn ? group.labelEn || group.labelVi : group.labelVi;
 
-              if (lockedForEditor) {
-                return (
-                  <div
-                    key={item.label}
-                    title="Chỉ dành cho tài khoản Admin"
-                    className="flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-400 dark:text-slate-600 cursor-not-allowed select-none"
-                  >
-                    <span className="flex items-center gap-2.5 min-w-0">
-                      <Icon className="h-4 w-4 shrink-0 opacity-60" />
-                      <span className="truncate">{item.label}</span>
-                    </span>
-                    <Lock className="h-3 w-3 shrink-0" />
-                  </div>
+          return (
+            <div key={group.id} className="space-y-1">
+              <p className="px-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                {groupLabel}
+              </p>
+              {visibleItems.map((item) => {
+                const itemLabel = isEn ? item.labelEn || item.labelVi : item.labelVi;
+                const lockedForEditor = Boolean(item.adminOnly && !isAdmin);
+                const baseHref = item.href.split(/[?#]/)[0];
+                const isActive =
+                  !item.href.includes("#") &&
+                  !item.href.includes("?") &&
+                  (baseHref === "/admin"
+                    ? pathname === "/admin"
+                    : pathname === baseHref || pathname.startsWith(`${baseHref}/`));
+
+                const visibleChildren = (item.children ?? []).filter(
+                  (c) => c.visible && isSafeNavHref(c.href)
                 );
-              }
 
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs font-semibold transition ${
-                    isActive
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "text-slate-700 hover:bg-slate-100 hover:text-emerald-700 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-emerald-400"
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5 min-w-0">
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </span>
-                  {item.phaseBadge && (
-                    <span
-                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                if (lockedForEditor) {
+                  return (
+                    <div
+                      key={item.id}
+                      title={
+                        isEn
+                          ? "Admin account required"
+                          : "Chỉ dành cho tài khoản Admin"
+                      }
+                      className="flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-400 dark:text-slate-600 cursor-not-allowed select-none"
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <DynamicMenuIcon
+                          name={item.icon}
+                          className="h-4 w-4 shrink-0 opacity-60"
+                        />
+                        <span className="truncate">{itemLabel}</span>
+                      </span>
+                      <Lock className="h-3 w-3 shrink-0" />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={item.id} className="space-y-0.5">
+                    <Link
+                      href={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs font-semibold transition ${
                         isActive
-                          ? "bg-white/20 text-white"
-                          : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                          ? "bg-emerald-600 text-white shadow-xs"
+                          : "text-slate-700 hover:bg-slate-100 hover:text-emerald-700 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-emerald-400"
                       }`}
                     >
-                      {item.phaseBadge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <DynamicMenuIcon
+                          name={item.icon}
+                          className="h-4 w-4 shrink-0"
+                        />
+                        <span className="truncate">{itemLabel}</span>
+                      </span>
+                    </Link>
+
+                    {visibleChildren.length > 0 && (
+                      <div className="ml-4 space-y-0.5 border-l border-slate-200 pl-2.5 dark:border-slate-800">
+                        {visibleChildren.map((child) => {
+                          const cLabel = isEn
+                            ? child.labelEn || child.labelVi
+                            : child.labelVi;
+                          const cActive = pathname === child.href;
+                          return (
+                            <Link
+                              key={child.id}
+                              href={child.href}
+                              onClick={() => setSidebarOpen(false)}
+                              className={`block truncate rounded-lg px-2 py-1.5 text-[11px] font-medium transition ${
+                                cActive
+                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                  : "text-slate-600 hover:bg-slate-100 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-slate-800/70"
+                              }`}
+                            >
+                              {cLabel}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
 
       <div className="border-t border-slate-200 p-3 dark:border-slate-800">
@@ -276,7 +275,7 @@ export function AdminShell({
             href="/"
             className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
           >
-            Xem trang public
+            {isEn ? "View public site" : "Xem trang public"}
             <ExternalLink className="h-3 w-3" />
           </Link>
         </div>
@@ -310,13 +309,13 @@ export function AdminShell({
 
       {/* Main workspace */}
       <div className="flex min-w-0 flex-1 flex-col bg-slate-50/50 dark:bg-slate-950/30">
-        {/* Top Admin Sub-header with Global Quick Search */}
+        {/* Top Admin Sub-header with Global Quick Search + Shared Page Title */}
         <div className="sticky top-16 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-md sm:px-6 dark:border-slate-800 dark:bg-slate-950/90">
           <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              aria-label="Mở menu quản trị"
+              aria-label={isEn ? "Open admin menu" : "Mở menu quản trị"}
               className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 lg:hidden dark:border-slate-800 dark:text-slate-200 cursor-pointer"
             >
               <Menu className="h-4 w-4" />
@@ -328,15 +327,25 @@ export function AdminShell({
                 value={query}
                 onFocus={() => setSearchFocused(true)}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Tìm nhanh trong Admin (⌘K)..."
-                aria-label="Tìm kiếm nhanh trong trang quản trị"
+                placeholder={
+                  isEn
+                    ? "Quick search in Admin (⌘K)..."
+                    : "Tìm nhanh trong Admin (⌘K)..."
+                }
+                aria-label={
+                  isEn
+                    ? "Quick search in admin panel"
+                    : "Tìm kiếm nhanh trong trang quản trị"
+                }
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-white"
               />
               {searchFocused && (
                 <div className="absolute left-0 right-0 top-full mt-1.5 max-h-80 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900">
                   {hits.length === 0 ? (
                     <p className="px-3 py-4 text-center text-xs text-slate-500">
-                      Không tìm thấy mục nào khớp từ khóa.
+                      {isEn
+                        ? "No matching items found."
+                        : "Không tìm thấy mục nào khớp từ khóa."}
                     </p>
                   ) : (
                     hits.map((hit) => (
@@ -370,11 +379,71 @@ export function AdminShell({
             <Badge variant={isAdmin ? "default" : "secondary"}>
               {isAdmin ? "Admin" : "Editor"}
             </Badge>
-            <span className="text-slate-500 dark:text-slate-400">
-              CMS Hoàn chỉnh · 6/6 GĐ Active
+            <span className="font-semibold text-slate-700 dark:text-slate-200">
+              {breadcrumb.itemLabel || "CMS"}
             </span>
           </div>
         </div>
+
+        {/* Synchronized Breadcrumb & Active Section Bar (shares VI/EN names with Sidebar & Page Title) */}
+        {breadcrumb.itemLabel && (
+          <nav
+            aria-label="Breadcrumb"
+            className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/70 bg-white/60 px-4 py-2 text-xs text-slate-500 sm:px-6 lg:px-8 dark:border-slate-800/80 dark:bg-slate-950/40 dark:text-slate-400"
+          >
+            <ol className="flex flex-wrap items-center gap-1.5">
+              <li>
+                <Link
+                  href="/admin"
+                  className="font-medium hover:text-emerald-700 dark:hover:text-emerald-400"
+                >
+                  Admin
+                </Link>
+              </li>
+              {breadcrumb.groupLabel && (
+                <>
+                  <li aria-hidden="true">
+                    <ChevronRight className="h-3.5 w-3.5 opacity-60" />
+                  </li>
+                  <li className="font-medium text-slate-600 dark:text-slate-300">
+                    {breadcrumb.groupLabel}
+                  </li>
+                </>
+              )}
+              <li aria-hidden="true">
+                <ChevronRight className="h-3.5 w-3.5 opacity-60" />
+              </li>
+              <li>
+                {breadcrumb.subLabel && breadcrumb.itemHref ? (
+                  <Link
+                    href={breadcrumb.itemHref}
+                    className="font-medium hover:text-emerald-700 dark:hover:text-emerald-400"
+                  >
+                    {breadcrumb.itemLabel}
+                  </Link>
+                ) : (
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {breadcrumb.itemLabel}
+                  </span>
+                )}
+              </li>
+              {breadcrumb.subLabel && (
+                <>
+                  <li aria-hidden="true">
+                    <ChevronRight className="h-3.5 w-3.5 opacity-60" />
+                  </li>
+                  <li className="font-bold text-slate-900 dark:text-white">
+                    {breadcrumb.subLabel}
+                  </li>
+                </>
+              )}
+            </ol>
+
+            <span className="hidden md:inline font-mono text-[11px] text-slate-400">
+              {pathname}
+            </span>
+          </nav>
+        )}
 
         <div className="flex-1 p-4 sm:p-6 lg:p-8">{children}</div>
       </div>

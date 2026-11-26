@@ -35,6 +35,9 @@ import {
   getSampleTestimonials,
   getWritingExercises,
 } from "@/lib/db";
+import { getAuthState } from "@/lib/auth";
+import { getEffectiveAppearance } from "@/lib/cms-appearance";
+import { isSafeNavHref, type HomeSectionConfig } from "@/lib/appearance-shared";
 import { getVietnamDateString, formatDuration } from "@/lib/utils";
 import { getSiteSeoSettings } from "@/lib/site-content";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
@@ -152,11 +155,18 @@ const LEARNING_TOOLS = [
   },
 ];
 
+function safeHref(raw: string | undefined, fallback: string): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed || !isSafeNavHref(trimmed)) return fallback;
+  return trimmed;
+}
+
 export default async function HomePage() {
   const vnToday = getVietnamDateString();
   const [
     t,
     locale,
+    authState,
     publishedTests,
     dailyState,
     courses,
@@ -170,6 +180,7 @@ export default async function HomePage() {
   ] = await Promise.all([
     getTranslations("home"),
     getLocale(),
+    getAuthState(),
     getIeltsTests(false),
     getDailyExamState(vnToday, null),
     getCourses(),
@@ -182,590 +193,718 @@ export default async function HomePage() {
     getBlogPosts(false),
   ]);
   const isEn = locale === "en";
+  const { config: appearance } = await getEffectiveAppearance(
+    authState.user?.role === "admin"
+  );
 
-  const latestTests = publishedTests.slice(0, 4);
-  const featuredBlogPosts = [...publishedBlogPosts]
-    .sort((a, b) => {
-      if (Boolean(a.is_featured) !== Boolean(b.is_featured)) {
-        return a.is_featured ? -1 : 1;
-      }
-      return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
-    })
-    .slice(0, 6);
+  const sortedBlogPosts = [...publishedBlogPosts].sort((a, b) => {
+    if (Boolean(a.is_featured) !== Boolean(b.is_featured)) {
+      return a.is_featured ? -1 : 1;
+    }
+    return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
+  });
   const testStats = computeTestCounts(publishedTests);
-  const topDaily = dailyState.leaderboard.slice(0, 3);
 
-  return (
-    <div className="pb-12">
-      {/* 1. HERO SECTION */}
-      <section className="border-b border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-950">
-        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:py-20">
-          <div className="grid items-center gap-12 lg:grid-cols-12">
-            <div className="lg:col-span-7 space-y-6">
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-5xl sm:leading-[1.12] dark:text-white">
-                {t("heroTitle")}
-              </h1>
-              <p className="max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg dark:text-slate-300">
-                {t("heroSubtitle")}
-              </p>
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                <Link href="/pricing">
-                  <Button size="lg" id="hero-premium-cta">
-                    {t("ctaPrimary")}
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href="/tests">
-                  <Button variant="outline" size="lg" id="hero-free-test-cta">
-                    {t("ctaSecondary")}
-                  </Button>
-                </Link>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isEn
-                  ? "Tip: Highlight any English word on this platform to save it instantly to your Flashcards."
-                  : "Mẹo hay: Bôi đen bất kỳ từ tiếng Anh nào trên trang để lưu nhanh vào bộ Flashcard có IPA & nghĩa tiếng Việt."}
-              </p>
-            </div>
+  const enabledSections = appearance.homepage.sections.filter((s) => s.enabled);
 
-            {/* Honest, dynamically computed platform metrics */}
-            <div className="lg:col-span-5">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
-                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      {testStats.publishedTestCount} {isEn ? "tests" : "đề thi"}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {t("stats.tests")}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
-                    <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                      {testStats.totalObjectiveQuestions} {isEn ? "Q" : "câu"}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {t("stats.questions")}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
-                    <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                      {LEARNING_TOOLS.length}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {t("stats.tools")}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
-                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      {testStats.maxObjectiveQuestionsPerTest} {isEn ? "Q/test" : "câu/đề"}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {t("stats.fullFormat")}
-                    </p>
-                  </div>
-                </div>
+  const pickText = (vi: string | undefined, en: string | undefined, fallback: string) =>
+    (isEn ? en || vi : vi) || fallback;
 
-                <div className="mt-4 flex items-center justify-between rounded-2xl bg-emerald-600 px-4 py-3 text-white">
-                  <div>
-                    <p className="text-xs font-medium text-emerald-100">
-                      {isEn ? "Quick Practice Entry" : "Bắt đầu nhanh trong 1 phút"}
-                    </p>
-                    <p className="text-sm font-bold">
-                      {isEn ? "AI Writing & Speaking Scoring" : "Chấm thử Writing & Speaking bằng AI"}
-                    </p>
-                  </div>
-                  <Link
-                    href="/writing"
-                    className="rounded-xl bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50"
-                  >
-                    {isEn ? "Try now" : "Thử ngay"}
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+  const renderSection = (sec: HomeSectionConfig) => {
+    const title = pickText(sec.titleVi, sec.titleEn, "");
+    const subtitle = pickText(sec.subtitleVi, sec.subtitleEn, "");
+    const viewAllLabel = pickText(
+      sec.viewAllLabelVi,
+      sec.viewAllLabelEn,
+      t("viewAll")
+    );
+    const limit = Math.max(1, Math.min(30, sec.limit || 6));
 
-      {/* 2. ILLUSTRATIVE STUDY JOURNEYS (CLEARLY LABELED EXAMPLES) */}
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
-        <div className="mb-7">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              {t("testimonialsTitle")}
-            </h2>
-            <Badge variant="secondary">
-              {isEn ? "Illustrative Examples" : "Dữ liệu ví dụ minh họa"}
-            </Badge>
-          </div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {t("testimonialsSubtitle")}
-          </p>
-        </div>
-        <TestimonialsCarousel items={sampleTestimonials} locale={locale} />
-      </section>
+    switch (sec.id) {
+      case "hero": {
+        const primaryLabel = pickText(
+          sec.ctaPrimaryVi,
+          sec.ctaPrimaryEn,
+          t("ctaPrimary")
+        );
+        const primaryHref = safeHref(sec.ctaPrimaryHref, "/pricing");
+        const secondaryLabel = pickText(
+          sec.ctaSecondaryVi,
+          sec.ctaSecondaryEn,
+          t("ctaSecondary")
+        );
+        const secondaryHref = safeHref(sec.ctaSecondaryHref, "/tests");
 
-      {/* 3. LATEST IELTS TESTS (Reading, Listening, Writing, Speaking) */}
-      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              {t("latestTestsTitle")}
-            </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {t("latestTestsSubtitle")}
-            </p>
-          </div>
-          <Link
-            href="/tests"
-            className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+        return (
+          <section
+            key={sec.id}
+            className="border-b border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-950"
           >
-            {t("viewAll")}
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-
-        <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {latestTests.map((test) => {
-            const meta = SKILL_META[test.skill];
-            const Icon = meta.icon;
-            return (
-              <Card
-                key={test.id}
-                className="flex flex-col justify-between p-5 transition hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ${meta.tone}`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {meta.label}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                      <Clock className="h-3.5 w-3.5" />
-                      {test.duration_minutes}m
-                    </span>
+            <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:py-20">
+              <div className="grid items-center gap-12 lg:grid-cols-12">
+                <div className="lg:col-span-7 space-y-6">
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-5xl sm:leading-[1.12] dark:text-white">
+                    {title || t("heroTitle")}
+                  </h1>
+                  <p className="max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg dark:text-slate-300">
+                    {subtitle || t("heroSubtitle")}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    {primaryLabel && (
+                      <Link href={primaryHref}>
+                        <Button size="lg" id="hero-premium-cta">
+                          {primaryLabel}
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    )}
+                    {secondaryLabel && (
+                      <Link href={secondaryHref}>
+                        <Button variant="outline" size="lg" id="hero-free-test-cta">
+                          {secondaryLabel}
+                        </Button>
+                      </Link>
+                    )}
                   </div>
-                  <h3 className="mt-3.5 text-base font-bold leading-snug text-slate-900 dark:text-white">
-                    {isEn ? test.title_en : test.title_vi}
-                  </h3>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                    {isEn ? test.description_en : test.description_vi}
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {isEn
+                      ? "Tip: Highlight any English word on this platform to save it instantly to your Flashcards."
+                      : "Mẹo hay: Bôi đen bất kỳ từ tiếng Anh nào trên trang để lưu nhanh vào bộ Flashcard có IPA & nghĩa tiếng Việt."}
                   </p>
                 </div>
 
-                <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-500">
-                    {test.module === "academic" ? "Academic" : "General"}
-                  </span>
-                  <Link
-                    href={
-                      test.skill === "writing"
-                        ? "/writing"
-                        : test.skill === "speaking"
-                        ? "/speaking"
-                        : `/tests/${test.slug}`
-                    }
-                    className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-800 dark:text-emerald-400"
-                  >
-                    {t("startTest")}
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
+                {/* Honest, dynamically computed platform metrics */}
+                <div className="lg:col-span-5">
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
+                        <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                          {testStats.publishedTestCount} {isEn ? "tests" : "đề thi"}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+                          {t("stats.tests")}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
+                        <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                          {testStats.totalObjectiveQuestions} {isEn ? "Q" : "câu"}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+                          {t("stats.questions")}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
+                        <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                          {LEARNING_TOOLS.length}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+                          {t("stats.tools")}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-950">
+                        <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                          {testStats.maxObjectiveQuestionsPerTest}{" "}
+                          {isEn ? "Q/test" : "câu/đề"}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+                          {t("stats.fullFormat")}
+                        </p>
+                      </div>
+                    </div>
 
-      {/* 4. DAILY EXAMS & LEADERBOARDS CTA */}
-      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-        <div className="overflow-hidden rounded-3xl border border-emerald-200/80 bg-emerald-900 text-white shadow-sm dark:border-emerald-900">
-          <div className="grid gap-8 p-7 sm:p-10 lg:grid-cols-12 lg:items-center">
-            <div className="lg:col-span-7 space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-emerald-100">
-                <Flame className="h-3.5 w-3.5 text-amber-300" />
-                <span>
-                  {isEn ? `Vietnam Date (UTC+7): ${vnToday}` : `Ngày thi Việt Nam (UTC+7): ${vnToday}`}
-                </span>
-              </div>
-              <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                {t("dailyCtaTitle")}
-              </h2>
-              <p className="text-sm leading-relaxed text-emerald-100/90 sm:text-base">
-                {t("dailyCtaSubtitle")}
-              </p>
-              <div className="flex flex-wrap gap-3 pt-1">
-                <Link href="/daily-exam">
-                  <Button
-                    size="lg"
-                    className="bg-white text-emerald-900 hover:bg-emerald-50"
-                  >
-                    {t("dailyCtaButton")}
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href="/leaderboard">
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="border-emerald-400/50 bg-transparent text-white hover:bg-white/10"
-                  >
-                    <Trophy className="h-4 w-4 text-amber-300" />
-                    {t("leaderboardButton")}
-                  </Button>
-                </Link>
+                    <div className="mt-4 flex items-center justify-between rounded-2xl bg-emerald-600 px-4 py-3 text-white">
+                      <div>
+                        <p className="text-xs font-medium text-emerald-100">
+                          {isEn ? "Quick Practice Entry" : "Bắt đầu nhanh trong 1 phút"}
+                        </p>
+                        <p className="text-sm font-bold">
+                          {isEn
+                            ? "AI Writing & Speaking Scoring"
+                            : "Chấm thử Writing & Speaking bằng AI"}
+                        </p>
+                      </div>
+                      <Link
+                        href="/writing"
+                        className="rounded-xl bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50"
+                      >
+                        {isEn ? "Try now" : "Thử ngay"}
+                      </Link>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
+          </section>
+        );
+      }
 
-            <div className="lg:col-span-5">
-              <div className="rounded-2xl bg-white/10 p-5 backdrop-blur-xs">
-                <div className="flex items-center justify-between text-xs font-semibold text-emerald-100">
-                  <span>{isEn ? "Today's Top Scorers" : "Top dẫn đầu hôm nay"}</span>
-                  <span>{isEn ? "Score · Time" : "Điểm · Thời gian"}</span>
-                </div>
-                <div className="mt-3 space-y-2.5">
-                  {topDaily.length === 0 ? (
-                    <div className="rounded-xl bg-white/10 px-4 py-4 text-xs text-emerald-100/90">
-                      {isEn
-                        ? "No submissions yet today. Take today's 15-minute sprint to claim the #1 spot!"
-                        : "Chưa có thí sinh nộp bài hôm nay. Hãy tham gia thử thách 15 phút để trở thành người dẫn đầu đầu tiên!"}
-                    </div>
-                  ) : (
-                    topDaily.map((entry, idx) => (
-                      <div
-                        key={entry.id}
-                        className="flex items-center justify-between rounded-xl bg-white/10 px-3.5 py-2.5 text-sm"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-300/20 text-xs font-bold text-amber-200">
-                            #{idx + 1}
-                          </span>
-                          <span className="font-semibold">{entry.display_name}</span>
-                        </div>
-                        <span className="text-xs font-medium text-emerald-100">
-                          {entry.raw_score}/{entry.max_score} · {formatDuration(entry.duration_seconds)}
+      case "testimonials": {
+        const items = sampleTestimonials.slice(0, limit);
+        if (items.length === 0) return null;
+        const badgeLabel = pickText(
+          sec.badgeVi,
+          sec.badgeEn,
+          isEn ? "Illustrative Examples" : "Dữ liệu ví dụ minh họa"
+        );
+        return (
+          <section key={sec.id} className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
+            <div className="mb-7">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  {title || t("testimonialsTitle")}
+                </h2>
+                {badgeLabel && <Badge variant="secondary">{badgeLabel}</Badge>}
+              </div>
+              {subtitle && (
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  {subtitle}
+                </p>
+              )}
+            </div>
+            <TestimonialsCarousel items={items} locale={locale} />
+          </section>
+        );
+      }
+
+      case "latestTests": {
+        const latestTests = publishedTests.slice(0, limit);
+        return (
+          <section key={sec.id} className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  {title || t("latestTestsTitle")}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  {subtitle || t("latestTestsSubtitle")}
+                </p>
+              </div>
+              <Link
+                href="/tests"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+              >
+                {viewAllLabel}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {latestTests.map((test) => {
+                const meta = SKILL_META[test.skill];
+                const Icon = meta.icon;
+                return (
+                  <Card
+                    key={test.id}
+                    className="flex flex-col justify-between p-5 transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ${meta.tone}`}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {meta.label}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                          <Clock className="h-3.5 w-3.5" />
+                          {test.duration_minutes}m
                         </span>
                       </div>
-                    ))
-                  )}
+                      <h3 className="mt-3.5 text-base font-bold leading-snug text-slate-900 dark:text-white">
+                        {isEn ? test.title_en : test.title_vi}
+                      </h3>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                        {isEn ? test.description_en : test.description_vi}
+                      </p>
+                    </div>
+
+                    <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">
+                        {test.module === "academic" ? "Academic" : "General"}
+                      </span>
+                      <Link
+                        href={
+                          test.skill === "writing"
+                            ? "/writing"
+                            : test.skill === "speaking"
+                            ? "/speaking"
+                            : `/tests/${test.slug}`
+                        }
+                        className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-800 dark:text-emerald-400"
+                      >
+                        {t("startTest")}
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
+        );
+      }
+
+      case "dailyExam": {
+        const topDaily = dailyState.leaderboard.slice(0, limit);
+        const primaryLabel = pickText(
+          sec.ctaPrimaryVi,
+          sec.ctaPrimaryEn,
+          t("dailyCtaButton")
+        );
+        const primaryHref = safeHref(sec.ctaPrimaryHref, "/daily-exam");
+        const secondaryLabel = pickText(
+          sec.ctaSecondaryVi,
+          sec.ctaSecondaryEn,
+          t("leaderboardButton")
+        );
+        const secondaryHref = safeHref(sec.ctaSecondaryHref, "/leaderboard");
+
+        return (
+          <section key={sec.id} className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+            <div className="overflow-hidden rounded-3xl border border-emerald-200/80 bg-emerald-900 text-white shadow-sm dark:border-emerald-900">
+              <div className="grid gap-8 p-7 sm:p-10 lg:grid-cols-12 lg:items-center">
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-emerald-100">
+                    <Flame className="h-3.5 w-3.5 text-amber-300" />
+                    <span>
+                      {isEn
+                        ? `Vietnam Date (UTC+7): ${vnToday}`
+                        : `Ngày thi Việt Nam (UTC+7): ${vnToday}`}
+                    </span>
+                  </div>
+                  <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                    {title || t("dailyCtaTitle")}
+                  </h2>
+                  <p className="text-sm leading-relaxed text-emerald-100/90 sm:text-base">
+                    {subtitle || t("dailyCtaSubtitle")}
+                  </p>
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    {primaryLabel && (
+                      <Link href={primaryHref}>
+                        <Button
+                          size="lg"
+                          className="bg-white text-emerald-900 hover:bg-emerald-50"
+                        >
+                          {primaryLabel}
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    )}
+                    {secondaryLabel && (
+                      <Link href={secondaryHref}>
+                        <Button
+                          size="lg"
+                          variant="outline"
+                          className="border-emerald-400/50 bg-transparent text-white hover:bg-white/10"
+                        >
+                          <Trophy className="h-4 w-4 text-amber-300" />
+                          {secondaryLabel}
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-5">
+                  <div className="rounded-2xl bg-white/10 p-5 backdrop-blur-xs">
+                    <div className="flex items-center justify-between text-xs font-semibold text-emerald-100">
+                      <span>{isEn ? "Today's Top Scorers" : "Top dẫn đầu hôm nay"}</span>
+                      <span>{isEn ? "Score · Time" : "Điểm · Thời gian"}</span>
+                    </div>
+                    <div className="mt-3 space-y-2.5">
+                      {topDaily.length === 0 ? (
+                        <div className="rounded-xl bg-white/10 px-4 py-4 text-xs text-emerald-100/90">
+                          {isEn
+                            ? "No submissions yet today. Take today's 15-minute sprint to claim the #1 spot!"
+                            : "Chưa có thí sinh nộp bài hôm nay. Hãy tham gia thử thách 15 phút để trở thành người dẫn đầu đầu tiên!"}
+                        </div>
+                      ) : (
+                        topDaily.map((entry, idx) => (
+                          <div
+                            key={entry.id}
+                            className="flex items-center justify-between rounded-xl bg-white/10 px-3.5 py-2.5 text-sm"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-300/20 text-xs font-bold text-amber-200">
+                                #{idx + 1}
+                              </span>
+                              <span className="font-semibold">{entry.display_name}</span>
+                            </div>
+                            <span className="text-xs font-medium text-emerald-100">
+                              {entry.raw_score}/{entry.max_score} ·{" "}
+                              {formatDuration(entry.duration_seconds)}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
+        );
+      }
 
-      {/* 5. LEARNING TOOLS GRID */}
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              {t("toolsTitle")}
-            </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {t("toolsSubtitle")}
-            </p>
-          </div>
-          <Link
-            href="/tools"
-            className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+      case "tools": {
+        const items = LEARNING_TOOLS.slice(0, limit);
+        return (
+          <section key={sec.id} className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  {title || t("toolsTitle")}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  {subtitle || t("toolsSubtitle")}
+                </p>
+              </div>
+              <Link
+                href="/tools"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+              >
+                {viewAllLabel}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {items.map((tool) => {
+                const Icon = tool.icon;
+                return (
+                  <Link key={tool.href} href={tool.href} className="group">
+                    <Card className="h-full p-4 transition hover:border-emerald-300 hover:shadow-md dark:hover:border-emerald-700">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 transition group-hover:bg-emerald-600 group-hover:text-white dark:bg-emerald-950 dark:text-emerald-300">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">
+                        {isEn ? tool.titleEn : tool.titleVi}
+                      </h3>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                        {isEn ? tool.descEn : tool.descVi}
+                      </p>
+                    </Card>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        );
+      }
+
+      case "courses": {
+        const items = courses.slice(0, limit);
+        return (
+          <HorizontalCarouselSection
+            key={sec.id}
+            title={title || t("coursesTitle")}
+            subtitle={subtitle || t("coursesSubtitle")}
+            viewAllHref="/courses"
+            viewAllLabel={viewAllLabel}
           >
-            {t("viewAll")}
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {LEARNING_TOOLS.map((tool) => {
-            const Icon = tool.icon;
-            return (
-              <Link key={tool.href} href={tool.href} className="group">
-                <Card className="h-full p-4 transition hover:border-emerald-300 hover:shadow-md dark:hover:border-emerald-700">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 transition group-hover:bg-emerald-600 group-hover:text-white dark:bg-emerald-950 dark:text-emerald-300">
-                    <Icon className="h-5 w-5" />
+            {items.map((course) => (
+              <Link
+                key={course.id}
+                href={`/courses/${course.slug}`}
+                className="min-w-[290px] max-w-[330px] shrink-0 snap-start"
+              >
+                <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
+                  <div className="flex items-center justify-between">
+                    <Badge>Target {course.target_band}</Badge>
+                    <span className="text-xs text-slate-500">
+                      {course.lessons.length} {isEn ? "lessons" : "bài học"}
+                    </span>
                   </div>
-                  <h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">
-                    {isEn ? tool.titleEn : tool.titleVi}
+                  <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                    {isEn ? course.title_en : course.title_vi}
                   </h3>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                    {isEn ? tool.descEn : tool.descVi}
+                  <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                    {isEn ? course.description_en : course.description_vi}
+                  </p>
+                  <div className="mt-4 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    {course.level} · {course.duration_hours}h →
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </HorizontalCarouselSection>
+        );
+      }
+
+      case "conversations": {
+        const items = conversationTopics.slice(0, limit);
+        return (
+          <HorizontalCarouselSection
+            key={sec.id}
+            title={title || t("conversationsTitle")}
+            subtitle={subtitle || t("conversationsSubtitle")}
+            viewAllHref="/conversations"
+            viewAllLabel={viewAllLabel}
+          >
+            {items.map((topic) => (
+              <Link
+                key={topic.slug}
+                href={`/conversations?topic=${topic.slug}`}
+                className="min-w-[260px] max-w-[290px] shrink-0 snap-start"
+              >
+                <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="secondary">{topic.part}</Badge>
+                    <MessageSquare className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                    {isEn ? topic.title_en : topic.title_vi}
+                  </h3>
+                  <p className="mt-1.5 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                    {isEn ? topic.description_en : topic.description_vi}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-1">
+                    {topic.suggestedVocab.slice(0, 2).map((v) => (
+                      <span
+                        key={v}
+                        className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      >
+                        {v}
+                      </span>
+                    ))}
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </HorizontalCarouselSection>
+        );
+      }
+
+      case "writingExercises": {
+        const items = writingExercises.slice(0, limit);
+        return (
+          <HorizontalCarouselSection
+            key={sec.id}
+            title={title || t("writingExercisesTitle")}
+            subtitle={subtitle || t("writingExercisesSubtitle")}
+            viewAllHref="/writing/exercises"
+            viewAllLabel={viewAllLabel}
+          >
+            {items.map((ex) => (
+              <Link
+                key={ex.id}
+                href={`/writing/exercises?slug=${ex.slug}`}
+                className="min-w-[300px] max-w-[340px] shrink-0 snap-start"
+              >
+                <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
+                  <Badge>{ex.topic}</Badge>
+                  <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                    {isEn ? ex.title_en : ex.title_vi}
+                  </h3>
+                  <p className="mt-2 rounded-xl bg-slate-50 p-3 text-xs italic text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
+                    “{ex.sentences[0]?.weakSentence}”
+                  </p>
+                  <p className="mt-3 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    {ex.sentences.length} {isEn ? "guided sentences" : "câu thực hành"} ·{" "}
+                    {ex.targetSkill}
                   </p>
                 </Card>
               </Link>
-            );
-          })}
-        </div>
-      </section>
+            ))}
+          </HorizontalCarouselSection>
+        );
+      }
 
-      {/* 6A. COURSES CAROUSEL */}
-      <HorizontalCarouselSection
-        title={t("coursesTitle")}
-        subtitle={t("coursesSubtitle")}
-        viewAllHref="/courses"
-        viewAllLabel={t("viewAll")}
-      >
-        {courses.map((course) => (
-          <Link
-            key={course.id}
-            href={`/courses/${course.slug}`}
-            className="min-w-[290px] max-w-[330px] shrink-0 snap-start"
+      case "pronunciation": {
+        const items = pronunciationSounds.slice(0, limit);
+        return (
+          <HorizontalCarouselSection
+            key={sec.id}
+            title={title || t("pronunciationTitle")}
+            subtitle={subtitle || t("pronunciationSubtitle")}
+            viewAllHref="/pronunciation"
+            viewAllLabel={viewAllLabel}
           >
-            <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <Badge>Target {course.target_band}</Badge>
-                <span className="text-xs text-slate-500">
-                  {course.lessons.length} {isEn ? "lessons" : "bài học"}
-                </span>
-              </div>
-              <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
-                {isEn ? course.title_en : course.title_vi}
-              </h3>
-              <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                {isEn ? course.description_en : course.description_vi}
-              </p>
-              <div className="mt-4 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                {course.level} · {course.duration_hours}h →
-              </div>
-            </Card>
-          </Link>
-        ))}
-      </HorizontalCarouselSection>
+            {items.map((sound) => (
+              <Link
+                key={sound.slug}
+                href={`/pronunciation/${sound.slug}`}
+                className="min-w-[165px] shrink-0 snap-start"
+              >
+                <Card className="h-full p-4 text-center transition hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/30">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-lg font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    {sound.symbol}
+                  </div>
+                  <p className="mt-2.5 text-sm font-bold text-slate-900 dark:text-white">
+                    {sound.examples[0]?.word}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {sound.examples[0]?.ipa}
+                  </p>
+                </Card>
+              </Link>
+            ))}
+          </HorizontalCarouselSection>
+        );
+      }
 
-      {/* 6B. AI CONVERSATIONS CAROUSEL */}
-      <HorizontalCarouselSection
-        title={t("conversationsTitle")}
-        subtitle={t("conversationsSubtitle")}
-        viewAllHref="/conversations"
-        viewAllLabel={t("viewAll")}
-      >
-        {conversationTopics.map((topic) => (
-          <Link
-            key={topic.slug}
-            href={`/conversations?topic=${topic.slug}`}
-            className="min-w-[260px] max-w-[290px] shrink-0 snap-start"
+      case "dictation": {
+        const items = dictationLessons.slice(0, limit);
+        return (
+          <HorizontalCarouselSection
+            key={sec.id}
+            title={title || t("dictationTitle")}
+            subtitle={subtitle || t("dictationSubtitle")}
+            viewAllHref="/dictation"
+            viewAllLabel={viewAllLabel}
           >
-            <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <Badge variant="secondary">{topic.part}</Badge>
-                <MessageSquare className="h-4 w-4 text-emerald-600" />
-              </div>
-              <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
-                {isEn ? topic.title_en : topic.title_vi}
-              </h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                {isEn ? topic.description_en : topic.description_vi}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-1">
-                {topic.suggestedVocab.slice(0, 2).map((v) => (
-                  <span
-                    key={v}
-                    className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                  >
-                    {v}
-                  </span>
-                ))}
-              </div>
-            </Card>
-          </Link>
-        ))}
-      </HorizontalCarouselSection>
+            {items.map((lesson) => (
+              <Link
+                key={lesson.id}
+                href={`/dictation?lesson=${lesson.slug}`}
+                className="min-w-[290px] max-w-[330px] shrink-0 snap-start"
+              >
+                <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="secondary">{lesson.category}</Badge>
+                    <span className="text-xs font-semibold text-slate-500">
+                      {lesson.accent}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                    {isEn ? lesson.title_en : lesson.title_vi}
+                  </h3>
+                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                    {lesson.sentences.length}{" "}
+                    {isEn ? "sentences" : "câu luyện nghe"} · {lesson.difficulty}
+                  </p>
+                </Card>
+              </Link>
+            ))}
+          </HorizontalCarouselSection>
+        );
+      }
 
-      {/* 6C. WRITING IMPROVEMENT EXERCISES CAROUSEL */}
-      <HorizontalCarouselSection
-        title={t("writingExercisesTitle")}
-        subtitle={t("writingExercisesSubtitle")}
-        viewAllHref="/writing/exercises"
-        viewAllLabel={t("viewAll")}
-      >
-        {writingExercises.map((ex) => (
-          <Link
-            key={ex.id}
-            href={`/writing/exercises?slug=${ex.slug}`}
-            className="min-w-[300px] max-w-[340px] shrink-0 snap-start"
+      case "videos": {
+        const items = learnVideos.slice(0, limit);
+        return (
+          <HorizontalCarouselSection
+            key={sec.id}
+            title={title || t("videosTitle")}
+            subtitle={subtitle || t("videosSubtitle")}
+            viewAllHref="/videos"
+            viewAllLabel={viewAllLabel}
           >
-            <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
-              <Badge>{ex.topic}</Badge>
-              <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
-                {isEn ? ex.title_en : ex.title_vi}
-              </h3>
-              <p className="mt-2 rounded-xl bg-slate-50 p-3 text-xs italic text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
-                “{ex.sentences[0]?.weakSentence}”
-              </p>
-              <p className="mt-3 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                {ex.sentences.length} {isEn ? "guided sentences" : "câu thực hành"} · {ex.targetSkill}
-              </p>
-            </Card>
-          </Link>
-        ))}
-      </HorizontalCarouselSection>
-
-      {/* 6D. PRONUNCIATION (IPA SOUND CHIPS) */}
-      <HorizontalCarouselSection
-        title={t("pronunciationTitle")}
-        subtitle={t("pronunciationSubtitle")}
-        viewAllHref="/pronunciation"
-        viewAllLabel={t("viewAll")}
-      >
-        {pronunciationSounds.map((sound) => (
-          <Link
-            key={sound.slug}
-            href={`/pronunciation/${sound.slug}`}
-            className="min-w-[165px] shrink-0 snap-start"
-          >
-            <Card className="h-full p-4 text-center transition hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/30">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-lg font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                {sound.symbol}
-              </div>
-              <p className="mt-2.5 text-sm font-bold text-slate-900 dark:text-white">
-                {sound.examples[0]?.word}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {sound.examples[0]?.ipa}
-              </p>
-            </Card>
-          </Link>
-        ))}
-      </HorizontalCarouselSection>
-
-      {/* 6E. DICTATION & SHADOWING CAROUSEL */}
-      <HorizontalCarouselSection
-        title={t("dictationTitle")}
-        subtitle={t("dictationSubtitle")}
-        viewAllHref="/dictation"
-        viewAllLabel={t("viewAll")}
-      >
-        {dictationLessons.map((lesson) => (
-          <Link
-            key={lesson.id}
-            href={`/dictation?lesson=${lesson.slug}`}
-            className="min-w-[290px] max-w-[330px] shrink-0 snap-start"
-          >
-            <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <Badge variant="secondary">{lesson.category}</Badge>
-                <span className="text-xs font-semibold text-slate-500">{lesson.accent}</span>
-              </div>
-              <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
-                {isEn ? lesson.title_en : lesson.title_vi}
-              </h3>
-              <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                {lesson.sentences.length} {isEn ? "sentences" : "câu luyện nghe"} · {lesson.difficulty}
-              </p>
-            </Card>
-          </Link>
-        ))}
-      </HorizontalCarouselSection>
-
-      {/* 6F. YOUTUBE VIDEOS CAROUSEL */}
-      <HorizontalCarouselSection
-        title={t("videosTitle")}
-        subtitle={t("videosSubtitle")}
-        viewAllHref="/videos"
-        viewAllLabel={t("viewAll")}
-      >
-        {learnVideos.map((video) => (
-          <Link
-            key={video.id}
-            href={`/videos/${video.slug}`}
-            className="min-w-[300px] max-w-[340px] shrink-0 snap-start"
-          >
-            <Card className="overflow-hidden h-full transition hover:border-emerald-300 hover:shadow-md">
-              <div className="relative flex h-40 items-center justify-center bg-slate-900 text-white">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 shadow-lg">
-                  <Play className="h-5 w-5 fill-current pl-0.5" />
-                </div>
-                <span className="absolute bottom-2.5 right-2.5 rounded-md bg-black/75 px-2 py-0.5 text-xs font-semibold">
-                  {video.duration_label}
-                </span>
-                <span className="absolute left-2.5 top-2.5 rounded-md bg-emerald-600/90 px-2 py-0.5 text-[11px] font-semibold">
-                  {video.level}
-                </span>
-              </div>
-              <div className="p-4">
-                <h3 className="text-sm font-bold leading-snug text-slate-900 dark:text-white">
-                  {isEn ? video.title_en : video.title_vi}
-                </h3>
-                <p className="mt-1.5 text-xs text-slate-600 line-clamp-2 dark:text-slate-400">
-                  {isEn ? video.description_en : video.description_vi}
-                </p>
-              </div>
-            </Card>
-          </Link>
-        ))}
-      </HorizontalCarouselSection>
-
-      {/* 6G. FEATURED BLOG & STUDY TIPS CAROUSEL */}
-      {featuredBlogPosts.length > 0 && (
-        <HorizontalCarouselSection
-          title={isEn ? "Featured IELTS Blog & Study Tips" : "Blog & Mẹo thi IELTS nổi bật"}
-          subtitle={
-            isEn
-              ? "Practical strategies, band-boosting tips, and study roadmaps curated by Ôn IELTS."
-              : "Chiến thuật phòng thi, lộ trình tự học và kinh nghiệm tăng Band được chọn lọc."
-          }
-          viewAllHref="/blog"
-          viewAllLabel={t("viewAll")}
-        >
-          {featuredBlogPosts.map((post) => (
-            <Link
-              key={post.id}
-              href={`/blog/${post.slug}`}
-              className="min-w-[300px] max-w-[340px] shrink-0 snap-start"
-            >
-              <Card className="flex h-full flex-col justify-between overflow-hidden transition hover:border-emerald-300 hover:shadow-md">
-                <div>
-                  {post.cover_image_url && (
-                    <div className="h-36 w-full overflow-hidden bg-slate-100 dark:bg-slate-900">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={post.cover_image_url}
-                        alt={
-                          post.seo_meta?.coverImageAlt ||
-                          (isEn ? post.title_en : post.title_vi)
-                        }
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                      />
+            {items.map((video) => (
+              <Link
+                key={video.id}
+                href={`/videos/${video.slug}`}
+                className="min-w-[300px] max-w-[340px] shrink-0 snap-start"
+              >
+                <Card className="overflow-hidden h-full transition hover:border-emerald-300 hover:shadow-md">
+                  <div className="relative flex h-40 items-center justify-center bg-slate-900 text-white">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 shadow-lg">
+                      <Play className="h-5 w-5 fill-current pl-0.5" />
                     </div>
-                  )}
+                    <span className="absolute bottom-2.5 right-2.5 rounded-md bg-black/75 px-2 py-0.5 text-xs font-semibold">
+                      {video.duration_label}
+                    </span>
+                    <span className="absolute left-2.5 top-2.5 rounded-md bg-emerald-600/90 px-2 py-0.5 text-[11px] font-semibold">
+                      {video.level}
+                    </span>
+                  </div>
                   <div className="p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <Badge variant="secondary">{post.category}</Badge>
-                        {post.is_featured && (
-                          <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                            <Star className="h-2.5 w-2.5 fill-current" />
-                            {isEn ? "Featured" : "Nổi bật"}
-                          </span>
-                        )}
-                      </div>
-                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
-                        <Clock className="h-3 w-3" />
-                        {post.read_minutes} {isEn ? "min" : "phút"}
-                      </span>
-                    </div>
-                    <h3 className="mt-2.5 line-clamp-2 text-sm font-bold leading-snug text-slate-900 dark:text-white">
-                      {isEn ? post.title_en : post.title_vi}
+                    <h3 className="text-sm font-bold leading-snug text-slate-900 dark:text-white">
+                      {isEn ? video.title_en : video.title_vi}
                     </h3>
-                    <p className="mt-1.5 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
-                      {isEn ? post.excerpt_en : post.excerpt_vi}
+                    <p className="mt-1.5 text-xs text-slate-600 line-clamp-2 dark:text-slate-400">
+                      {isEn ? video.description_en : video.description_vi}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs dark:border-slate-800">
-                  <span className="truncate text-slate-500">{post.author_name}</span>
-                  <span className="inline-flex shrink-0 items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400">
-                    {isEn ? "Read" : "Đọc bài"} <ArrowRight className="h-3 w-3" />
-                  </span>
-                </div>
-              </Card>
-            </Link>
-          ))}
-        </HorizontalCarouselSection>
-      )}
-    </div>
-  );
+                </Card>
+              </Link>
+            ))}
+          </HorizontalCarouselSection>
+        );
+      }
+
+      case "featuredBlog": {
+        const items = sortedBlogPosts.slice(0, limit);
+        if (items.length === 0) return null;
+        return (
+          <HorizontalCarouselSection
+            key={sec.id}
+            title={
+              title ||
+              (isEn ? "Featured IELTS Blog & Study Tips" : "Blog & Mẹo thi IELTS nổi bật")
+            }
+            subtitle={
+              subtitle ||
+              (isEn
+                ? "Practical strategies, band-boosting tips, and study roadmaps curated by Ôn IELTS."
+                : "Chiến thuật phòng thi, lộ trình tự học và kinh nghiệm tăng Band được chọn lọc.")
+            }
+            viewAllHref="/blog"
+            viewAllLabel={viewAllLabel}
+          >
+            {items.map((post) => (
+              <Link
+                key={post.id}
+                href={`/blog/${post.slug}`}
+                className="min-w-[300px] max-w-[340px] shrink-0 snap-start"
+              >
+                <Card className="flex h-full flex-col justify-between overflow-hidden transition hover:border-emerald-300 hover:shadow-md">
+                  <div>
+                    {post.cover_image_url && (
+                      <div className="h-36 w-full overflow-hidden bg-slate-100 dark:bg-slate-900">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={post.cover_image_url}
+                          alt={
+                            post.seo_meta?.coverImageAlt ||
+                            (isEn ? post.title_en : post.title_vi)
+                          }
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="secondary">{post.category}</Badge>
+                          {post.is_featured && (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                              <Star className="h-2.5 w-2.5 fill-current" />
+                              {isEn ? "Featured" : "Nổi bật"}
+                            </span>
+                          )}
+                        </div>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                          <Clock className="h-3 w-3" />
+                          {post.read_minutes} {isEn ? "min" : "phút"}
+                        </span>
+                      </div>
+                      <h3 className="mt-2.5 line-clamp-2 text-sm font-bold leading-snug text-slate-900 dark:text-white">
+                        {isEn ? post.title_en : post.title_vi}
+                      </h3>
+                      <p className="mt-1.5 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
+                        {isEn ? post.excerpt_en : post.excerpt_vi}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs dark:border-slate-800">
+                    <span className="truncate text-slate-500">{post.author_name}</span>
+                    <span className="inline-flex shrink-0 items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400">
+                      {isEn ? "Read" : "Đọc bài"} <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </HorizontalCarouselSection>
+        );
+      }
+
+      default:
+        return null;
+    }
+  };
+
+  return <div className="pb-12">{enabledSections.map((sec) => renderSection(sec))}</div>;
 }

@@ -60,6 +60,11 @@ import {
   DEFAULT_STATIC_PAGES,
 } from "./system-cms-shared";
 import { DEFAULT_SITE_SEO_SETTINGS } from "./seo-cms-shared";
+import {
+  DEFAULT_APPEARANCE_CONFIG,
+  type AppearanceVersionEntry,
+  type SiteAppearanceConfig,
+} from "./appearance-shared";
 import { FULL_SEED_TESTS } from "./seed-tests";
 
 export interface LocalStoreData {
@@ -97,12 +102,15 @@ export interface LocalStoreData {
     general: SiteGeneralSettings;
     referral: ReferralConfigSettings;
     seo: SiteSeoSettings;
+    appearance_published?: SiteAppearanceConfig;
+    appearance_draft?: SiteAppearanceConfig;
+    appearance_history?: AppearanceVersionEntry[];
   };
 }
 
 const STORE_DIR = path.join(process.cwd(), ".local-data");
 const STORE_PATH = path.join(STORE_DIR, "store.json");
-const CURRENT_STORE_VERSION = 6;
+const CURRENT_STORE_VERSION = 7;
 
 function buildInitialStore(): LocalStoreData {
   return {
@@ -173,6 +181,9 @@ function buildInitialStore(): LocalStoreData {
       general: structuredClone(DEFAULT_SITE_GENERAL_SETTINGS),
       referral: structuredClone(DEFAULT_REFERRAL_CONFIG),
       seo: structuredClone(DEFAULT_SITE_SEO_SETTINGS),
+      appearance_published: structuredClone(DEFAULT_APPEARANCE_CONFIG),
+      appearance_draft: structuredClone(DEFAULT_APPEARANCE_CONFIG),
+      appearance_history: [],
     },
   };
 }
@@ -223,9 +234,23 @@ function ensureStoreFile(): LocalStoreData {
               general: structuredClone(DEFAULT_SITE_GENERAL_SETTINGS),
               referral: structuredClone(DEFAULT_REFERRAL_CONFIG),
               seo: structuredClone(DEFAULT_SITE_SEO_SETTINGS),
+              appearance_published: structuredClone(DEFAULT_APPEARANCE_CONFIG),
+              appearance_draft: structuredClone(DEFAULT_APPEARANCE_CONFIG),
+              appearance_history: [],
             };
-          } else if (!parsed.site_settings.seo) {
-            parsed.site_settings.seo = structuredClone(DEFAULT_SITE_SEO_SETTINGS);
+          } else {
+            if (!parsed.site_settings.seo) {
+              parsed.site_settings.seo = structuredClone(DEFAULT_SITE_SEO_SETTINGS);
+            }
+            if (!parsed.site_settings.appearance_published) {
+              parsed.site_settings.appearance_published = structuredClone(DEFAULT_APPEARANCE_CONFIG);
+            }
+            if (!parsed.site_settings.appearance_draft) {
+              parsed.site_settings.appearance_draft = structuredClone(DEFAULT_APPEARANCE_CONFIG);
+            }
+            if (!Array.isArray(parsed.site_settings.appearance_history)) {
+              parsed.site_settings.appearance_history = [];
+            }
           }
           parsed.version = CURRENT_STORE_VERSION;
           dirty = true;

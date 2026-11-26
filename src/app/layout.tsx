@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import Link from "next/link";
 import { Be_Vietnam_Pro } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { SiteWidgets } from "@/components/site-widgets";
 import { GlobalFlashcardModal } from "@/components/flashcard-quick-add";
 import { MentorFloatingButton } from "@/components/mentor-floating-button";
 import { getAuthState } from "@/lib/auth";
+import { getServerNowMs, getSiteSeoSettings } from "@/lib/site-content";
 import {
-  getSiteGeneralSettings,
-  getSiteSeoSettings,
-} from "@/lib/site-content";
+  getEffectiveAppearance,
+  getPublishedAppearance,
+} from "@/lib/cms-appearance";
+import {
+  applyUiTextOverrides,
+  buildThemeCssVariables,
+  getGoogleFontHref,
+} from "@/lib/appearance-shared";
 import { isValidSocialProfileUrl } from "@/lib/system-cms-shared";
-import { GA4_ID_REGEX } from "@/lib/seo-cms-shared";
+import { GA4_ID_REGEX, GSC_TOKEN_REGEX } from "@/lib/seo-cms-shared";
 import { getAppBaseUrl } from "@/lib/seo";
 import "./globals.css";
 
@@ -35,12 +41,20 @@ function toAbsoluteUrl(raw: string | undefined, baseUrl: string): string | undef
 
 export async function generateMetadata(): Promise<Metadata> {
   const baseUrl = getAppBaseUrl();
-  const [seo, general] = await Promise.all([
+  const [seo, appearance] = await Promise.all([
     getSiteSeoSettings(),
-    getSiteGeneralSettings(),
+    getPublishedAppearance(),
   ]);
 
-  const siteName = general.siteName || "Ôn IELTS";
+  const siteName = appearance.branding.siteName || "Ôn IELTS";
+  const gscCandidate = (
+    appearance.analytics.googleSiteVerification ||
+    seo.googleSiteVerification ||
+    ""
+  ).trim();
+  const gscToken =
+    gscCandidate && GSC_TOKEN_REGEX.test(gscCandidate) ? gscCandidate : "";
+  const faviconUrl = appearance.branding.faviconUrl?.trim();
 
   return {
     metadataBase: new URL(baseUrl),
@@ -52,9 +66,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description: seo.defaultMetaDescription,
     keywords: seo.defaultKeywords.length > 0 ? seo.defaultKeywords : undefined,
-    verification: seo.googleSiteVerification
-      ? { google: seo.googleSiteVerification }
-      : undefined,
+    icons: faviconUrl ? { icon: faviconUrl, shortcut: faviconUrl } : undefined,
+    verification: gscToken ? { google: gscToken } : undefined,
     robots: {
       index: true,
       follow: true,
@@ -68,55 +81,81 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const baseUrl = getAppBaseUrl();
-  const [locale, messages, authState, siteSettings, seoSettings] =
-    await Promise.all([
-      getLocale(),
-      getMessages(),
-      getAuthState(),
-      getSiteGeneralSettings(),
-      getSiteSeoSettings(),
-    ]);
+  const [locale, messages, authState, seoSettings] = await Promise.all([
+    getLocale(),
+    getMessages(),
+    getAuthState(),
+    getSiteSeoSettings(),
+  ]);
+
+  const isAdmin = authState.user?.role === "admin";
+  const { config: appearance, isPreviewingDraft } =
+    await getEffectiveAppearance(isAdmin);
+  const serverNowMs = getServerNowMs();
+
+  const mergedMessages = applyUiTextOverrides(
+    messages as Record<string, unknown>,
+    appearance.uiTexts,
+    locale
+  );
 
   const sameAs = [
-    siteSettings.socialYoutube,
-    siteSettings.socialFacebook,
-    siteSettings.socialTiktok,
-    siteSettings.socialZalo,
+    appearance.footer.socialYoutube,
+    appearance.footer.socialFacebook,
+    appearance.footer.socialTiktok,
+    appearance.footer.socialZalo,
   ].filter((u) => isValidSocialProfileUrl(u));
 
   const orgLogoUrl = toAbsoluteUrl(
-    seoSettings.organizationLogo || siteSettings.logoUrl,
+    seoSettings.organizationLogo || appearance.branding.logoLightUrl,
     baseUrl
   );
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "EducationalOrganization",
-    name: siteSettings.siteName || "Ôn IELTS",
+    name: appearance.branding.siteName || "Ôn IELTS",
     url: baseUrl,
     logo: orgLogoUrl,
-    email: siteSettings.supportEmail || undefined,
+    email: appearance.footer.email || undefined,
     description:
-      siteSettings.taglineVi ||
+      appearance.branding.taglineVi ||
       seoSettings.defaultMetaDescription ||
       "Nền tảng tự học và luyện thi IELTS toàn diện tích hợp AI cho người học Việt Nam.",
     sameAs: sameAs.length > 0 ? sameAs : undefined,
   };
 
-  const announcementText =
-    locale === "en"
-      ? siteSettings.announcementTextEn || siteSettings.announcementTextVi
-      : siteSettings.announcementTextVi;
-
-  // Strict allowlist check before rendering GA4 script (prevents arbitrary script injection)
+  // Strict allowlist check before rendering GA4 script (NO arbitrary <script> injection)
+  const ga4Candidate = (
+    appearance.analytics.googleAnalyticsId ||
+    seoSettings.googleAnalyticsId ||
+    ""
+  ).trim();
   const ga4Id =
-    seoSettings.googleAnalyticsId &&
-    GA4_ID_REGEX.test(seoSettings.googleAnalyticsId.trim())
-      ? seoSettings.googleAnalyticsId.trim()
-      : "";
+    ga4Candidate && GA4_ID_REGEX.test(ga4Candidate) ? ga4Candidate : "";
+
+  const googleFontHref = getGoogleFontHref(appearance.theme.fontFamily);
+  const themeCss = buildThemeCssVariables(appearance.theme);
 
   return (
     <html lang={locale} suppressHydrationWarning className={beVietnamPro.variable}>
+      <head>
+        {googleFontHref && (
+          <>
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link
+              rel="preconnect"
+              href="https://fonts.gstatic.com"
+              crossOrigin="anonymous"
+            />
+            <link rel="stylesheet" href={googleFontHref} />
+          </>
+        )}
+        <style
+          id="cms-theme-vars"
+          dangerouslySetInnerHTML={{ __html: themeCss }}
+        />
+      </head>
       <body className="min-h-screen flex flex-col bg-background text-foreground antialiased">
         <script
           type="application/ld+json"
@@ -136,27 +175,26 @@ gtag('config', '${ga4Id}');`}
             </Script>
           </>
         )}
-        <ThemeProvider>
-          <NextIntlClientProvider locale={locale} messages={messages}>
-            {siteSettings.announcementEnabled && announcementText && (
-              <div className="bg-emerald-700 px-4 py-2 text-center text-xs font-semibold text-white">
-                {siteSettings.announcementHref ? (
-                  <Link
-                    href={siteSettings.announcementHref}
-                    className="hover:underline"
-                  >
-                    {announcementText} →
-                  </Link>
-                ) : (
-                  <span>{announcementText}</span>
-                )}
-              </div>
-            )}
-            <SiteHeader user={authState.user} authStatus={authState.status} />
-            <main className="flex-1">{children}</main>
-            <SiteFooter />
-            <GlobalFlashcardModal />
-            <MentorFloatingButton />
+        <ThemeProvider defaultTheme={appearance.theme.defaultColorMode}>
+          <NextIntlClientProvider locale={locale} messages={mergedMessages}>
+            <SiteWidgets
+              widgets={appearance.widgets}
+              isAdmin={isAdmin}
+              isPreviewingDraft={isPreviewingDraft}
+              locale={locale}
+              serverNowMs={serverNowMs}
+            >
+              <SiteHeader
+                user={authState.user}
+                authStatus={authState.status}
+                branding={appearance.branding}
+                headerMenu={appearance.menus.publicHeader}
+              />
+              <main className="flex-1">{children}</main>
+              <SiteFooter />
+              <GlobalFlashcardModal />
+              <MentorFloatingButton />
+            </SiteWidgets>
           </NextIntlClientProvider>
         </ThemeProvider>
       </body>

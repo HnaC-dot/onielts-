@@ -1,0 +1,91 @@
+"use client";
+
+import React from "react";
+import {
+  Activity,
+  Bell,
+  BookOpen,
+  Calculator,
+  CalendarDays,
+  Compass,
+  CreditCard,
+  FileCode2,
+  FileText,
+  Flame,
+  Gift,
+  Globe,
+  GraduationCap,
+  Headphones,
+  HelpCircle,
+  Home,
+  Image as ImageIcon,
+  Inbox,
+  Layers,
+  LayoutDashboard,
+  Link2,
+  Mail,
+  MessageSquare,
+  Mic,
+  Palette,
+  PenTool,
+  Settings,
+  Shield,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  Trophy,
+  Users,
+  Video,
+  Volume2,
+  Wrench,
+} from "lucide-react";
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  LayoutDashboard,
+  Activity,
+  SlidersHorizontal,
+  BookOpen,
+  CalendarDays,
+  Calculator,
+  Image: ImageIcon,
+  FileText,
+  GraduationCap,
+  MessageSquare,
+  PenTool,
+  Volume2,
+  Headphones,
+  Video,
+  Users,
+  CreditCard,
+  Inbox,
+  FileCode2,
+  Settings,
+  Globe,
+  Palette,
+  Layers,
+  Wrench,
+  Sparkles,
+  Flame,
+  Trophy,
+  Mic,
+  Star,
+  Shield,
+  Home,
+  Compass,
+  Gift,
+  Mail,
+  Bell,
+  HelpCircle,
+  Link2,
+};
+
+export function DynamicMenuIcon({
+  name,
+  className = "h-4 w-4",
+}: {
+  name?: string;
+  className?: string;
+}) {
+  const Icon = (name && ICON_MAP[name]) || BookOpen;
+  return <Icon className={className} />;
+}

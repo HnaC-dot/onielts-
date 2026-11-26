@@ -1017,6 +1017,27 @@ export async function saveSiteGeneralSettingsCms(
   if (!isSupabaseConfigured()) {
     updateStore((store) => {
       store.site_settings.general = settings;
+      if (store.site_settings.appearance_published) {
+        const ap = store.site_settings.appearance_published;
+        ap.branding.siteName = settings.siteName;
+        ap.branding.taglineVi = settings.taglineVi;
+        ap.branding.taglineEn = settings.taglineEn;
+        if (settings.logoUrl) ap.branding.logoLightUrl = settings.logoUrl;
+        ap.footer.email = settings.supportEmail;
+        ap.footer.phone = settings.hotline;
+        ap.footer.address = settings.address;
+        ap.footer.socialYoutube = settings.socialYoutube;
+        ap.footer.socialFacebook = settings.socialFacebook;
+        ap.footer.socialTiktok = settings.socialTiktok;
+        ap.footer.socialZalo = settings.socialZalo;
+        ap.footer.copyrightVi = settings.footerCopyrightVi;
+        ap.footer.disclaimerVi = settings.disclaimerVi;
+        ap.footer.disclaimerEn = settings.disclaimerEn;
+        ap.widgets.topBanner.enabled = settings.announcementEnabled;
+        ap.widgets.topBanner.textVi = settings.announcementTextVi;
+        ap.widgets.topBanner.textEn = settings.announcementTextEn;
+        ap.widgets.topBanner.href = settings.announcementHref;
+      }
     });
   } else {
     const admin = createSupabaseAdminClient();
@@ -1030,6 +1051,49 @@ export async function saveSiteGeneralSettingsCms(
       { onConflict: "key" }
     );
     if (error) return { ok: false, status: 500, error: error.message };
+
+    // Keep appearance_published in sync if it exists so /admin/settings and /admin/appearance stay unified
+    const { data: apRow } = await admin
+      .from("site_settings")
+      .select("value")
+      .eq("key", "appearance_published")
+      .maybeSingle();
+    if (apRow?.value && typeof apRow.value === "object") {
+      const ap = structuredClone(apRow.value as Record<string, Record<string, unknown>>);
+      if (ap.branding) {
+        ap.branding.siteName = settings.siteName;
+        ap.branding.taglineVi = settings.taglineVi;
+        ap.branding.taglineEn = settings.taglineEn;
+        if (settings.logoUrl) ap.branding.logoLightUrl = settings.logoUrl;
+      }
+      if (ap.footer) {
+        ap.footer.email = settings.supportEmail;
+        ap.footer.phone = settings.hotline;
+        ap.footer.address = settings.address;
+        ap.footer.socialYoutube = settings.socialYoutube;
+        ap.footer.socialFacebook = settings.socialFacebook;
+        ap.footer.socialTiktok = settings.socialTiktok;
+        ap.footer.socialZalo = settings.socialZalo;
+        ap.footer.copyrightVi = settings.footerCopyrightVi;
+        ap.footer.disclaimerVi = settings.disclaimerVi;
+        ap.footer.disclaimerEn = settings.disclaimerEn;
+      }
+      if (ap.widgets && typeof ap.widgets.topBanner === "object" && ap.widgets.topBanner) {
+        const tb = ap.widgets.topBanner as Record<string, unknown>;
+        tb.enabled = settings.announcementEnabled;
+        tb.textVi = settings.announcementTextVi;
+        tb.textEn = settings.announcementTextEn;
+        tb.href = settings.announcementHref;
+      }
+      await admin.from("site_settings").upsert(
+        {
+          key: "appearance_published",
+          value: ap,
+          updated_by: isValidUuid(actor.id) ? actor.id : null,
+        },
+        { onConflict: "key" }
+      );
+    }
   }
 
   await recordAuditLog({
