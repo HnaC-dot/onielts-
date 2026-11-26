@@ -48,8 +48,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const siteName = appearance.branding.siteName || "Ôn IELTS";
   const gscCandidate = (
-    appearance.analytics.googleSiteVerification ||
     seo.googleSiteVerification ||
+    appearance.analytics.googleSiteVerification ||
     ""
   ).trim();
   const gscToken =
@@ -127,8 +127,8 @@ export default async function RootLayout({
 
   // Strict allowlist check before rendering GA4 script (NO arbitrary <script> injection)
   const ga4Candidate = (
-    appearance.analytics.googleAnalyticsId ||
     seoSettings.googleAnalyticsId ||
+    appearance.analytics.googleAnalyticsId ||
     ""
   ).trim();
   const ga4Id =

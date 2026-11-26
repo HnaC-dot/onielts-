@@ -38,7 +38,7 @@ export default async function CourseDetailPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ preview?: string }>;
+  searchParams: Promise<{ preview?: string; lesson?: string }>;
 }) {
   const [{ slug }, query, locale, user] = await Promise.all([
     params,
@@ -115,6 +115,7 @@ export default async function CourseDetailPage({
       <CoursePlayerClient
         course={course}
         initialCompletedIds={prog?.completed_lesson_ids ?? []}
+        initialLessonId={query.lesson}
       />
     </div>
   );

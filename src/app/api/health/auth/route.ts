@@ -22,7 +22,10 @@ export async function GET() {
     {
       supabaseConfigured: isSupabaseConfigured(),
       serviceRoleKeyPresent: isServiceRoleConfigured(),
-      appUrlSet: Boolean(process.env.NEXT_PUBLIC_APP_URL?.trim()),
+      appUrlSet: Boolean(
+        process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+          process.env.NEXT_PUBLIC_APP_URL?.trim()
+      ),
       authenticated,
       profileRowFound,
       role: authState.user?.role ?? null,

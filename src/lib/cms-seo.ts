@@ -88,17 +88,30 @@ export async function saveAdminSeoSettings(
   if (!isSupabaseConfigured()) {
     updateStore((store) => {
       store.site_settings.seo = normalized;
+      if (store.site_settings.appearance_published) {
+        store.site_settings.appearance_published.analytics = {
+          googleAnalyticsId: normalized.googleAnalyticsId,
+          googleSiteVerification: normalized.googleSiteVerification,
+        };
+      }
+      if (store.site_settings.appearance_draft) {
+        store.site_settings.appearance_draft.analytics = {
+          googleAnalyticsId: normalized.googleAnalyticsId,
+          googleSiteVerification: normalized.googleSiteVerification,
+        };
+      }
     });
   } else {
     const admin = createSupabaseAdminClient();
     if (!admin) {
       return { ok: false, status: 503, error: "Thiếu kết nối Supabase Admin." };
     }
+    const uid = isValidUuid(actor.id) ? actor.id : null;
     const { error } = await admin.from("site_settings").upsert(
       {
         key: "seo",
         value: normalized,
-        updated_by: isValidUuid(actor.id) ? actor.id : null,
+        updated_by: uid,
       },
       { onConflict: "key" }
     );
@@ -108,6 +121,29 @@ export async function saveAdminSeoSettings(
         status: 500,
         error: `Lưu cấu hình SEO thất bại: ${error.message}`,
       };
+    }
+
+    // Two-way sync GA4 & Google Search Console into appearance_published/draft
+    const { data: apRows } = await admin
+      .from("site_settings")
+      .select("key, value")
+      .in("key", ["appearance_published", "appearance_draft"]);
+    if (Array.isArray(apRows) && apRows.length > 0) {
+      await Promise.all(
+        apRows
+          .filter((r) => r?.value && typeof r.value === "object")
+          .map((r) => {
+            const nextVal = structuredClone(r.value as Record<string, unknown>);
+            nextVal.analytics = {
+              googleAnalyticsId: normalized.googleAnalyticsId,
+              googleSiteVerification: normalized.googleSiteVerification,
+            };
+            return admin.from("site_settings").upsert(
+              { key: String(r.key), value: nextVal, updated_by: uid },
+              { onConflict: "key" }
+            );
+          })
+      );
     }
   }
 
@@ -120,6 +156,11 @@ export async function saveAdminSeoSettings(
     summary: `Cập nhật SEO toàn trang (GA4: ${normalized.googleAnalyticsId || "chưa gắn"}, Sitemap & Robots)`,
   });
 
+  try {
+    revalidatePath("/", "layout");
+  } catch {
+    // ignore outside Next request context
+  }
   safeRevalidate([
     "/",
     "/sitemap.xml",
@@ -131,6 +172,8 @@ export async function saveAdminSeoSettings(
     "/videos",
     "/about",
     "/pricing",
+    "/admin/seo",
+    "/admin/appearance",
   ]);
   return { ok: true, settings: normalized };
 }

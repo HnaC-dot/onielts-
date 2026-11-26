@@ -142,12 +142,14 @@ export async function POST(req: Request) {
           );
         }
         const origin =
-          process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(req.url).origin;
+          process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+          process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+          new URL(req.url).origin;
         const { error } = await routeClient.supabase.auth.signInWithOtp({
           email: data.email,
           options: {
             shouldCreateUser: true,
-            emailRedirectTo: `${origin.replace(/\/$/, "")}/auth/callback?next=/`,
+            emailRedirectTo: `${origin.replace(/\/+$/, "")}/auth/callback?next=/`,
           },
         });
         if (error) {

@@ -15,14 +15,20 @@ import { Badge } from "./ui/badge";
 export function CoursePlayerClient({
   course,
   initialCompletedIds,
+  initialLessonId,
 }: {
   course: CourseItem;
   initialCompletedIds: string[];
+  initialLessonId?: string;
 }) {
   const locale = useLocale();
   const isEn = locale === "en";
 
-  const [activeLessonId, setActiveLessonId] = useState(course.lessons[0]?.id ?? "");
+  const matchedInitial =
+    initialLessonId && course.lessons.some((l) => l.id === initialLessonId)
+      ? initialLessonId
+      : course.lessons[0]?.id ?? "";
+  const [activeLessonId, setActiveLessonId] = useState(matchedInitial);
   const [completedIds, setCompletedIds] = useState<string[]>(initialCompletedIds);
   const [quizChoice, setQuizChoice] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);

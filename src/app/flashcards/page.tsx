@@ -12,6 +12,7 @@ export async function generateMetadata() {
       "Quản lý bộ thẻ từ vựng học thuật, lưu nhanh bằng cách bôi đen từ trên bất kỳ trang nào và ôn tập theo thuật toán lặp lại ngắt quãng SM-2.",
     pathname: "/flashcards",
     type: "website",
+    noindex: true,
   });
 }
 

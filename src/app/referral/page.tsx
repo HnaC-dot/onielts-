@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { getUserReferrals } from "@/lib/db";
 import { getReferralConfig } from "@/lib/site-content";
+import { getAppBaseUrl } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { ReferralClient } from "@/components/referral-client";
 import { Card } from "@/components/ui/card";
@@ -19,6 +20,7 @@ export async function generateMetadata() {
       "Chia sẻ liên kết giới thiệu Ôn IELTS và theo dõi lượt đăng ký, nâng cấp của bạn bè.",
     pathname: "/referral",
     type: "website",
+    noindex: true,
   });
 }
 
@@ -45,6 +47,7 @@ export default async function ReferralPage() {
 
   const referralCode = user?.referral_code ?? "MINHANH26";
   const referrals = await getUserReferrals(user?.id ?? null);
+  const siteBaseUrl = getAppBaseUrl();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 space-y-6">
@@ -58,7 +61,11 @@ export default async function ReferralPage() {
             : "Gửi đường dẫn cá nhân cho bạn bè luyện thi cùng nhau và theo dõi minh bạch các lượt tham gia."}
         </p>
       </div>
-      <ReferralClient referralCode={referralCode} referrals={referrals} />
+      <ReferralClient
+        referralCode={referralCode}
+        referrals={referrals}
+        siteBaseUrl={siteBaseUrl}
+      />
     </div>
   );
 }

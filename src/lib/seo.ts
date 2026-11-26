@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { z } from "zod";
+import { getEffectiveSiteBaseUrl } from "./domain-redirect";
 import { extractFirstHeading, extractPlainText } from "./sanitize";
 import type { BlogPost, CourseItem, LearnVideo, SeoMeta } from "./types";
 
@@ -159,7 +160,7 @@ export function evaluateSeoChecklist(params: {
 export const DEFAULT_FALLBACK_OG_IMAGE = "/og-default.png";
 
 export function getAppBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || "https://onielts.vn").replace(/\/+$/, "");
+  return getEffectiveSiteBaseUrl();
 }
 
 export function resolveAbsoluteAssetUrl(

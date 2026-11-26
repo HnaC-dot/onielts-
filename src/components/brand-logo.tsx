@@ -93,7 +93,20 @@ export function BrandLogo({
             {renderStyledSiteName(siteName)}
           </span>
           <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-            onielts.vn
+            {(() => {
+              const raw = (
+                process.env.NEXT_PUBLIC_SITE_URL ||
+                process.env.NEXT_PUBLIC_APP_URL ||
+                ""
+              ).trim();
+              if (!raw) return "onielts.vn";
+              try {
+                const h = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).host;
+                return h.startsWith("localhost") ? "onielts.vn" : h;
+              } catch {
+                return "onielts.vn";
+              }
+            })()}
           </span>
         </span>
       )}

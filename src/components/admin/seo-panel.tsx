@@ -29,6 +29,20 @@ interface SeoPanelProps {
   siteHost?: string;
 }
 
+function getDefaultPreviewHost(): string {
+  const raw = (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    ""
+  ).trim();
+  if (!raw) return "onielts.vn";
+  try {
+    return new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).host;
+  } catch {
+    return "onielts.vn";
+  }
+}
+
 export function SeoPanel({
   seoMeta,
   onChange,
@@ -38,7 +52,7 @@ export function SeoPanel({
   basePath,
   contentHtml,
   coverImageUrl,
-  siteHost = "onielts.vn",
+  siteHost = getDefaultPreviewHost(),
 }: SeoPanelProps) {
   const [ogPickerOpen, setOgPickerOpen] = useState(false);
   const [secondaryDraft, setSecondaryDraft] = useState(

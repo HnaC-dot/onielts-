@@ -1,10 +1,13 @@
 import type { MetadataRoute } from "next";
 import {
   getBlogPosts,
+  getConversationTopics,
   getCourses,
+  getDictationLessons,
   getIeltsTests,
   getLearnVideos,
   getPronunciationSounds,
+  getWritingExercises,
 } from "@/lib/db";
 import {
   getSiteSeoSettings,
@@ -24,19 +27,33 @@ function safeDate(raw?: string | null, fallback = new Date()): Date {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getAppBaseUrl();
   const now = new Date();
-  const [seo, tests, courses, sounds, videos, posts, staticPages] =
-    await Promise.all([
-      getSiteSeoSettings(),
-      getIeltsTests(false),
-      getCourses(false),
-      getPronunciationSounds(false),
-      getLearnVideos(false),
-      getBlogPosts(false),
-      listPublicStaticPages(),
-    ]);
+  const [
+    seo,
+    tests,
+    courses,
+    sounds,
+    dictations,
+    videos,
+    posts,
+    conversations,
+    writingExercises,
+    staticPages,
+  ] = await Promise.all([
+    getSiteSeoSettings(),
+    getIeltsTests(false),
+    getCourses(false),
+    getPronunciationSounds(false),
+    getDictationLessons(false),
+    getLearnVideos(false),
+    getBlogPosts(false),
+    getConversationTopics(false),
+    getWritingExercises(false),
+    listPublicStaticPages(),
+  ]);
 
   const staticPageMap = new Map(staticPages.map((p) => [`/${p.slug}`, p]));
 
+  // Public indexable core pages ONLY (personal pages /profile, /progress, /referral, /flashcards, /auth, /admin excluded)
   const coreRoutes = [
     "",
     "/tests",
@@ -54,14 +71,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/courses",
     "/pronunciation",
     "/dictation",
-    "/flashcards",
     "/videos",
     "/blog",
     "/mentor",
     "/pricing",
     "/contact",
     "/feature-requests",
-    "/referral",
     "/sitemap-html",
   ];
 
@@ -115,6 +130,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
   }
 
+  // Published IELTS tests
   if (seo.sitemapIncludeTests) {
     for (const test of tests) {
       if (test.seo_meta?.robotsIndex === false) continue;
@@ -127,6 +143,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
+  // Published courses & their individual lessons
   if (seo.sitemapIncludeCourses) {
     for (const c of courses) {
       if (c.seo_meta?.robotsIndex === false) continue;
@@ -136,9 +153,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: "weekly",
         priority: 0.8,
       });
+      for (const lesson of c.lessons ?? []) {
+        if (!lesson.id) continue;
+        entries.push({
+          url: `${baseUrl}/courses/${c.slug}?lesson=${encodeURIComponent(lesson.id)}`,
+          lastModified: now,
+          changeFrequency: "monthly",
+          priority: 0.7,
+        });
+      }
     }
   }
 
+  // Published IPA pronunciation pages
   if (seo.sitemapIncludePronunciation) {
     for (const p of sounds) {
       if (p.seo_meta?.robotsIndex === false) continue;
@@ -151,6 +178,35 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
+  // Published Dictation & Shadowing lessons
+  for (const d of dictations) {
+    entries.push({
+      url: `${baseUrl}/dictation?lesson=${encodeURIComponent(d.slug)}`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    });
+  }
+
+  // Published AI Conversation topics & Writing Improvement exercises
+  for (const conv of conversations) {
+    entries.push({
+      url: `${baseUrl}/conversations?topic=${encodeURIComponent(conv.slug)}`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.65,
+    });
+  }
+  for (const ex of writingExercises) {
+    entries.push({
+      url: `${baseUrl}/writing/exercises?slug=${encodeURIComponent(ex.slug)}`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.65,
+    });
+  }
+
+  // Published interactive videos
   if (seo.sitemapIncludeVideos) {
     for (const v of videos) {
       if (v.seo_meta?.robotsIndex === false) continue;
@@ -163,6 +219,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
+  // Published blog posts
   if (seo.sitemapIncludeBlog) {
     for (const post of posts) {
       if (post.seo_meta?.robotsIndex === false) continue;

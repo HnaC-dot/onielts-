@@ -11,15 +11,17 @@ import { Badge } from "./ui/badge";
 export function ReferralClient({
   referralCode,
   referrals,
+  siteBaseUrl = "https://onielts.vn",
 }: {
   referralCode: string;
   referrals: ReferralRecord[];
+  siteBaseUrl?: string;
 }) {
   const locale = useLocale();
   const isEn = locale === "en";
   const [copied, setCopied] = useState(false);
 
-  const shareUrl = `https://onielts.vn/auth?ref=${referralCode}`;
+  const shareUrl = `${siteBaseUrl.replace(/\/+$/, "")}/auth?ref=${referralCode}`;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(shareUrl);

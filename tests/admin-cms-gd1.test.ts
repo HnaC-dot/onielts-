@@ -17,37 +17,37 @@ describe("Admin CMS GĐ1 — RBAC, CSRF, Proxy Guard & Migration 0005", () => {
   });
 
   it("enforces same-origin CSRF checks on mutating admin API requests", () => {
-    const sameOriginReq = new Request("https://onielts.vercel.app/api/admin", {
+    const sameOriginReq = new Request("https://onielts.vn/api/admin", {
       method: "POST",
       headers: {
-        host: "onielts.vercel.app",
-        origin: "https://onielts.vercel.app",
+        host: "onielts.vn",
+        origin: "https://onielts.vn",
       },
     });
     expect(verifySameOrigin(sameOriginReq)).toBe(true);
 
-    const crossOriginReq = new Request("https://onielts.vercel.app/api/admin", {
+    const crossOriginReq = new Request("https://onielts.vn/api/admin", {
       method: "POST",
       headers: {
-        host: "onielts.vercel.app",
+        host: "onielts.vn",
         origin: "https://evil-phishing.example",
       },
     });
     expect(verifySameOrigin(crossOriginReq)).toBe(false);
 
-    const crossRefererReq = new Request("https://onielts.vercel.app/api/admin", {
+    const crossRefererReq = new Request("https://onielts.vn/api/admin", {
       method: "POST",
       headers: {
-        host: "onielts.vercel.app",
+        host: "onielts.vn",
         referer: "https://attacker.example/csrf.html",
       },
     });
     expect(verifySameOrigin(crossRefererReq)).toBe(false);
 
-    const serverToServerReq = new Request("https://onielts.vercel.app/api/admin", {
+    const serverToServerReq = new Request("https://onielts.vn/api/admin", {
       method: "POST",
       headers: {
-        host: "onielts.vercel.app",
+        host: "onielts.vn",
       },
     });
     expect(verifySameOrigin(serverToServerReq)).toBe(true);

@@ -46,10 +46,13 @@ export function verifySameOrigin(req: Request): boolean {
 
   const allowedHosts = new Set<string>();
   if (host) allowedHosts.add(host.toLowerCase());
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (appUrl) {
+  for (const envUrl of [
+    process.env.NEXT_PUBLIC_SITE_URL?.trim(),
+    process.env.NEXT_PUBLIC_APP_URL?.trim(),
+  ]) {
+    if (!envUrl) continue;
     try {
-      allowedHosts.add(new URL(appUrl).host.toLowerCase());
+      allowedHosts.add(new URL(envUrl).host.toLowerCase());
     } catch {
       // ignore invalid URL
     }

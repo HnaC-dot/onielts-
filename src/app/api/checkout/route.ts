@@ -53,7 +53,11 @@ export async function POST(req: Request) {
     const orderCode = Number(
       `${Date.now().toString().slice(-8)}${Math.floor(10 + Math.random() * 89)}`
     );
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const baseUrl = (
+      process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+      process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+      new URL(req.url).origin
+    ).replace(/\/+$/, "");
 
     const provider = getPaymentProvider(parsed.data.provider);
     let checkout;

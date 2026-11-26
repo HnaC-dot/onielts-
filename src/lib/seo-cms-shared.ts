@@ -13,6 +13,9 @@ export const PROTECTED_ROBOTS_DISALLOW = [
   "/api/",
   "/auth",
   "/profile",
+  "/progress",
+  "/referral",
+  "/flashcards",
 ] as const;
 
 export const RESERVED_REDIRECT_PREFIXES = [
