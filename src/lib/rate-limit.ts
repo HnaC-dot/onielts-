@@ -20,17 +20,29 @@ export interface RateLimitResult {
   backend: "upstash" | "memory";
 }
 
+function getUpstashCredentials(): { url: string; token: string } | null {
+  const url = (
+    process.env.UPSTASH_REDIS_REST_URL ||
+    process.env.KV_REST_API_URL ||
+    ""
+  ).trim();
+  const token = (
+    process.env.UPSTASH_REDIS_REST_TOKEN ||
+    process.env.KV_REST_API_TOKEN ||
+    ""
+  ).trim();
+  if (!url || !token) return null;
+  return { url, token };
+}
+
 export function isUpstashRateLimitConfigured(): boolean {
-  return Boolean(
-    process.env.UPSTASH_REDIS_REST_URL?.trim() &&
-      process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
-  );
+  return Boolean(getUpstashCredentials());
 }
 
 function getUpstashLimiter(maxRequests: number, windowMs: number): Ratelimit | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
-  if (!url || !token) return null;
+  const creds = getUpstashCredentials();
+  if (!creds) return null;
+  const { url, token } = creds;
 
   const sig = `${url.length}:${token.length}`;
   if (!cachedRedis || cachedRedisSignature !== sig) {

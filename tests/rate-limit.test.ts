@@ -26,6 +26,8 @@ import {
 afterEach(() => {
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  delete process.env.KV_REST_API_URL;
+  delete process.env.KV_REST_API_TOKEN;
   mockLimit.mockReset();
   resetInMemoryRateLimitForTests();
   vi.restoreAllMocks();
@@ -75,6 +77,25 @@ describe("Phase 2 — Rate Limiter (Upstash Redis + In-Memory Fallback)", () => 
     expect(blocked.remaining).toBe(0);
     expect(blocked.retryAfterSec).toBeGreaterThanOrEqual(1);
     expect(blocked.backend).toBe("upstash");
+  });
+
+  it("also accepts Vercel Upstash Marketplace KV_REST_API_URL and KV_REST_API_TOKEN", async () => {
+    process.env.KV_REST_API_URL = "https://kv-example.upstash.io";
+    process.env.KV_REST_API_TOKEN = "mock-kv-token";
+    expect(isUpstashRateLimitConfigured()).toBe(true);
+
+    mockLimit.mockResolvedValueOnce({
+      success: true,
+      remaining: 9,
+      reset: Date.now() + 60_000,
+    });
+    const ok = await checkRateLimit("ip:1.2.3.4", 10, 60_000);
+    expect(ok).toEqual({
+      allowed: true,
+      remaining: 9,
+      retryAfterSec: 0,
+      backend: "upstash",
+    });
   });
 
   it("falls back safely to in-memory limiter if Upstash throws a network error", async () => {

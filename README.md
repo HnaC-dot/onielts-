@@ -46,8 +46,8 @@ Copy `.env.example` to `.env.local` locally, and configure the same keys in **Ve
 | `PAYOS_API_KEY` | **Server-only** | **Yes** (for payments) | PayOS API Key | PayOS Dashboard → Channels |
 | `PAYOS_CHECKSUM_KEY` | **Server-only** | **Yes** (for payments) | PayOS HMAC-SHA256 webhook verification key (fail-closed in production) | PayOS Dashboard → Channels |
 | `PAYOS_SANDBOX` | **Server-only** | Optional | Local dev only (`false` in production; ignored when `NODE_ENV === "production"`) | Local `.env.local` |
-| `UPSTASH_REDIS_REST_URL` | **Server-only** | Recommended | Upstash Redis REST endpoint for distributed sliding-window rate limiting across serverless instances | Upstash Console / Vercel Marketplace |
-| `UPSTASH_REDIS_REST_TOKEN` | **Server-only** | Recommended | Upstash Redis REST bearer token (falls back to bounded in-memory limiter in local dev when unset) | Upstash Console / Vercel Marketplace |
+| `UPSTASH_REDIS_REST_URL` | **Server-only** | Recommended | Upstash Redis REST endpoint (also auto-detects Vercel Marketplace `KV_REST_API_URL`) | Upstash Console / Vercel Marketplace |
+| `UPSTASH_REDIS_REST_TOKEN` | **Server-only** | Recommended | Upstash Redis REST bearer token (also auto-detects `KV_REST_API_TOKEN`; falls back to bounded in-memory limiter locally) | Upstash Console / Vercel Marketplace |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Client + Server | Optional | Cloudflare Turnstile public site key | Cloudflare Dashboard |
 | `TURNSTILE_SECRET_KEY` | **Server-only** | Optional | Cloudflare Turnstile verification secret | Cloudflare Dashboard |
 | `SUPABASE_DB_URL` | Test/CI only | Optional | Direct PostgreSQL connection string for running `tests/rls.integration.test.ts` | `supabase status` or local Docker |
