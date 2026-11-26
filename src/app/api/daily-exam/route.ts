@@ -7,10 +7,8 @@ import {
   getDailyExamState,
   startDailyExamAttempt,
 } from "@/lib/db";
-import { gradeObjectiveTest } from "@/lib/test-grader";
+import { gradeObjectiveTest, sanitizeTestForClient } from "@/lib/test-grader";
 import { getVietnamDateString } from "@/lib/utils";
-
-const DAILY_DURATION_SECONDS = 900; // 15 minutes server-enforced
 
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start") }),
@@ -23,16 +21,14 @@ const actionSchema = z.discriminatedUnion("action", [
 export async function GET() {
   const vnToday = getVietnamDateString();
   const user = await getCurrentUser();
-  const { dailyTest, existingAttempt, leaderboard } = await getDailyExamState(
-    vnToday,
-    user?.id ?? null
-  );
+  const { dailyTest, durationSeconds, existingAttempt, leaderboard } =
+    await getDailyExamState(vnToday, user?.id ?? null);
 
   return NextResponse.json({
     examDate: vnToday,
     timezone: "Asia/Ho_Chi_Minh",
-    durationSeconds: DAILY_DURATION_SECONDS,
-    test: dailyTest,
+    durationSeconds: durationSeconds ?? 900,
+    test: sanitizeTestForClient(dailyTest),
     attempt: existingAttempt,
     leaderboard,
   });
@@ -58,7 +54,11 @@ export async function POST(req: Request) {
     }
 
     const vnToday = getVietnamDateString();
-    const { dailyTest } = await getDailyExamState(vnToday, user.id);
+    const { dailyTest, durationSeconds } = await getDailyExamState(
+      vnToday,
+      user.id
+    );
+    const effectiveDuration = durationSeconds ?? 900;
 
     if (parsed.data.action === "start") {
       const started = await startDailyExamAttempt({
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
         dailyTest,
         userId: user.id,
         displayName: user.full_name,
-        durationSeconds: DAILY_DURATION_SECONDS,
+        durationSeconds: effectiveDuration,
       });
 
       if (started.conflict) {
@@ -103,7 +103,7 @@ export async function POST(req: Request) {
       rawScore: graded.rawScore,
       maxScore: graded.maxScore,
       bandScore: graded.bandScore ?? 0,
-      durationSecondsLimit: DAILY_DURATION_SECONDS,
+      durationSecondsLimit: effectiveDuration,
     });
 
     if (result.conflict) {

@@ -30,6 +30,7 @@ import { Badge } from "./ui/badge";
 
 const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   mcq: "Multiple Choice",
+  mcq_multi: "Multiple Choice (Multi)",
   tfng: "True / False / Not Given",
   ynng: "Yes / No / Not Given",
   matching_headings: "Matching Headings",
@@ -697,14 +698,25 @@ export function TestEngineClient({
             ) : null}
 
             {/* SVG MAP OR DIAGRAM */}
-            {currentSection.diagramSvgType && (
+            {(currentSection.diagramSvgType || currentSection.diagramImageUrl) && (
               <div className="space-y-2">
                 {currentSection.diagramLabel && (
                   <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
                     {currentSection.diagramLabel}
                   </p>
                 )}
-                <TestDiagramSvg type={currentSection.diagramSvgType} />
+                {currentSection.diagramImageUrl ? (
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={currentSection.diagramImageUrl}
+                      alt={currentSection.diagramLabel || currentSection.title}
+                      className="mx-auto max-h-96 w-full object-contain"
+                    />
+                  </div>
+                ) : currentSection.diagramSvgType ? (
+                  <TestDiagramSvg type={currentSection.diagramSvgType} />
+                ) : null}
               </div>
             )}
 
@@ -819,22 +831,53 @@ export function TestEngineClient({
                     {q.options && q.options.length > 0 ? (
                       <div className="grid gap-2">
                         {q.options.map((opt) => {
-                          const selected = val === opt;
+                          const isMulti = q.type === "mcq_multi";
+                          const selectedList = isMulti
+                            ? val
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean)
+                            : [];
+                          const selected = isMulti
+                            ? selectedList.includes(opt)
+                            : val === opt;
+
                           return (
                             <button
                               key={opt}
                               type="button"
                               disabled={Boolean(graded)}
-                              onClick={() =>
-                                setAnswers((prev) => ({ ...prev, [q.id]: opt }))
-                              }
-                              className={`rounded-xl border px-3.5 py-2.5 text-left text-xs font-medium transition cursor-pointer ${
+                              onClick={() => {
+                                if (isMulti) {
+                                  const next = selected
+                                    ? selectedList.filter((item) => item !== opt)
+                                    : [...selectedList, opt];
+                                  setAnswers((prev) => ({
+                                    ...prev,
+                                    [q.id]: next.join(", "),
+                                  }));
+                                } else {
+                                  setAnswers((prev) => ({ ...prev, [q.id]: opt }));
+                                }
+                              }}
+                              className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-left text-xs font-medium transition cursor-pointer ${
                                 selected
                                   ? "border-emerald-600 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200"
                                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
                               }`}
                             >
-                              {opt}
+                              {isMulti && (
+                                <span
+                                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
+                                    selected
+                                      ? "border-emerald-600 bg-emerald-600 text-white"
+                                      : "border-slate-300 dark:border-slate-600"
+                                  }`}
+                                >
+                                  {selected ? "✓" : ""}
+                                </span>
+                              )}
+                              <span>{opt}</span>
                             </button>
                           );
                         })}
@@ -867,17 +910,27 @@ export function TestEngineClient({
                             <XCircle className="h-4 w-4" />
                             {isEn ? "Incorrect" : "Chưa đúng"} · Đáp án:{" "}
                             <strong className="text-emerald-700 dark:text-emerald-400">
-                              {detail.acceptedAnswers[0]}
+                              {detail.acceptedAnswers.join(" / ")}
                             </strong>
                           </span>
                         )}
                       </div>
-                      <p className="text-slate-700 dark:text-slate-300">
-                        <strong>Giải thích (VI):</strong> {detail.explanation_vi}
-                      </p>
-                      <p className="text-slate-500 dark:text-slate-400">
-                        <strong>Explanation (EN):</strong> {detail.explanation_en}
-                      </p>
+                      {detail.sectionRef && (
+                        <p className="text-emerald-800 dark:text-emerald-300">
+                          <strong>{isEn ? "Evidence:" : "Đoạn chứa đáp án:"}</strong>{" "}
+                          {detail.sectionRef}
+                        </p>
+                      )}
+                      {detail.explanation_vi && (
+                        <p className="text-slate-700 dark:text-slate-300">
+                          <strong>Giải thích (VI):</strong> {detail.explanation_vi}
+                        </p>
+                      )}
+                      {detail.explanation_en && (
+                        <p className="text-slate-500 dark:text-slate-400">
+                          <strong>Explanation (EN):</strong> {detail.explanation_en}
+                        </p>
+                      )}
                     </div>
                   )}
                 </Card>

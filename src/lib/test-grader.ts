@@ -10,6 +10,7 @@ export interface QuestionGradeDetail {
   isCorrect: boolean;
   explanation_vi: string;
   explanation_en: string;
+  sectionRef?: string;
 }
 
 export interface GradedTestResult {
@@ -35,12 +36,37 @@ export function normalizeAnswer(raw: string): string {
     .replace(/\s+/g, " ");
 }
 
+function normalizeMultiTokens(raw: string): string[] {
+  return raw
+    .split(/[,|&]+|\band\b/i)
+    .map((part) => {
+      const norm = normalizeAnswer(part);
+      // Extract leading option letter e.g. "B. Electric buses" -> "b"
+      const letterMatch = norm.match(/^([a-z])(?:\s+|$)/);
+      return letterMatch && norm.length > 2 ? letterMatch[1] : norm;
+    })
+    .filter(Boolean)
+    .sort();
+}
+
 export function isAnswerCorrect(
   userAnswer: string,
-  acceptedAnswers: string[]
+  acceptedAnswers: string[],
+  questionType?: QuestionType
 ): boolean {
   const normUser = normalizeAnswer(userAnswer);
   if (!normUser) return false;
+
+  if (questionType === "mcq_multi") {
+    const userTokens = normalizeMultiTokens(userAnswer);
+    if (userTokens.length === 0) return false;
+    const userSig = userTokens.join(",");
+    return acceptedAnswers.some((acc) => {
+      const accTokens = normalizeMultiTokens(acc);
+      return accTokens.length > 0 && accTokens.join(",") === userSig;
+    });
+  }
+
   return acceptedAnswers.some((acc) => {
     const normAcc = normalizeAnswer(acc);
     if (normUser === normAcc) return true;
@@ -48,6 +74,30 @@ export function isAnswerCorrect(
     if (normAcc.length === 1 && normUser.startsWith(`${normAcc} `)) return true;
     return false;
   });
+}
+
+/**
+ * Strips all answer keys, bilingual explanations, and passage evidence references
+ * before serializing a test into a client component (prevents answer leakage via DevTools/SSR HTML).
+ */
+export function sanitizeTestForClient(test: IeltsTest): IeltsTest {
+  return {
+    ...test,
+    sections: test.sections.map((section) => ({
+      ...section,
+      questions: section.questions.map((q) => ({
+        id: q.id,
+        number: q.number,
+        type: q.type,
+        prompt: q.prompt,
+        options: q.options,
+        correctAnswers: [],
+        explanation_vi: "",
+        explanation_en: "",
+        sectionRef: undefined,
+      })),
+    })),
+  };
 }
 
 export function gradeObjectiveTest(
@@ -62,7 +112,7 @@ export function gradeObjectiveTest(
 
   for (const q of allQuestions) {
     const userAns = answers[q.id] ?? "";
-    const correct = isAnswerCorrect(userAns, q.correctAnswers);
+    const correct = isAnswerCorrect(userAns, q.correctAnswers, q.type);
     if (correct) rawScore += 1;
 
     if (!breakdownByType[q.type]) {
@@ -80,6 +130,7 @@ export function gradeObjectiveTest(
       isCorrect: correct,
       explanation_vi: q.explanation_vi,
       explanation_en: q.explanation_en,
+      sectionRef: q.sectionRef,
     });
   }
 

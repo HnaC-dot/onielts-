@@ -66,9 +66,9 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Đề thi & Nội dung",
     items: [
-      { label: "Đề thi IELTS", href: "/admin/legacy?tab=tests", icon: BookOpen, phaseBadge: "GĐ3" },
-      { label: "Đề thi mỗi ngày", href: "/admin#daily-exam", icon: CalendarDays, phaseBadge: "GĐ3" },
-      { label: "Bảng quy đổi Band", href: "/admin/legacy?tab=bands", icon: Calculator, adminOnly: true, phaseBadge: "GĐ3" },
+      { label: "Đề thi IELTS", href: "/admin/tests", icon: BookOpen },
+      { label: "Đề thi mỗi ngày", href: "/admin/daily-exam", icon: CalendarDays },
+      { label: "Bảng quy đổi Band", href: "/admin/band-tables", icon: Calculator, adminOnly: true },
       { label: "Thư viện Media", href: "/admin/media", icon: ImageIcon },
       { label: "Blog & Mẹo thi", href: "/admin/blog", icon: FileText },
     ],
@@ -371,7 +371,7 @@ export function AdminShell({
               {isAdmin ? "Admin" : "Editor"}
             </Badge>
             <span className="text-slate-500 dark:text-slate-400">
-              GĐ2 · Media &amp; Blog SEO Active
+              GĐ3 · Tests &amp; Daily Exam Active
             </span>
           </div>
         </div>

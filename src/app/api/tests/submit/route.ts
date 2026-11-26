@@ -26,9 +26,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const [user, test, conversionTable] = await Promise.all([
-      getCurrentUser(),
-      getIeltsTestBySlug(parsed.data.testSlug),
+    const user = await getCurrentUser();
+    const isStaff = Boolean(
+      user && (user.role === "admin" || user.role === "editor") && !user.is_locked
+    );
+    const [test, conversionTable] = await Promise.all([
+      getIeltsTestBySlug(parsed.data.testSlug, isStaff),
       getBandConversionTables(),
     ]);
 

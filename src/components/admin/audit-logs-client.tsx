@@ -15,14 +15,16 @@ interface AuditLogsClientProps {
 
 const ENTITY_FILTERS = [
   { value: "", label: "Tất cả loại" },
+  { value: "ielts_test", label: "Đề thi IELTS" },
+  { value: "daily_exam", label: "Lịch Đề mỗi ngày" },
+  { value: "daily_exam_attempt", label: "BXH Đề mỗi ngày" },
+  { value: "band_conversion", label: "Bảng quy đổi Band" },
   { value: "media_asset", label: "Thư viện Media" },
   { value: "blog_post", label: "Blog & Mẹo thi" },
-  { value: "ielts_test", label: "Đề thi IELTS" },
   { value: "profile", label: "Người dùng / Role" },
   { value: "pricing_plan", label: "Gói giá" },
   { value: "promo_code", label: "Mã giảm giá" },
   { value: "promo_banner", label: "Banner" },
-  { value: "band_conversion", label: "Bảng quy đổi Band" },
 ];
 
 export function AuditLogsClient({

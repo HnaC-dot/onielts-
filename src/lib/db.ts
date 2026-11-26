@@ -355,6 +355,11 @@ function mapTestRow(row: Record<string, unknown>): IeltsTest {
     questionCount: counted > 0 ? counted : Number(td.questionCount ?? 0),
     is_published: Boolean(row.is_published),
     is_daily_eligible: Boolean(row.is_daily_eligible),
+    is_premium: Boolean(row.is_premium),
+    seo_meta:
+      row.seo_meta && typeof row.seo_meta === "object"
+        ? (row.seo_meta as SeoMeta)
+        : {},
     sections,
     writingPrompt: (td.writingPrompt as IeltsTest["writingPrompt"]) ?? undefined,
     speakingPrompts: (td.speakingPrompts as IeltsTest["speakingPrompts"]) ?? undefined,
@@ -683,9 +688,15 @@ export async function getIeltsTests(includeUnpublished = false): Promise<IeltsTe
   return data.map((row) => mapTestRow(row as Record<string, unknown>));
 }
 
-export async function getIeltsTestBySlug(slug: string): Promise<IeltsTest | null> {
+export async function getIeltsTestBySlug(
+  slug: string,
+  includeUnpublished = false
+): Promise<IeltsTest | null> {
   if (!isSupabaseConfigured()) {
-    return readStore().ielts_tests.find((t) => t.slug === slug) ?? null;
+    const found = readStore().ielts_tests.find((t) => t.slug === slug) ?? null;
+    if (!found) return null;
+    if (!includeUnpublished && !found.is_published) return null;
+    return found;
   }
   await ensureSupabaseCatalogSeeded();
   const sb = await getReadSupabase();
@@ -700,7 +711,9 @@ export async function getIeltsTestBySlug(slug: string): Promise<IeltsTest | null
   if (!data) {
     return FULL_SEED_TESTS.find((t) => t.slug === slug) ?? null;
   }
-  return mapTestRow(data as Record<string, unknown>);
+  const mapped = mapTestRow(data as Record<string, unknown>);
+  if (!includeUnpublished && !mapped.is_published) return null;
+  return mapped;
 }
 
 export async function adminToggleTestPublish(id: string, is_published: boolean): Promise<void> {
@@ -972,8 +985,9 @@ async function ensureDailyExamRow(vnDate: string, test: IeltsTest): Promise<stri
 
 export async function getDailyExamState(vnDate: string, userId: string | null) {
   const tests = await getIeltsTests(false);
-  const dailyTest = pickDailySprintTest(tests, vnDate);
-  const maxScore = dailyTest.sections.flatMap((s) => s.questions).length;
+  let dailyTest = pickDailySprintTest(tests, vnDate);
+  let durationSeconds = 900;
+  let isExplicitlyScheduled = false;
 
   if (!isSupabaseConfigured()) {
     const store = readStore();
@@ -985,14 +999,59 @@ export async function getDailyExamState(vnDate: string, userId: string | null) {
     const leaderboard = store.daily_exam_attempts
       .filter((a) => a.exam_date === vnDate && a.is_completed)
       .sort((a, b) => b.raw_score - a.raw_score || a.duration_seconds - b.duration_seconds);
-    return { dailyTest, existingAttempt, leaderboard };
+    return {
+      dailyTest,
+      durationSeconds,
+      isExplicitlyScheduled,
+      existingAttempt,
+      leaderboard,
+    };
   }
 
   await ensureSupabaseCatalogSeeded();
-  const dailyExamId = await ensureDailyExamRow(vnDate, dailyTest);
   const sb = await getReadSupabase();
+  let dailyExamId: string | null = null;
+
+  if (sb) {
+    const { data: scheduledRow } = await sb
+      .from("daily_exams")
+      .select("id, test_id, title_vi, title_en, duration_seconds")
+      .eq("exam_date", vnDate)
+      .maybeSingle();
+
+    if (scheduledRow?.id) {
+      dailyExamId = String(scheduledRow.id);
+      isExplicitlyScheduled = true;
+      durationSeconds = Number(scheduledRow.duration_seconds ?? 900) || 900;
+      const scheduledTest = tests.find((t) => t.id === String(scheduledRow.test_id));
+      if (scheduledTest && scheduledTest.sections.length > 0) {
+        const firstSection = scheduledTest.sections[0];
+        dailyTest = {
+          ...scheduledTest,
+          title_vi: String(scheduledRow.title_vi || scheduledTest.title_vi),
+          title_en: String(scheduledRow.title_en || scheduledTest.title_en),
+          duration_minutes: Math.max(5, Math.round(durationSeconds / 60)),
+          questionCount: firstSection.questions.length,
+          sections: [firstSection],
+        };
+      }
+    }
+  }
+
+  if (!dailyExamId) {
+    dailyExamId = await ensureDailyExamRow(vnDate, dailyTest);
+  }
+
+  const maxScore = dailyTest.sections.flatMap((s) => s.questions).length;
+
   if (!dailyExamId || !sb) {
-    return { dailyTest, existingAttempt: null, leaderboard: [] as DailyExamAttempt[] };
+    return {
+      dailyTest,
+      durationSeconds,
+      isExplicitlyScheduled,
+      existingAttempt: null,
+      leaderboard: [] as DailyExamAttempt[],
+    };
   }
 
   const { data: lbRows } = await sb
@@ -1035,7 +1094,13 @@ export async function getDailyExamState(vnDate: string, userId: string | null) {
     }
   }
 
-  return { dailyTest, existingAttempt, leaderboard };
+  return {
+    dailyTest,
+    durationSeconds,
+    isExplicitlyScheduled,
+    existingAttempt,
+    leaderboard,
+  };
 }
 
 export async function startDailyExamAttempt(params: {

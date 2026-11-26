@@ -2,8 +2,12 @@ import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale } from "next-intl/server";
-import { ArrowRight, Mic, PenTool } from "lucide-react";
+import { ArrowRight, Eye, Mic, PenTool } from "lucide-react";
+import { getAuthState } from "@/lib/auth";
+import { isStaffRole } from "@/lib/admin-auth";
 import { getIeltsTestBySlug } from "@/lib/db";
+import { sanitizeTestForClient } from "@/lib/test-grader";
+import { buildBreadcrumbJsonLd, buildNextMetadata } from "@/lib/seo";
 import { TestEngineClient } from "@/components/test-engine-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,31 +19,101 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const test = await getIeltsTestBySlug(slug);
+  const test = await getIeltsTestBySlug(slug, false);
   if (!test) return {};
-  return {
+  return buildNextMetadata({
     title: test.title_vi,
-    description: test.description_vi,
-  };
+    description:
+      test.description_vi ||
+      `Luyện đề thi IELTS ${test.skill.toUpperCase()} (${test.module === "academic" ? "Academic" : "General"}) ${test.questionCount} câu, ${test.duration_minutes} phút tự chấm điểm trên Ôn IELTS.`,
+    pathname: `/tests/${test.slug}`,
+    seoMeta: test.seo_meta,
+    type: "website",
+  });
 }
 
 export default async function TestDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview?: string }>;
 }) {
-  const { slug } = await params;
-  const [locale, test] = await Promise.all([getLocale(), getIeltsTestBySlug(slug)]);
+  const [{ slug }, query, locale] = await Promise.all([
+    params,
+    searchParams,
+    getLocale(),
+  ]);
   const isEn = locale === "en";
+
+  let allowPreview = false;
+  if (query.preview === "1") {
+    const authState = await getAuthState();
+    if (
+      authState.user &&
+      isStaffRole(authState.user.role) &&
+      !authState.user.is_locked
+    ) {
+      allowPreview = true;
+    }
+  }
+
+  const test = await getIeltsTestBySlug(slug, allowPreview);
   if (!test) notFound();
 
+  const isDraftPreview = allowPreview && !test.is_published;
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+    { name: "Trang chủ", pathname: "/" },
+    { name: "Kho đề thi IELTS", pathname: "/tests" },
+    { name: test.title_vi, pathname: `/tests/${test.slug}` },
+  ]);
+
   if (test.skill === "reading" || test.skill === "listening") {
-    return <TestEngineClient test={test} />;
+    // Strip answer keys & explanations before sending to the browser
+    const safeTest = sanitizeTestForClient(test);
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        />
+        {isDraftPreview && (
+          <div className="mx-auto max-w-[1440px] px-4 pt-4 sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+              <span className="inline-flex items-center gap-1.5">
+                <Eye className="h-4 w-4" />
+                Chế độ Xem trước đề Nháp — Học viên chưa thấy đề này.
+              </span>
+              <Link href={`/admin/tests/${test.id}`} className="underline">
+                Quay lại trình tạo đề
+              </Link>
+            </div>
+          </div>
+        )}
+        <TestEngineClient test={safeTest} />
+      </>
+    );
   }
 
   // Writing or Speaking structured test prompt view linking directly to AI Scorers
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 space-y-6">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+      {isDraftPreview && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+          <span className="inline-flex items-center gap-1.5">
+            <Eye className="h-4 w-4" />
+            Chế độ Xem trước đề Nháp — Học viên chưa thấy đề này.
+          </span>
+          <Link href={`/admin/tests/${test.id}`} className="underline">
+            Quay lại trình tạo đề
+          </Link>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <Badge>{test.skill.toUpperCase()}</Badge>
         <Badge variant="secondary">{test.module === "academic" ? "Academic" : "General"}</Badge>
@@ -72,7 +146,7 @@ export default async function TestDetailPage({
       {test.speakingPrompts && (
         <div className="space-y-4">
           <Card className="p-6 space-y-2">
-            <h2 className="text-base font-bold">Part 1 — Introduction & Interview</h2>
+            <h2 className="text-base font-bold">Part 1 — Introduction &amp; Interview</h2>
             <ul className="list-disc pl-5 text-sm text-slate-700 dark:text-slate-300 space-y-1">
               {test.speakingPrompts.part1.map((q, i) => (
                 <li key={i}>{q}</li>

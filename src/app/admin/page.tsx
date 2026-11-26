@@ -20,7 +20,6 @@ import {
   MessageSquare,
   PenTool,
   Settings,
-  SlidersHorizontal,
   Users,
   Video,
   Volume2,
@@ -56,15 +55,15 @@ const ROADMAP_MODULES = [
   },
   {
     phase: "GĐ3",
-    status: "next" as const,
+    status: "active" as const,
     title: "Trình tạo Đề thi & Đề mỗi ngày",
-    desc: "Form tạo đủ 8 dạng câu hỏi, tự kiểm tra 40 câu trước xuất bản, lịch đề UTC+7, quản lý bảng quy đổi Band.",
-    href: "/admin/legacy?tab=tests",
+    desc: "Form tạo đủ 13 dạng câu hỏi, tự kiểm tra 40 câu trước xuất bản, lịch đề UTC+7, quản lý bảng quy đổi Band.",
+    href: "/admin/tests",
     icon: BookOpen,
   },
   {
     phase: "GĐ4",
-    status: "planned" as const,
+    status: "next" as const,
     title: "6 Module Học tập & Luyện tập",
     desc: "Khóa học kéo-thả bài, Hội thoại AI, Nâng cấp câu viết, Phát âm IPA, Chép chính tả, Video tương tác (.srt/.vtt).",
     href: "/courses",
@@ -119,22 +118,22 @@ export default async function AdminDashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/admin/media">
+          <Link href="/admin/tests/new">
+            <Button size="sm">
+              <BookOpen className="h-4 w-4" />
+              Tạo đề thi mới
+            </Button>
+          </Link>
+          <Link href="/admin/daily-exam">
             <Button size="sm" variant="outline">
-              <ImageIcon className="h-4 w-4" />
-              Thư viện Media
+              <CalendarDays className="h-4 w-4" />
+              Lịch đề mỗi ngày
             </Button>
           </Link>
           <Link href="/admin/blog/new">
-            <Button size="sm">
+            <Button size="sm" variant="outline">
               <FileText className="h-4 w-4" />
               Viết bài Blog
-            </Button>
-          </Link>
-          <Link href="/admin/legacy">
-            <Button size="sm" variant="outline">
-              <SlidersHorizontal className="h-4 w-4" />
-              Quản trị nhanh
             </Button>
           </Link>
         </div>
@@ -390,7 +389,7 @@ export default async function AdminDashboardPage() {
                 Triển khai từng giai đoạn độc lập, không gián đoạn trang public đang chạy.
               </p>
             </div>
-            <Badge variant="default">Đang ở GĐ2</Badge>
+            <Badge variant="default">Đang ở GĐ3</Badge>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

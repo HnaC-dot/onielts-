@@ -169,6 +169,7 @@ export interface AiUsageLog {
 
 export type QuestionType =
   | "mcq"
+  | "mcq_multi"
   | "tfng"
   | "ynng"
   | "matching_headings"
@@ -202,6 +203,7 @@ export interface TestSection {
   audioScript?: string;
   diagramLabel?: string;
   diagramSvgType?: "campus_map" | "water_cycle" | "museum_floor";
+  diagramImageUrl?: string;
   headingBank?: { id: string; text: string }[];
   questions: TestQuestion[];
 }
@@ -220,6 +222,8 @@ export interface IeltsTest {
   questionCount: number;
   is_published: boolean;
   is_daily_eligible?: boolean;
+  is_premium?: boolean;
+  seo_meta?: SeoMeta;
   sections: TestSection[];
   writingPrompt?: {
     taskType: "academic_t1" | "general_t1" | "task_2";
