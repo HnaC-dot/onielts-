@@ -18,11 +18,13 @@ import {
   Play,
   RefreshCw,
   Sparkles,
+  Star,
   Trophy,
   Volume2,
   Wand2,
 } from "lucide-react";
 import {
+  getBlogPosts,
   getCourses,
   getDailyExamState,
   getDictationLessons,
@@ -143,6 +145,7 @@ export default async function HomePage() {
     dictationLessons,
     learnVideos,
     sampleTestimonials,
+    publishedBlogPosts,
   ] = await Promise.all([
     getTranslations("home"),
     getLocale(),
@@ -154,10 +157,19 @@ export default async function HomePage() {
     getDictationLessons(),
     getLearnVideos(),
     getSampleTestimonials(),
+    getBlogPosts(false),
   ]);
   const isEn = locale === "en";
 
   const latestTests = publishedTests.slice(0, 4);
+  const featuredBlogPosts = [...publishedBlogPosts]
+    .sort((a, b) => {
+      if (Boolean(a.is_featured) !== Boolean(b.is_featured)) {
+        return a.is_featured ? -1 : 1;
+      }
+      return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
+    })
+    .slice(0, 6);
   const totalObjectiveQuestions = publishedTests.reduce(
     (sum, item) => sum + item.sections.reduce((sAcc, sec) => sAcc + sec.questions.length, 0),
     0
@@ -665,6 +677,76 @@ export default async function HomePage() {
           </Link>
         ))}
       </HorizontalCarouselSection>
+
+      {/* 6G. FEATURED BLOG & STUDY TIPS CAROUSEL */}
+      {featuredBlogPosts.length > 0 && (
+        <HorizontalCarouselSection
+          title={isEn ? "Featured IELTS Blog & Study Tips" : "Blog & Mẹo thi IELTS nổi bật"}
+          subtitle={
+            isEn
+              ? "Practical strategies, band-boosting tips, and study roadmaps curated by Ôn IELTS."
+              : "Chiến thuật phòng thi, lộ trình tự học và kinh nghiệm tăng Band được chọn lọc."
+          }
+          viewAllHref="/blog"
+          viewAllLabel={t("viewAll")}
+        >
+          {featuredBlogPosts.map((post) => (
+            <Link
+              key={post.id}
+              href={`/blog/${post.slug}`}
+              className="min-w-[300px] max-w-[340px] shrink-0 snap-start"
+            >
+              <Card className="flex h-full flex-col justify-between overflow-hidden transition hover:border-emerald-300 hover:shadow-md">
+                <div>
+                  {post.cover_image_url && (
+                    <div className="h-36 w-full overflow-hidden bg-slate-100 dark:bg-slate-900">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={post.cover_image_url}
+                        alt={
+                          post.seo_meta?.coverImageAlt ||
+                          (isEn ? post.title_en : post.title_vi)
+                        }
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="secondary">{post.category}</Badge>
+                        {post.is_featured && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                            <Star className="h-2.5 w-2.5 fill-current" />
+                            {isEn ? "Featured" : "Nổi bật"}
+                          </span>
+                        )}
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                        <Clock className="h-3 w-3" />
+                        {post.read_minutes} {isEn ? "min" : "phút"}
+                      </span>
+                    </div>
+                    <h3 className="mt-2.5 line-clamp-2 text-sm font-bold leading-snug text-slate-900 dark:text-white">
+                      {isEn ? post.title_en : post.title_vi}
+                    </h3>
+                    <p className="mt-1.5 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
+                      {isEn ? post.excerpt_en : post.excerpt_vi}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs dark:border-slate-800">
+                  <span className="truncate text-slate-500">{post.author_name}</span>
+                  <span className="inline-flex shrink-0 items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400">
+                    {isEn ? "Read" : "Đọc bài"} <ArrowRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </Card>
+            </Link>
+          ))}
+        </HorizontalCarouselSection>
+      )}
     </div>
   );
 }

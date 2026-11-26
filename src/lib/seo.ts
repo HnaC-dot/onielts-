@@ -1,0 +1,287 @@
+import type { Metadata } from "next";
+import { z } from "zod";
+import { extractFirstHeading, extractPlainText } from "./sanitize";
+import type { BlogPost, SeoMeta } from "./types";
+
+export const seoMetaSchema = z
+  .object({
+    metaTitle: z.string().max(120).optional(),
+    metaDescription: z.string().max(320).optional(),
+    primaryKeyword: z.string().max(100).optional(),
+    secondaryKeywords: z.array(z.string().max(80)).max(15).optional(),
+    canonicalUrl: z.string().max(500).optional(),
+    robotsIndex: z.boolean().optional(),
+    robotsFollow: z.boolean().optional(),
+    ogTitle: z.string().max(120).optional(),
+    ogDescription: z.string().max(320).optional(),
+    ogImage: z.string().max(1000).optional(),
+    ogImageAlt: z.string().max(200).optional(),
+    coverImageAlt: z.string().max(200).optional(),
+  })
+  .optional()
+  .default({});
+
+export function slugifyVi(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 90);
+}
+
+function normalizeForKeywordMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export interface SeoCheckItem {
+  id: string;
+  label: string;
+  passed: boolean;
+  hint: string;
+}
+
+export function evaluateSeoChecklist(params: {
+  title: string;
+  slug: string;
+  excerpt: string;
+  contentHtml: string;
+  coverImageUrl?: string | null;
+  seoMeta: SeoMeta;
+}): {
+  checks: SeoCheckItem[];
+  score: number;
+  maxScore: number;
+  metaTitleLen: number;
+  metaDescLen: number;
+} {
+  const effectiveTitle = (params.seoMeta.metaTitle || params.title || "").trim();
+  const effectiveDesc = (params.seoMeta.metaDescription || params.excerpt || "").trim();
+  const primaryKw = (params.seoMeta.primaryKeyword || "").trim();
+  const kwNorm = normalizeForKeywordMatch(primaryKw);
+  const kwSlug = slugifyVi(primaryKw);
+
+  const plainText = extractPlainText(params.contentHtml);
+  const first100Words = plainText.split(/\s+/).filter(Boolean).slice(0, 100).join(" ");
+  const firstHeading = extractFirstHeading(params.contentHtml);
+  const imageAlt = (
+    params.seoMeta.coverImageAlt ||
+    params.seoMeta.ogImageAlt ||
+    ""
+  ).trim();
+
+  const checks: SeoCheckItem[] = [
+    {
+      id: "meta_title_len",
+      label: "Độ dài Meta Title hợp lý (10–60 ký tự)",
+      passed: effectiveTitle.length >= 10 && effectiveTitle.length <= 60,
+      hint: `Hiện tại: ${effectiveTitle.length}/60 ký tự`,
+    },
+    {
+      id: "meta_desc_len",
+      label: "Độ dài Meta Description hợp lý (50–160 ký tự)",
+      passed: effectiveDesc.length >= 50 && effectiveDesc.length <= 160,
+      hint: `Hiện tại: ${effectiveDesc.length}/160 ký tự`,
+    },
+    {
+      id: "kw_in_title",
+      label: "Từ khóa chính xuất hiện trong Meta Title",
+      passed:
+        Boolean(kwNorm) &&
+        normalizeForKeywordMatch(effectiveTitle).includes(kwNorm),
+      hint: primaryKw
+        ? `Từ khóa: "${primaryKw}"`
+        : "Nhập từ khóa chính để kiểm tra",
+    },
+    {
+      id: "kw_in_desc",
+      label: "Từ khóa chính xuất hiện trong Meta Description",
+      passed:
+        Boolean(kwNorm) &&
+        normalizeForKeywordMatch(effectiveDesc).includes(kwNorm),
+      hint: primaryKw ? `Kiểm tra trong mô tả SEO` : "Chưa nhập từ khóa chính",
+    },
+    {
+      id: "kw_in_slug",
+      label: "Từ khóa chính có trong đường dẫn (Slug)",
+      passed: Boolean(kwSlug) && slugifyVi(params.slug).includes(kwSlug),
+      hint: params.slug ? `/${params.slug}` : "Chưa có slug",
+    },
+    {
+      id: "kw_in_heading",
+      label: "Từ khóa chính có trong Heading đầu tiên (H2/H3)",
+      passed:
+        Boolean(kwNorm) &&
+        Boolean(firstHeading) &&
+        normalizeForKeywordMatch(firstHeading).includes(kwNorm),
+      hint: firstHeading
+        ? `Heading đầu: "${firstHeading.slice(0, 50)}"`
+        : "Chưa có thẻ tiêu đề H2/H3 trong nội dung",
+    },
+    {
+      id: "kw_in_first_100",
+      label: "Từ khóa chính có trong 100 từ đầu tiên",
+      passed:
+        Boolean(kwNorm) &&
+        normalizeForKeywordMatch(first100Words).includes(kwNorm),
+      hint: `Đã kiểm tra ${Math.min(100, plainText.split(/\s+/).filter(Boolean).length)} từ đầu`,
+    },
+    {
+      id: "image_alt",
+      label: "Ảnh đại diện / OG có mô tả Alt Text",
+      passed:
+        Boolean(params.coverImageUrl || params.seoMeta.ogImage) &&
+        imageAlt.length >= 3,
+      hint: imageAlt
+        ? `Alt: "${imageAlt.slice(0, 45)}"`
+        : "Chọn ảnh và nhập Alt Text để tăng điểm SEO & accessibility",
+    },
+  ];
+
+  const score = checks.filter((c) => c.passed).length;
+  return {
+    checks,
+    score,
+    maxScore: checks.length,
+    metaTitleLen: effectiveTitle.length,
+    metaDescLen: effectiveDesc.length,
+  };
+}
+
+export function getAppBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL || "https://onielts.vn").replace(/\/+$/, "");
+}
+
+export function buildNextMetadata(params: {
+  title: string;
+  description: string;
+  pathname: string;
+  imageUrl?: string | null;
+  imageAlt?: string;
+  seoMeta?: SeoMeta;
+  type?: "website" | "article";
+  publishedTime?: string;
+  authors?: string[];
+  keywords?: string[];
+}): Metadata {
+  const baseUrl = getAppBaseUrl();
+  const seo = params.seoMeta ?? {};
+  const metaTitle = (seo.metaTitle || params.title).trim();
+  const metaDesc = (seo.metaDescription || params.description).trim();
+  const ogTitle = (seo.ogTitle || metaTitle).trim();
+  const ogDesc = (seo.ogDescription || metaDesc).trim();
+  const rawImage = (seo.ogImage || params.imageUrl || "").trim();
+  const absoluteImage = rawImage
+    ? rawImage.startsWith("http")
+      ? rawImage
+      : `${baseUrl}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`
+    : undefined;
+  const imageAlt = (seo.ogImageAlt || seo.coverImageAlt || params.imageAlt || ogTitle).trim();
+
+  const canonical = seo.canonicalUrl?.trim()
+    ? seo.canonicalUrl.trim()
+    : `${baseUrl}${params.pathname.startsWith("/") ? "" : "/"}${params.pathname}`;
+
+  const keywords = [
+    ...(seo.primaryKeyword ? [seo.primaryKeyword] : []),
+    ...(seo.secondaryKeywords ?? []),
+    ...(params.keywords ?? []),
+  ].filter(Boolean);
+
+  return {
+    title: metaTitle,
+    description: metaDesc,
+    keywords: keywords.length > 0 ? Array.from(new Set(keywords)) : undefined,
+    alternates: {
+      canonical,
+    },
+    robots: {
+      index: seo.robotsIndex !== false,
+      follow: seo.robotsFollow !== false,
+    },
+    openGraph: {
+      type: params.type ?? "article",
+      url: canonical,
+      title: ogTitle,
+      description: ogDesc,
+      siteName: "Ôn IELTS",
+      locale: "vi_VN",
+      publishedTime: params.publishedTime,
+      authors: params.authors,
+      images: absoluteImage
+        ? [{ url: absoluteImage, alt: imageAlt }]
+        : undefined,
+    },
+    twitter: {
+      card: absoluteImage ? "summary_large_image" : "summary",
+      title: ogTitle,
+      description: ogDesc,
+      images: absoluteImage ? [absoluteImage] : undefined,
+    },
+  };
+}
+
+export function buildArticleJsonLd(post: BlogPost, baseUrl = getAppBaseUrl()) {
+  const url = `${baseUrl}/blog/${post.slug}`;
+  const rawImage = post.seo_meta?.ogImage || post.cover_image_url || "";
+  const image = rawImage
+    ? rawImage.startsWith("http")
+      ? rawImage
+      : `${baseUrl}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`
+    : undefined;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: post.seo_meta?.metaTitle || post.title_vi,
+    description: post.seo_meta?.metaDescription || post.excerpt_vi,
+    image: image ? [image] : undefined,
+    datePublished: post.published_at,
+    dateModified: post.published_at,
+    author: {
+      "@type": "Person",
+      name: post.author_name || "Đội ngũ học thuật Ôn IELTS",
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "Ôn IELTS",
+      url: baseUrl,
+    },
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": url,
+    },
+    articleSection: post.category,
+    keywords: [
+      ...(post.seo_meta?.primaryKeyword ? [post.seo_meta.primaryKeyword] : []),
+      ...(post.seo_meta?.secondaryKeywords ?? []),
+      ...(post.tags ?? []),
+    ]
+      .filter(Boolean)
+      .join(", "),
+  };
+}
+
+export function buildBreadcrumbJsonLd(
+  items: Array<{ name: string; pathname: string }>,
+  baseUrl = getAppBaseUrl()
+) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, idx) => ({
+      "@type": "ListItem",
+      position: idx + 1,
+      name: item.name,
+      item: `${baseUrl}${item.pathname.startsWith("/") ? "" : "/"}${item.pathname}`,
+    })),
+  };
+}

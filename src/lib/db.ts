@@ -22,6 +22,7 @@ import {
 import { FULL_SEED_TESTS } from "./seed-tests";
 import { computeExtendedPremiumExpiry } from "./payments/payos";
 import { computeNextSm2 } from "./srs";
+import { isBlogPostPubliclyVisible } from "./blog-shared";
 import type {
   AiUsageLog,
   BandConversionRow,
@@ -42,6 +43,7 @@ import type {
   PromoCode,
   PronunciationSound,
   ReferralRecord,
+  SeoMeta,
   SpeakingEvaluation,
   SpeakingSubmission,
   TestAttempt,
@@ -2668,34 +2670,85 @@ export async function toggleCourseLessonProgress(params: {
 // =============================================================================
 // 11. LEARNING CONTENT (BLOG, DICTATION, IPA, VIDEOS, EXERCISES, TESTIMONIALS)
 // =============================================================================
+function mapDbBlogPost(p: Record<string, unknown>): BlogPost {
+  const status =
+    p.status === "draft" || p.status === "published" || p.status === "scheduled"
+      ? p.status
+      : p.is_published
+      ? "published"
+      : "draft";
+  return {
+    id: String(p.id),
+    slug: String(p.slug),
+    title_vi: String(p.title_vi),
+    title_en: String(p.title_en ?? p.title_vi),
+    excerpt_vi: String(p.excerpt_vi ?? ""),
+    excerpt_en: String(p.excerpt_en ?? p.excerpt_vi ?? ""),
+    content_vi: String(p.content_vi ?? ""),
+    content_en: String(p.content_en ?? p.content_vi ?? ""),
+    category: String(p.category ?? "Tips"),
+    author_name: String(p.author_name ?? "Đội ngũ học thuật Ôn IELTS"),
+    read_minutes: Number(p.read_minutes ?? 5),
+    published_at: String(p.published_at ?? p.created_at ?? new Date().toISOString()),
+    is_published: Boolean(p.is_published),
+    status,
+    scheduled_at: p.scheduled_at ? String(p.scheduled_at) : null,
+    is_featured: Boolean(p.is_featured),
+    is_premium: Boolean(p.is_premium),
+    tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
+    cover_image_url: p.cover_image_url ? String(p.cover_image_url) : null,
+    seo_meta:
+      p.seo_meta && typeof p.seo_meta === "object"
+        ? (p.seo_meta as SeoMeta)
+        : {},
+  };
+}
+
 export async function getBlogPosts(includeUnpublished = false): Promise<BlogPost[]> {
   if (!isSupabaseConfigured()) {
     const list = readStore().blog_posts;
-    return includeUnpublished ? list : list.filter((p) => p.is_published);
+    return includeUnpublished ? list : list.filter((p) => isBlogPostPubliclyVisible(p));
   }
   await ensureSupabaseCatalogSeeded();
   const sb = await getReadSupabase();
   if (!sb) return DEFAULT_BLOG_POSTS;
 
-  let q = sb.from("blog_posts").select("*").order("published_at", { ascending: false });
-  if (!includeUnpublished) q = q.eq("is_published", true);
-  const { data } = await q;
+  const { data } = await sb
+    .from("blog_posts")
+    .select("*")
+    .order("published_at", { ascending: false });
   if (!data || data.length === 0) return DEFAULT_BLOG_POSTS;
-  return data.map((p) => ({
-    id: String(p.id),
-    slug: String(p.slug),
-    title_vi: String(p.title_vi),
-    title_en: String(p.title_en),
-    excerpt_vi: String(p.excerpt_vi),
-    excerpt_en: String(p.excerpt_en),
-    content_vi: String(p.content_vi),
-    content_en: String(p.content_en),
-    category: String(p.category),
-    author_name: String(p.author_name),
-    read_minutes: Number(p.read_minutes ?? 5),
-    published_at: String(p.published_at),
-    is_published: Boolean(p.is_published),
-  }));
+
+  const mapped = data.map((p) => mapDbBlogPost(p as Record<string, unknown>));
+  return includeUnpublished
+    ? mapped
+    : mapped.filter((p) => isBlogPostPubliclyVisible(p));
+}
+
+export async function getBlogPostBySlug(
+  slug: string,
+  includeUnpublished = false
+): Promise<BlogPost | null> {
+  if (!isSupabaseConfigured()) {
+    const found = readStore().blog_posts.find((p) => p.slug === slug);
+    if (!found) return null;
+    if (!includeUnpublished && !isBlogPostPubliclyVisible(found)) return null;
+    return found;
+  }
+  await ensureSupabaseCatalogSeeded();
+  const sb = await getReadSupabase();
+  if (!sb) {
+    return DEFAULT_BLOG_POSTS.find((p) => p.slug === slug) ?? null;
+  }
+  const { data } = await sb
+    .from("blog_posts")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!data) return null;
+  const post = mapDbBlogPost(data as Record<string, unknown>);
+  if (!includeUnpublished && !isBlogPostPubliclyVisible(post)) return null;
+  return post;
 }
 
 export async function adminCreateBlogPost(input: {

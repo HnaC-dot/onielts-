@@ -23,12 +23,14 @@ const ADMIN_QUICK_LINKS: Array<{
   adminOnly?: boolean;
 }> = [
   { title: "Dashboard Tổng quan", keywords: "dashboard tong quan home", href: "/admin" },
+  { title: "Thư viện Media (Ảnh / MP3 / SVG / PDF)", keywords: "media thu vien anh upload mp3 svg pdf", href: "/admin/media" },
+  { title: "Blog & Mẹo thi (SEO Editor)", keywords: "blog bai viet seo tin tuc meo thi", href: "/admin/blog" },
+  { title: "Viết bài Blog mới", keywords: "viet bai blog moi tao bai viet new", href: "/admin/blog/new" },
   { title: "Nhật ký hoạt động (Audit Logs)", keywords: "audit log nhat ky lich su", href: "/admin/audit" },
   { title: "Quản trị nhanh (Legacy 6 Tab)", keywords: "legacy tab ai band pricing tests blog users", href: "/admin/legacy" },
   { title: "Quản lý Đề thi IELTS", keywords: "de thi reading listening writing speaking tests", href: "/admin/legacy?tab=tests" },
   { title: "Bảng quy đổi Band", keywords: "band score conversion calculator", href: "/admin/legacy?tab=bands", adminOnly: true },
   { title: "Bảng giá & Khuyến mãi", keywords: "pricing promo code banner goi gia", href: "/admin/legacy?tab=pricing", adminOnly: true },
-  { title: "Blog & Mẹo thi", keywords: "blog bai viet seo tin tuc", href: "/admin/legacy?tab=content" },
   { title: "Người dùng & Đơn hàng", keywords: "users profile premium order don hang", href: "/admin/legacy?tab=users", adminOnly: true },
 ];
 
@@ -91,8 +93,8 @@ export async function GET(req: Request) {
         results.push({
           type: "blog",
           title: p.title_vi,
-          subtitle: `Blog · ${p.category}`,
-          href: `/blog/${p.slug}`,
+          subtitle: `Blog · ${p.category} · /blog/${p.slug}`,
+          href: `/admin/blog/${p.id}`,
         });
       }
       if (results.length >= 30) break;

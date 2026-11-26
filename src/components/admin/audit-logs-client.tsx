@@ -15,8 +15,9 @@ interface AuditLogsClientProps {
 
 const ENTITY_FILTERS = [
   { value: "", label: "Tất cả loại" },
+  { value: "media_asset", label: "Thư viện Media" },
+  { value: "blog_post", label: "Blog & Mẹo thi" },
   { value: "ielts_test", label: "Đề thi IELTS" },
-  { value: "blog_post", label: "Blog" },
   { value: "profile", label: "Người dùng / Role" },
   { value: "pricing_plan", label: "Gói giá" },
   { value: "promo_code", label: "Mã giảm giá" },

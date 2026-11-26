@@ -61,3 +61,112 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* CMS Rich Text (Blog Editor & Public Articles) */
+.cms-richtext:empty::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+}
+.cms-richtext h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 1.5rem;
+  margin-bottom: 0.65rem;
+  color: var(--foreground);
+}
+.cms-richtext h3 {
+  font-size: 1.075rem;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+.cms-richtext p {
+  margin-bottom: 0.9rem;
+  line-height: 1.8;
+}
+.cms-richtext ul {
+  list-style-type: disc;
+  padding-left: 1.4rem;
+  margin-bottom: 0.9rem;
+}
+.cms-richtext ol {
+  list-style-type: decimal;
+  padding-left: 1.4rem;
+  margin-bottom: 0.9rem;
+}
+.cms-richtext li {
+  margin-bottom: 0.35rem;
+  line-height: 1.7;
+}
+.cms-richtext blockquote {
+  border-left: 3px solid #059669;
+  padding: 0.65rem 1rem;
+  margin: 1rem 0;
+  background-color: var(--surface-muted);
+  border-radius: 0 0.75rem 0.75rem 0;
+  font-style: italic;
+}
+.cms-richtext a {
+  color: #059669;
+  text-decoration: underline;
+  font-weight: 600;
+}
+.dark .cms-richtext a {
+  color: #34d399;
+}
+.cms-richtext table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.1rem 0;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  display: block;
+}
+.cms-richtext th,
+.cms-richtext td {
+  border: 1px solid var(--border);
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+}
+.cms-richtext th {
+  background-color: var(--surface-muted);
+  font-weight: 700;
+}
+.cms-richtext figure {
+  margin: 1.2rem 0;
+}
+.cms-richtext img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+}
+.cms-richtext figcaption {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.cms-richtext .cms-video-embed {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 1.25rem 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #0f172a;
+}
+.cms-richtext .cms-video-embed iframe,
+.cms-richtext iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  aspect-ratio: 16 / 9;
+  border-radius: 0.75rem;
+}
+

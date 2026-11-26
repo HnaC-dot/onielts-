@@ -48,15 +48,15 @@ const ROADMAP_MODULES = [
   },
   {
     phase: "GĐ2",
-    status: "next" as const,
+    status: "active" as const,
     title: "Thư viện Media & Blog + SEO",
-    desc: "Upload ảnh/MP3/PDF/SVG lên Supabase Storage, nén ảnh, soạn thảo Blog giàu định dạng + khung SEO & xem trước Google/FB.",
-    href: "/admin/legacy?tab=content",
+    desc: "Upload ảnh/MP3/PDF/SVG lên Supabase Storage, tự nén ảnh, soạn thảo Blog giàu định dạng + khung SEO & xem trước Google/FB.",
+    href: "/admin/blog",
     icon: ImageIcon,
   },
   {
     phase: "GĐ3",
-    status: "planned" as const,
+    status: "next" as const,
     title: "Trình tạo Đề thi & Đề mỗi ngày",
     desc: "Form tạo đủ 8 dạng câu hỏi, tự kiểm tra 40 câu trước xuất bản, lịch đề UTC+7, quản lý bảng quy đổi Band.",
     href: "/admin/legacy?tab=tests",
@@ -119,16 +119,22 @@ export default async function AdminDashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Link href="/admin/media">
+            <Button size="sm" variant="outline">
+              <ImageIcon className="h-4 w-4" />
+              Thư viện Media
+            </Button>
+          </Link>
+          <Link href="/admin/blog/new">
+            <Button size="sm">
+              <FileText className="h-4 w-4" />
+              Viết bài Blog
+            </Button>
+          </Link>
           <Link href="/admin/legacy">
             <Button size="sm" variant="outline">
               <SlidersHorizontal className="h-4 w-4" />
-              Quản trị nhanh (6 Tab)
-            </Button>
-          </Link>
-          <Link href="/admin/audit">
-            <Button size="sm">
-              <Activity className="h-4 w-4" />
-              Nhật ký hoạt động
+              Quản trị nhanh
             </Button>
           </Link>
         </div>
@@ -384,7 +390,7 @@ export default async function AdminDashboardPage() {
                 Triển khai từng giai đoạn độc lập, không gián đoạn trang public đang chạy.
               </p>
             </div>
-            <Badge variant="default">Đang ở GĐ1</Badge>
+            <Badge variant="default">Đang ở GĐ2</Badge>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

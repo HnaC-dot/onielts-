@@ -16,6 +16,31 @@ export interface SeoMeta {
   ogDescription?: string;
   ogImage?: string;
   ogImageAlt?: string;
+  coverImageAlt?: string;
+}
+
+export interface MediaUsageRef {
+  entityType: string;
+  entityId: string;
+  label: string;
+  href: string;
+}
+
+export interface MediaAsset {
+  id: string;
+  bucket: string;
+  storage_path: string;
+  public_url: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+  alt_text: string;
+  folder: string;
+  uploaded_by: string | null;
+  created_at: string;
+  usages?: MediaUsageRef[];
 }
 
 export interface AdminAuditLog {
@@ -430,6 +455,13 @@ export interface BlogPost {
   read_minutes: number;
   published_at: string;
   is_published: boolean;
+  status?: ContentPublishStatus;
+  scheduled_at?: string | null;
+  is_featured?: boolean;
+  is_premium?: boolean;
+  tags?: string[];
+  cover_image_url?: string | null;
+  seo_meta?: SeoMeta;
 }
 
 export interface TestimonialItem {
