@@ -9,6 +9,8 @@ const DB_URL =
 const LEARNER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const LEARNER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const ADMIN_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const EDITOR_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const LOCKED_ADMIN_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const PUB_TEST_ID = "10000000-0000-4000-8000-000000000001";
 const DRAFT_TEST_ID = "10000000-0000-4000-8000-000000000002";
 const WRITING_A_ID = "20000000-0000-4000-8000-000000000001";
@@ -151,25 +153,29 @@ describe.skipIf(!DB_URL)(
         }
       }
 
-      // Seed test users (auth.users -> trigger auto-provisions profiles; ensure admin role on ADMIN_ID)
+      // Seed test users (auth.users -> trigger auto-provisions profiles; ensure roles)
       await client.query(
         `INSERT INTO auth.users (id, email, email_confirmed_at, raw_user_meta_data)
          VALUES
            ($1, 'learner-a@rls-int.local', NOW(), '{"full_name":"Learner A"}'::jsonb),
            ($2, 'learner-b@rls-int.local', NOW(), '{"full_name":"Learner B"}'::jsonb),
-           ($3, 'admin@rls-int.local', NOW(), '{"full_name":"Admin Int"}'::jsonb)
+           ($3, 'admin@rls-int.local', NOW(), '{"full_name":"Admin Int"}'::jsonb),
+           ($4, 'editor@rls-int.local', NOW(), '{"full_name":"Editor Int"}'::jsonb),
+           ($5, 'locked-admin@rls-int.local', NOW(), '{"full_name":"Locked Admin"}'::jsonb)
          ON CONFLICT (id) DO NOTHING`,
-        [LEARNER_A, LEARNER_B, ADMIN_ID]
+        [LEARNER_A, LEARNER_B, ADMIN_ID, EDITOR_ID, LOCKED_ADMIN_ID]
       );
 
       await client.query(
-        `INSERT INTO public.profiles (id, email, full_name, role, referral_code, email_verified)
+        `INSERT INTO public.profiles (id, email, full_name, role, is_locked, referral_code, email_verified)
          VALUES
-           ($1, 'learner-a@rls-int.local', 'Learner A', 'learner', 'INTA0001', TRUE),
-           ($2, 'learner-b@rls-int.local', 'Learner B', 'learner', 'INTB0002', TRUE),
-           ($3, 'admin@rls-int.local', 'Admin Int', 'admin', 'INTC0003', TRUE)
-         ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role`,
-        [LEARNER_A, LEARNER_B, ADMIN_ID]
+           ($1, 'learner-a@rls-int.local', 'Learner A', 'learner', FALSE, 'INTA0001', TRUE),
+           ($2, 'learner-b@rls-int.local', 'Learner B', 'learner', FALSE, 'INTB0002', TRUE),
+           ($3, 'admin@rls-int.local', 'Admin Int', 'admin', FALSE, 'INTC0003', TRUE),
+           ($4, 'editor@rls-int.local', 'Editor Int', 'editor', FALSE, 'INTD0004', TRUE),
+           ($5, 'locked-admin@rls-int.local', 'Locked Admin', 'admin', TRUE, 'INTE0005', TRUE)
+         ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, is_locked = EXCLUDED.is_locked`,
+        [LEARNER_A, LEARNER_B, ADMIN_ID, EDITOR_ID, LOCKED_ADMIN_ID]
       );
 
       await client.query(
@@ -222,11 +228,21 @@ describe.skipIf(!DB_URL)(
          ON CONFLICT (id) DO NOTHING`,
         [DAILY_EXAM_ID, PUB_TEST_ID]
       );
+
+      await client.query(
+        `INSERT INTO public.admin_audit_logs (actor_id, actor_email, actor_role, action, entity_type, entity_label, summary)
+         VALUES ($1, 'admin@rls-int.local', 'admin', 'seed_fixture', 'system', 'rls-test', 'Seeded audit log for RLS test')`,
+        [ADMIN_ID]
+      );
     }, 30_000);
 
     afterAll(async () => {
       if (client) {
         // Clean up seeded test fixtures if running against a shared Supabase Local DB
+        await client.query(
+          `DELETE FROM public.admin_audit_logs WHERE actor_id = $1 AND action = 'seed_fixture'`,
+          [ADMIN_ID]
+        ).catch(() => {});
         await client.query(
           `DELETE FROM public.daily_exams WHERE id = $1`,
           [DAILY_EXAM_ID]
@@ -236,8 +252,8 @@ describe.skipIf(!DB_URL)(
           [PUB_TEST_ID, DRAFT_TEST_ID]
         ).catch(() => {});
         await client.query(
-          `DELETE FROM auth.users WHERE id IN ($1, $2, $3)`,
-          [LEARNER_A, LEARNER_B, ADMIN_ID]
+          `DELETE FROM auth.users WHERE id IN ($1, $2, $3, $4, $5)`,
+          [LEARNER_A, LEARNER_B, ADMIN_ID, EDITOR_ID, LOCKED_ADMIN_ID]
         ).catch(() => {});
         await client.end();
       }
@@ -420,6 +436,110 @@ describe.skipIf(!DB_URL)(
           [PUB_TEST_ID, DRAFT_TEST_ID]
         );
         expect(tests.rowCount).toBe(2);
+      });
+    });
+
+    it("enforces migration 0005 RBAC: editor manages content but not users/settings, learner cannot self-escalate to editor", async () => {
+      // Learner cannot self-escalate to editor
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        await expect(
+          client.query("UPDATE public.profiles SET role = 'editor' WHERE id = $1", [
+            LEARNER_A,
+          ])
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+
+      // Learner cannot read audit logs or create media/redirects
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        const logs = await client.query("SELECT id FROM public.admin_audit_logs");
+        expect(logs.rowCount).toBe(0);
+      });
+
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        await expect(
+          client.query(
+            `INSERT INTO public.seo_redirects (source_path, destination_path, status_code)
+             VALUES ('/learner-blocked', '/new', 301)`
+          )
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+
+      // Editor can read draft tests & audit logs, insert media_assets & seo_redirects, but cannot see other profiles
+      await withSessionRole(client, "authenticated", EDITOR_ID, async () => {
+        const tests = await client.query(
+          "SELECT id FROM public.ielts_tests WHERE id IN ($1, $2)",
+          [PUB_TEST_ID, DRAFT_TEST_ID]
+        );
+        expect(tests.rowCount).toBe(2);
+
+        const logs = await client.query("SELECT id FROM public.admin_audit_logs");
+        expect((logs.rowCount ?? 0) >= 1).toBe(true);
+
+        const profiles = await client.query(
+          "SELECT id FROM public.profiles WHERE id IN ($1, $2, $3)",
+          [LEARNER_A, ADMIN_ID, EDITOR_ID]
+        );
+        expect(profiles.rows.map((r) => r.id)).toEqual([EDITOR_ID]);
+
+        const media = await client.query(
+          `INSERT INTO public.media_assets (bucket, storage_path, public_url, filename, mime_type, size_bytes, uploaded_by)
+           VALUES ('cms-media', 'tests/editor-img.png', 'https://example.com/editor-img.png', 'editor-img.png', 'image/png', 1024, $1)
+           RETURNING id`,
+          [EDITOR_ID]
+        );
+        expect(media.rowCount).toBe(1);
+
+        const redirect = await client.query(
+          `INSERT INTO public.seo_redirects (source_path, destination_path, status_code)
+           VALUES ('/old-editor-slug', '/new-editor-slug', 301)
+           RETURNING id`
+        );
+        expect(redirect.rowCount).toBe(1);
+      });
+
+      // Editor CANNOT modify system site_settings (admin-only)
+      await withSessionRole(client, "authenticated", EDITOR_ID, async () => {
+        await expect(
+          client.query(
+            `INSERT INTO public.site_settings (key, value) VALUES ('editor_blocked', '{}'::jsonb)`
+          )
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+    });
+
+    it("strips all admin and staff RLS privileges when is_locked = TRUE and prevents self-unlock", async () => {
+      await withSessionRole(client, "authenticated", LOCKED_ADMIN_ID, async () => {
+        // Locked admin loses admin visibility over other profiles
+        const profiles = await client.query(
+          "SELECT id FROM public.profiles WHERE id IN ($1, $2, $3)",
+          [LEARNER_A, ADMIN_ID, LOCKED_ADMIN_ID]
+        );
+        expect(profiles.rows.map((r) => r.id)).toEqual([LOCKED_ADMIN_ID]);
+
+        // Locked admin loses staff access to draft tests and audit logs
+        const tests = await client.query(
+          "SELECT slug FROM public.ielts_tests WHERE id IN ($1, $2)",
+          [PUB_TEST_ID, DRAFT_TEST_ID]
+        );
+        expect(tests.rows.map((r) => r.slug)).toEqual(["int-published-test"]);
+
+        const logs = await client.query("SELECT id FROM public.admin_audit_logs");
+        expect(logs.rowCount).toBe(0);
+
+        // Locked admin cannot unlock themselves
+        await expect(
+          client.query("UPDATE public.profiles SET is_locked = FALSE WHERE id = $1", [
+            LOCKED_ADMIN_ID,
+          ])
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+
+      // Active admin can write site_settings & seo_redirects
+      await withSessionRole(client, "authenticated", ADMIN_ID, async () => {
+        const setting = await client.query(
+          `INSERT INTO public.site_settings (key, value) VALUES ('admin_ok', '{"ok":true}'::jsonb) RETURNING key`
+        );
+        expect(setting.rowCount).toBe(1);
       });
     });
   }

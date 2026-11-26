@@ -40,7 +40,10 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   // Do not place unrelated logic between createServerClient and getUser().
   // Calling getUser() refreshes expired tokens and triggers setAll() on the response.
-  const { error } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
   if (error && error.name !== "AuthSessionMissingError") {
     console.error("[proxy.updateSession] supabase.auth.getUser failed", {
       pathname: request.nextUrl.pathname,
@@ -49,6 +52,72 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
       code: error.code ?? null,
       message: error.message,
     });
+  }
+
+  const pathname = request.nextUrl.pathname;
+  const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isAdminApi =
+    pathname === "/api/admin" || pathname.startsWith("/api/admin/");
+
+  if (isAdminApi) {
+    if (!user) {
+      return NextResponse.json(
+        { error: "Vui lòng đăng nhập bằng tài khoản Admin hoặc Editor." },
+        { status: 401 }
+      );
+    }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (
+      profile &&
+      ((profile.role !== "admin" && profile.role !== "editor") ||
+        profile.is_locked === true)
+    ) {
+      return NextResponse.json(
+        { error: "Tài khoản không có quyền truy cập API quản trị." },
+        { status: 403 }
+      );
+    }
+  } else if (isAdminPage) {
+    if (!user) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/auth";
+      loginUrl.search = `?next=${encodeURIComponent(pathname)}`;
+      const redirectResponse = NextResponse.redirect(loginUrl);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie);
+      });
+      return redirectResponse;
+    }
+
+    // For nested /admin/* sub-routes, block non-staff/locked users at proxy level
+    // (Allow /admin itself to render the detailed diagnostic denial card & SQL guide.)
+    if (pathname !== "/admin") {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (
+        profile &&
+        ((profile.role !== "admin" && profile.role !== "editor") ||
+          profile.is_locked === true)
+      ) {
+        const deniedUrl = request.nextUrl.clone();
+        deniedUrl.pathname = "/admin";
+        deniedUrl.search = "?denied=forbidden";
+        const redirectResponse = NextResponse.redirect(deniedUrl);
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+          redirectResponse.cookies.set(cookie);
+        });
+        return redirectResponse;
+      }
+    }
   }
 
   return supabaseResponse;

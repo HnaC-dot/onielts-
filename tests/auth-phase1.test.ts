@@ -271,10 +271,11 @@ describe("Phase 1 — Auth routes, health contract & admin denial UX", () => {
     expect(authPage).toContain("${window.location.origin}/auth/callback?next=/");
   });
 
-  it("shares getAuthState across RootLayout, /profile, /admin, and /api/health/auth", () => {
+  it("shares getAuthState across RootLayout, /profile, /admin layout & page, and /api/health/auth", () => {
     for (const rel of [
       "src/app/layout.tsx",
       "src/app/profile/page.tsx",
+      "src/app/admin/layout.tsx",
       "src/app/admin/page.tsx",
       "src/app/api/health/auth/route.ts",
     ]) {
@@ -283,16 +284,17 @@ describe("Phase 1 — Auth routes, health contract & admin denial UX", () => {
     }
   });
 
-  it("includes exact SQL grant note and all denial reasons on /admin", () => {
-    const adminPage = fs.readFileSync(
-      path.resolve(process.cwd(), "src/app/admin/page.tsx"),
+  it("includes exact SQL grant note and all denial reasons on /admin layout", () => {
+    const adminLayout = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/admin/layout.tsx"),
       "utf-8"
     );
-    expect(adminPage).toContain(
+    expect(adminLayout).toContain(
       "update public.profiles set role='admin' where id='<auth user uuid>';"
     );
-    expect(adminPage).toContain("SUPABASE_SERVICE_ROLE_KEY");
-    expect(adminPage).toContain('user.role !== "admin"');
+    expect(adminLayout).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(adminLayout).toContain("isStaffRole(user.role)");
+    expect(adminLayout).toContain("user.is_locked");
   });
 
   it("exposes strictly booleans + role on GET /api/health/auth with no secrets or emails", async () => {
@@ -314,7 +316,10 @@ describe("Phase 1 — Auth routes, health contract & admin denial UX", () => {
     expect(typeof body.authenticated).toBe("boolean");
     expect(typeof body.profileRowFound).toBe("boolean");
     expect(
-      body.role === null || body.role === "learner" || body.role === "admin"
+      body.role === null ||
+        body.role === "learner" ||
+        body.role === "editor" ||
+        body.role === "admin"
     ).toBe(true);
   });
 });

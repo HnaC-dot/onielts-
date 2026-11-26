@@ -1371,6 +1371,7 @@ export async function listAllProfiles(): Promise<UserProfile[]> {
     full_name: String(p.full_name || "Học viên Ôn IELTS"),
     avatar_url: p.avatar_url ? String(p.avatar_url) : null,
     role: (p.role as UserProfile["role"]) ?? "learner",
+    is_locked: Boolean(p.is_locked),
     target_band: Number(p.target_band ?? 6.5),
     current_band: p.current_band != null ? Number(p.current_band) : null,
     locale: (p.locale as UserProfile["locale"]) ?? "vi",
@@ -1421,7 +1422,8 @@ export async function updateOwnProfile(
 
 export async function adminUpdateUser(input: {
   userId: string;
-  role?: "learner" | "admin";
+  role?: "learner" | "editor" | "admin";
+  isLocked?: boolean;
   grantMonths?: number;
   revokePremium?: boolean;
 }): Promise<void> {
@@ -1430,6 +1432,7 @@ export async function adminUpdateUser(input: {
       const u = store.profiles.find((p) => p.id === input.userId);
       if (!u) return;
       if (input.role) u.role = input.role;
+      if (typeof input.isLocked === "boolean") u.is_locked = input.isLocked;
       if (input.revokePremium) {
         u.premium_expires_at = null;
       } else if (input.grantMonths && input.grantMonths > 0) {
@@ -1452,6 +1455,7 @@ export async function adminUpdateUser(input: {
 
   const patch: Record<string, unknown> = {};
   if (input.role) patch.role = input.role;
+  if (typeof input.isLocked === "boolean") patch.is_locked = input.isLocked;
   if (input.revokePremium) {
     patch.premium_expires_at = null;
   } else if (input.grantMonths && input.grantMonths > 0) {

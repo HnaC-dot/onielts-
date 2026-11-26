@@ -9,8 +9,10 @@ import {
   CheckCircle2,
   CreditCard,
   FileText,
+  Lock,
   Plus,
   Save,
+  Unlock,
   Users,
 } from "lucide-react";
 import type {
@@ -23,11 +25,22 @@ import type {
   PromoBanner,
   PromoCode,
   UserProfile,
+  UserRole,
 } from "@/lib/types";
 import { formatVnd } from "@/lib/utils";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { useAdminToast } from "./admin/toast-provider";
+import { ConfirmDialog } from "./admin/confirm-dialog";
+
+export type AdminLegacyTab =
+  | "ai"
+  | "bands"
+  | "pricing"
+  | "tests"
+  | "content"
+  | "users";
 
 interface AdminClientProps {
   profiles: UserProfile[];
@@ -39,6 +52,18 @@ interface AdminClientProps {
   aiLogs: AiUsageLog[];
   tests: IeltsTest[];
   blogPosts: BlogPost[];
+  initialTab?: AdminLegacyTab;
+  userRole?: "admin" | "editor";
+  currentUserId?: string;
+}
+
+interface PendingConfirm {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  destructive: boolean;
+  payload: Record<string, unknown>;
+  successMsg: string;
 }
 
 const SAMPLE_TEST_JSON = JSON.stringify(
@@ -78,9 +103,14 @@ const SAMPLE_TEST_JSON = JSON.stringify(
 
 export function AdminClient(props: AdminClientProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<"ai" | "bands" | "pricing" | "tests" | "content" | "users">("ai");
+  const toast = useAdminToast();
+  const isAdmin = (props.userRole ?? "admin") === "admin";
+  const defaultTab: AdminLegacyTab = props.initialTab ?? (isAdmin ? "ai" : "tests");
+  const [tab, setTab] = useState<AdminLegacyTab>(defaultTab);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Band table filter
   const [bandSkill, setBandSkill] = useState<"listening" | "reading_academic" | "reading_general">(
@@ -137,10 +167,13 @@ export function AdminClient(props: AdminClientProps) {
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error || "Thao tác thất bại.");
+      const msg = data.error || "Thao tác thất bại.";
+      setError(msg);
+      toast.error(msg);
       return false;
     }
     setNotice(successMsg);
+    toast.success(successMsg);
     router.refresh();
     return true;
   };
@@ -161,14 +194,21 @@ export function AdminClient(props: AdminClientProps) {
     return { totalCalls, cachedCalls, totalTokens, totalCostUsd, byFeature };
   }, [props.aiLogs]);
 
-  const tabs = [
+  const allTabs: ReadonlyArray<{
+    id: AdminLegacyTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    adminOnly?: boolean;
+  }> = [
     { id: "ai", label: "Chi phí & Token AI", icon: Activity },
-    { id: "bands", label: "Bảng quy đổi Band", icon: Calculator },
-    { id: "pricing", label: "Bảng giá & Khuyến mãi", icon: CreditCard },
+    { id: "bands", label: "Bảng quy đổi Band", icon: Calculator, adminOnly: true },
+    { id: "pricing", label: "Bảng giá & Khuyến mãi", icon: CreditCard, adminOnly: true },
     { id: "tests", label: "Quản lý Đề thi", icon: BookOpen },
     { id: "content", label: "Nội dung / Blog", icon: FileText },
-    { id: "users", label: "Người dùng & Đơn hàng", icon: Users },
-  ] as const;
+    { id: "users", label: "Người dùng & Đơn hàng", icon: Users, adminOnly: true },
+  ];
+
+  const tabs = allTabs.filter((item) => isAdmin || !item.adminOnly);
 
   return (
     <div className="space-y-6">
@@ -722,7 +762,7 @@ export function AdminClient(props: AdminClientProps) {
       )}
 
       {/* TAB 6: USERS & ORDERS */}
-      {tab === "users" && (
+      {tab === "users" && isAdmin && (
         <div className="space-y-6">
           <Card className="p-6 space-y-3">
             <h2 className="text-base font-bold">Quản lý Người dùng ({props.profiles.length})</h2>
@@ -730,59 +770,136 @@ export function AdminClient(props: AdminClientProps) {
               <table className="w-full text-left text-xs">
                 <thead className="border-b border-slate-100 text-slate-500 dark:border-slate-800">
                   <tr>
-                    <th className="py-2">Học viên</th>
-                    <th className="py-2">Vai trò</th>
-                    <th className="py-2">Hạn Premium</th>
+                    <th className="py-2 pr-3">Học viên</th>
+                    <th className="py-2 pr-3">Vai trò</th>
+                    <th className="py-2 pr-3">Hạn Premium</th>
                     <th className="py-2">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {props.profiles.map((u) => (
-                    <tr key={u.id}>
-                      <td className="py-3">
-                        <p className="font-bold text-slate-900 dark:text-white">{u.full_name}</p>
-                        <p className="text-slate-500">{u.email}</p>
-                      </td>
-                      <td className="py-3">
-                        <Badge variant={u.role === "admin" ? "default" : "secondary"}>
-                          {u.role}
-                        </Badge>
-                      </td>
-                      <td className="py-3">
-                        {u.premium_expires_at
-                          ? new Date(u.premium_expires_at).toLocaleDateString("vi-VN")
-                          : "Free"}
-                      </td>
-                      <td className="py-3 flex flex-wrap gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            void callAdmin(
-                              { action: "update_user_admin", userId: u.id, grantMonths: 1 },
-                              `Đã cộng thêm 1 tháng Premium cho ${u.email}`
-                            )
-                          }
-                        >
-                          +1 Tháng Premium
-                        </Button>
-                        {u.role !== "admin" && (
+                  {props.profiles.map((u) => {
+                    const isSelf = Boolean(props.currentUserId && props.currentUserId === u.id);
+                    const locked = Boolean(u.is_locked);
+                    return (
+                      <tr key={u.id}>
+                        <td className="py-3 pr-3">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-bold text-slate-900 dark:text-white">{u.full_name}</p>
+                            {isSelf && <Badge variant="secondary">Bạn</Badge>}
+                            {locked && (
+                              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-950/60 dark:text-red-300">
+                                Đang khóa
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-slate-500">{u.email}</p>
+                        </td>
+                        <td className="py-3 pr-3">
+                          <select
+                            aria-label={`Vai trò của ${u.email}`}
+                            value={u.role}
+                            disabled={isSelf}
+                            onChange={(e) => {
+                              const nextRole = e.target.value as UserRole;
+                              if (nextRole === u.role) return;
+                              setPendingConfirm({
+                                title: "Xác nhận đổi vai trò tài khoản",
+                                description: `Đổi vai trò của ${u.email} từ '${u.role}' sang '${nextRole}'? Thao tác sẽ được ghi vào Nhật ký hoạt động.`,
+                                confirmLabel: "Đổi vai trò",
+                                destructive: nextRole === "admin",
+                                payload: {
+                                  action: "update_user_admin",
+                                  userId: u.id,
+                                  role: nextRole,
+                                },
+                                successMsg: `Đã đổi vai trò ${u.email} thành ${nextRole}`,
+                              });
+                            }}
+                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                          >
+                            <option value="learner">learner (Học viên)</option>
+                            <option value="editor">editor (Biên tập)</option>
+                            <option value="admin">admin (Toàn quyền)</option>
+                          </select>
+                        </td>
+                        <td className="py-3 pr-3">
+                          {u.premium_expires_at
+                            ? new Date(u.premium_expires_at).toLocaleDateString("vi-VN")
+                            : "Free"}
+                        </td>
+                        <td className="py-3 flex flex-wrap gap-1.5">
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="outline"
                             onClick={() =>
                               void callAdmin(
-                                { action: "update_user_admin", userId: u.id, revokePremium: true },
-                                `Đã đưa ${u.email} về gói Free`
+                                { action: "update_user_admin", userId: u.id, grantMonths: 1 },
+                                `Đã cộng thêm 1 tháng Premium cho ${u.email}`
                               )
                             }
                           >
-                            Về Free
+                            +1 Tháng Premium
                           </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          {u.role !== "admin" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                setPendingConfirm({
+                                  title: "Thu hồi gói Premium",
+                                  description: `Đưa tài khoản ${u.email} về gói Free ngay lập tức?`,
+                                  confirmLabel: "Thu hồi Premium",
+                                  destructive: true,
+                                  payload: {
+                                    action: "update_user_admin",
+                                    userId: u.id,
+                                    revokePremium: true,
+                                  },
+                                  successMsg: `Đã đưa ${u.email} về gói Free`,
+                                })
+                              }
+                            >
+                              Về Free
+                            </Button>
+                          )}
+                          {!isSelf && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setPendingConfirm({
+                                  title: locked ? "Mở khóa tài khoản" : "Khóa tài khoản",
+                                  description: locked
+                                    ? `Mở khóa lại tài khoản ${u.email}?`
+                                    : `Khóa tài khoản ${u.email}? Người dùng này sẽ bị chặn truy cập CMS ngay lập tức.`,
+                                  confirmLabel: locked ? "Mở khóa" : "Khóa tài khoản",
+                                  destructive: !locked,
+                                  payload: {
+                                    action: "update_user_admin",
+                                    userId: u.id,
+                                    isLocked: !locked,
+                                  },
+                                  successMsg: locked
+                                    ? `Đã mở khóa tài khoản ${u.email}`
+                                    : `Đã khóa tài khoản ${u.email}`,
+                                })
+                              }
+                            >
+                              {locked ? (
+                                <>
+                                  <Unlock className="h-3.5 w-3.5" /> Mở khóa
+                                </>
+                              ) : (
+                                <>
+                                  <Lock className="h-3.5 w-3.5" /> Khóa
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -813,6 +930,26 @@ export function AdminClient(props: AdminClientProps) {
           </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ""}
+        description={pendingConfirm?.description ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        destructive={pendingConfirm?.destructive ?? true}
+        loading={confirmLoading}
+        onCancel={() => setPendingConfirm(null)}
+        onConfirm={async () => {
+          if (!pendingConfirm) return;
+          setConfirmLoading(true);
+          try {
+            await callAdmin(pendingConfirm.payload, pendingConfirm.successMsg);
+          } finally {
+            setConfirmLoading(false);
+            setPendingConfirm(null);
+          }
+        }}
+      />
     </div>
   );
 }

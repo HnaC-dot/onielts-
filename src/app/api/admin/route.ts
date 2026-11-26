@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getAuthState } from "@/lib/auth";
 import {
-  isServiceRoleConfigured,
-  isSupabaseConfigured,
-} from "@/lib/supabase/server";
+  recordAuditLog,
+  requireStaff,
+  verifySameOrigin,
+} from "@/lib/admin-auth";
 import {
   adminCreateBlogPost,
   adminCreatePromoCode,
@@ -26,7 +27,7 @@ import {
   listAllProfiles,
   listOrders,
 } from "@/lib/db";
-import type { IeltsTest, SessionUser } from "@/lib/types";
+import type { IeltsTest } from "@/lib/types";
 
 const adminActionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -74,7 +75,8 @@ const adminActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("update_user_admin"),
     userId: z.string().min(1),
-    role: z.enum(["learner", "admin"]).optional(),
+    role: z.enum(["learner", "editor", "admin"]).optional(),
+    isLocked: z.boolean().optional(),
     grantMonths: z.number().int().min(0).max(36).optional(),
     revokePremium: z.boolean().optional(),
   }),
@@ -87,54 +89,21 @@ const adminActionSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-async function requireAdmin(): Promise<
-  { ok: true; admin: SessionUser } | { ok: false; response: NextResponse }
-> {
-  const authState = await getAuthState();
-  if (authState.status === "profile_error") {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Đã xác thực nhưng không thể tải hồ sơ quản trị từ cơ sở dữ liệu." },
-        { status: 503 }
-      ),
-    };
-  }
-  if (!authState.user) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Vui lòng đăng nhập bằng tài khoản quản trị." },
-        { status: 401 }
-      ),
-    };
-  }
-  if (authState.user.role !== "admin") {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Chỉ quản trị viên mới có quyền truy cập." },
-        { status: 403 }
-      ),
-    };
-  }
-  if (isSupabaseConfigured() && !isServiceRoleConfigured()) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Máy chủ thiếu biến môi trường SUPABASE_SERVICE_ROLE_KEY cho thao tác quản trị." },
-        { status: 503 }
-      ),
-    };
-  }
-  return { ok: true, admin: authState.user };
-}
+const ADMIN_ONLY_ACTIONS = new Set([
+  "update_band_row",
+  "update_plan",
+  "update_promo_banner",
+  "create_promo_code",
+  "toggle_promo_code",
+  "update_user_admin",
+]);
 
 export async function GET() {
-  const guard = await requireAdmin();
+  const guard = await requireStaff("editor");
   if (!guard.ok) {
     return guard.response;
   }
+  const isAdmin = guard.user.role === "admin";
   const [
     profiles,
     band_conversion_tables,
@@ -147,12 +116,12 @@ export async function GET() {
     blog_posts,
     testimonials,
   ] = await Promise.all([
-    listAllProfiles(),
+    isAdmin ? listAllProfiles() : Promise.resolve([]),
     getBandConversionTables(),
     getPricingPlans(true),
     getPromoBanner(),
-    getPromoCodes(),
-    listOrders(),
+    isAdmin ? getPromoCodes() : Promise.resolve([]),
+    isAdmin ? listOrders() : Promise.resolve([]),
     listAiUsageLogs(100),
     getIeltsTests(true),
     getBlogPosts(true),
@@ -173,11 +142,12 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const guard = await requireAdmin();
-  if (!guard.ok) {
-    return guard.response;
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Yêu cầu bị từ chối do sai nguồn gốc (CSRF check)." },
+      { status: 403 }
+    );
   }
-  const admin = guard.admin;
 
   try {
     const body = await req.json();
@@ -190,6 +160,12 @@ export async function POST(req: Request) {
     }
 
     const d = parsed.data;
+    const minRole = ADMIN_ONLY_ACTIONS.has(d.action) ? "admin" : "editor";
+    const guard = await requireStaff(minRole);
+    if (!guard.ok) {
+      return guard.response;
+    }
+    const actor = guard.user;
 
     if (d.action === "update_band_row") {
       await adminUpdateBandRow(d.id, {
@@ -197,6 +173,15 @@ export async function POST(req: Request) {
         max_raw: d.max_raw,
         band_score: d.band_score,
       });
+      await recordAuditLog({
+        actor,
+        action: "update_band_row",
+        entityType: "band_conversion",
+        entityId: d.id,
+        entityLabel: `Band ${d.band_score} (${d.min_raw}-${d.max_raw})`,
+        summary: `Cập nhật quy đổi ${d.min_raw}-${d.max_raw} câu → Band ${d.band_score}`,
+      });
+      revalidatePath("/band-calculator");
       return NextResponse.json({ ok: true });
     }
 
@@ -207,6 +192,15 @@ export async function POST(req: Request) {
         is_popular: d.is_popular,
         is_active: d.is_active,
       });
+      await recordAuditLog({
+        actor,
+        action: "update_plan",
+        entityType: "pricing_plan",
+        entityId: d.id,
+        entityLabel: `Plan ${d.id}`,
+        summary: `Cập nhật giá ${d.price_vnd.toLocaleString("vi-VN")}đ (active=${d.is_active})`,
+      });
+      revalidatePath("/pricing");
       return NextResponse.json({ ok: true });
     }
 
@@ -217,6 +211,14 @@ export async function POST(req: Request) {
         ends_at: d.ends_at,
         is_active: d.is_active,
       });
+      await recordAuditLog({
+        actor,
+        action: "update_promo_banner",
+        entityType: "promo_banner",
+        entityLabel: d.title_vi.slice(0, 80),
+        summary: `Cập nhật banner khuyến mãi (active=${d.is_active})`,
+      });
+      revalidatePath("/pricing");
       return NextResponse.json({ ok: true });
     }
 
@@ -226,16 +228,41 @@ export async function POST(req: Request) {
         discount_percent: d.discount_percent,
         max_discount_vnd: d.max_discount_vnd ?? null,
       });
+      await recordAuditLog({
+        actor,
+        action: "create_promo_code",
+        entityType: "promo_code",
+        entityLabel: d.code.toUpperCase(),
+        summary: `Tạo mã giảm giá ${d.code.toUpperCase()} (-${d.discount_percent}%)`,
+      });
       return NextResponse.json({ ok: true });
     }
 
     if (d.action === "toggle_promo_code") {
       await adminTogglePromoCode(d.id, d.is_active);
+      await recordAuditLog({
+        actor,
+        action: "toggle_promo_code",
+        entityType: "promo_code",
+        entityId: d.id,
+        entityLabel: d.id,
+        summary: `${d.is_active ? "Kích hoạt" : "Tắt"} mã giảm giá`,
+      });
       return NextResponse.json({ ok: true });
     }
 
     if (d.action === "toggle_test_publish") {
       await adminToggleTestPublish(d.id, d.is_published);
+      await recordAuditLog({
+        actor,
+        action: "toggle_test_publish",
+        entityType: "ielts_test",
+        entityId: d.id,
+        entityLabel: d.id,
+        summary: `${d.is_published ? "Công khai" : "Chuyển nháp"} đề thi`,
+      });
+      revalidatePath("/tests");
+      revalidatePath("/");
       return NextResponse.json({ ok: true });
     }
 
@@ -247,16 +274,40 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      await adminCreateTest(parsedTest, admin.id);
+      await adminCreateTest(parsedTest, actor.id);
+      await recordAuditLog({
+        actor,
+        action: "create_test_json",
+        entityType: "ielts_test",
+        entityLabel: parsedTest.title_vi,
+        summary: `Tạo đề thi mới (${parsedTest.skill}) /tests/${parsedTest.slug}`,
+      });
+      revalidatePath("/tests");
+      revalidatePath("/");
       return NextResponse.json({ ok: true });
     }
 
     if (d.action === "update_user_admin") {
+      if (d.userId === actor.id && (d.isLocked || (d.role && d.role !== "admin"))) {
+        return NextResponse.json(
+          { error: "Không thể tự khóa hoặc tự hạ quyền Admin của chính mình." },
+          { status: 400 }
+        );
+      }
       await adminUpdateUser({
         userId: d.userId,
         role: d.role,
+        isLocked: d.isLocked,
         grantMonths: d.grantMonths,
         revokePremium: d.revokePremium,
+      });
+      await recordAuditLog({
+        actor,
+        action: "update_user_admin",
+        entityType: "profile",
+        entityId: d.userId,
+        entityLabel: d.userId,
+        summary: `Cập nhật user (role=${d.role ?? "-"}, locked=${d.isLocked ?? "-"}, grantMonths=${d.grantMonths ?? 0}, revoke=${Boolean(d.revokePremium)})`,
       });
       return NextResponse.json({ ok: true });
     }
@@ -267,8 +318,17 @@ export async function POST(req: Request) {
         excerpt_vi: d.excerpt_vi,
         content_vi: d.content_vi,
         category: d.category,
-        author_name: admin.full_name,
+        author_name: actor.full_name,
       });
+      await recordAuditLog({
+        actor,
+        action: "create_blog_post",
+        entityType: "blog_post",
+        entityLabel: d.title_vi,
+        summary: `Xuất bản bài blog danh mục ${d.category}`,
+      });
+      revalidatePath("/blog");
+      revalidatePath("/");
       return NextResponse.json({ ok: true });
     }
 

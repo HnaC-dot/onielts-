@@ -13,6 +13,7 @@ import {
   createSupabaseRouteClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/server";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 import { readStore } from "@/lib/store";
 
 const authActionSchema = z.discriminatedUnion("action", [
@@ -59,6 +60,23 @@ export async function POST(req: Request) {
     }
 
     const data = parsed.data;
+
+    if (data.action !== "logout") {
+      const rate = await checkRateLimit(
+        `auth:${getRequestClientKey(req)}`,
+        15,
+        60_000
+      );
+      if (!rate.allowed) {
+        return NextResponse.json(
+          {
+            error: `Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau ${rate.retryAfterSec} giây.`,
+          },
+          { status: 429 }
+        );
+      }
+    }
+
     const supabaseActive = isSupabaseConfigured();
     const demoAllowed = isDemoAuthEnabled();
 

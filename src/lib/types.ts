@@ -1,7 +1,36 @@
-export type UserRole = "learner" | "admin";
+export type UserRole = "learner" | "editor" | "admin";
 export type AppLocale = "vi" | "en";
 export type IeltsSkill = "reading" | "listening" | "writing" | "speaking";
 export type BandConversionSkill = "listening" | "reading_academic" | "reading_general";
+export type ContentPublishStatus = "draft" | "published" | "scheduled";
+
+export interface SeoMeta {
+  metaTitle?: string;
+  metaDescription?: string;
+  primaryKeyword?: string;
+  secondaryKeywords?: string[];
+  canonicalUrl?: string;
+  robotsIndex?: boolean;
+  robotsFollow?: boolean;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  ogImageAlt?: string;
+}
+
+export interface AdminAuditLog {
+  id: string;
+  actor_id: string | null;
+  actor_email: string;
+  actor_role: UserRole | string;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  entity_label: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
 
 export interface UserProfile {
   id: string;
@@ -9,6 +38,7 @@ export interface UserProfile {
   full_name: string;
   avatar_url?: string | null;
   role: UserRole;
+  is_locked?: boolean;
   target_band: number;
   current_band?: number | null;
   locale: AppLocale;

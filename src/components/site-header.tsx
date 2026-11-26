@@ -480,6 +480,8 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
                     <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                       {user.role === "admin"
                         ? "Admin"
+                        : user.role === "editor"
+                        ? "Editor"
                         : user.isPremium
                         ? "Premium"
                         : "Free"}
@@ -521,7 +523,7 @@ export function SiteHeader({ user, authStatus }: SiteHeaderProps) {
                       <Layers className="h-4 w-4" />
                       + Flashcard
                     </button>
-                    {user.role === "admin" && (
+                    {(user.role === "admin" || user.role === "editor") && (
                       <Link
                         href="/admin"
                         onClick={() => setAvatarOpen(false)}

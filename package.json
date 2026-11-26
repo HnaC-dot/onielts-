@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:rls": "vitest run tests/rls.test.ts tests/rls.integration.test.ts",
-    "test:rls:docker": "bash scripts/test-rls-docker.sh"
+    "test:rls:docker": "bash scripts/test-rls-docker.sh",
+    "seed": "tsx scripts/seed-supabase.ts",
+    "seed:admin": "tsx scripts/seed-admin.ts"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",
@@ -40,6 +42,7 @@
     "eslint-config-next": "16.4.6",
     "pg": "^8.23.1",
     "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.1.1"
   }
