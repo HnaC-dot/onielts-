@@ -79,10 +79,10 @@ const ROADMAP_MODULES = [
   },
   {
     phase: "GĐ6",
-    status: "next" as const,
+    status: "active" as const,
     title: "SEO toàn trang & Redirect 301",
-    desc: "Dynamic sitemap.xml, robots.txt, JSON-LD tự động, Twitter summary_large_image, tự tạo 301 khi đổi slug.",
-    href: "/sitemap.xml",
+    desc: "Dynamic sitemap.xml, robots.txt, Google Search Console & GA4, JSON-LD tự động, quản lý Redirect 301/302 chạy trực tiếp trên Proxy và kiểm tra sức khỏe SEO.",
+    href: "/admin/seo",
     icon: Globe,
   },
 ];
@@ -391,7 +391,7 @@ export default async function AdminDashboardPage() {
                 Triển khai từng giai đoạn độc lập, không gián đoạn trang public đang chạy.
               </p>
             </div>
-            <Badge variant="default">Đang ở GĐ3</Badge>
+            <Badge variant="default">Hoàn tất 6/6 GĐ</Badge>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

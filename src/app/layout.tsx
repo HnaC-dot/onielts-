@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Script from "next/script";
+import Link from "next/link";
 import { Be_Vietnam_Pro } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
@@ -7,9 +9,13 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { GlobalFlashcardModal } from "@/components/flashcard-quick-add";
 import { MentorFloatingButton } from "@/components/mentor-floating-button";
-import Link from "next/link";
 import { getAuthState } from "@/lib/auth";
-import { getSiteGeneralSettings } from "@/lib/site-content";
+import {
+  getSiteGeneralSettings,
+  getSiteSeoSettings,
+} from "@/lib/site-content";
+import { GA4_ID_REGEX } from "@/lib/seo-cms-shared";
+import { getAppBaseUrl } from "@/lib/seo";
 import "./globals.css";
 
 const beVietnamPro = Be_Vietnam_Pro({
@@ -19,49 +25,74 @@ const beVietnamPro = Be_Vietnam_Pro({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://onielts.vn"),
-  title: {
-    default: "Ôn IELTS — Ôn luyện IELTS thông minh cùng AI",
-    template: "%s | Ôn IELTS",
-  },
-  description:
-    "Nền tảng tự học và luyện thi IELTS toàn diện cho người Việt: làm đề thi chuẩn máy tính, chấm Writing & Speaking bằng AI, luyện phát âm IPA, chép chính tả, Shadowing và Flashcard lặp lại ngắt quãng.",
-  keywords: [
-    "Ôn IELTS",
-    "luyện thi IELTS",
-    "chấm Writing IELTS AI",
-    "luyện Speaking IELTS AI",
-    "tính điểm band IELTS",
-    "chép chính tả IELTS",
-    "phát âm IPA",
-  ],
-  openGraph: {
-    type: "website",
-    locale: "vi_VN",
-    alternateLocale: ["en_US"],
-    siteName: "Ôn IELTS",
-    title: "Ôn IELTS — Ôn luyện IELTS thông minh cùng AI",
-    description:
-      "Làm đề thi IELTS chuẩn máy tính, chấm AI Writing & Speaking tức thì, luyện phát âm IPA và Flashcard thông minh.",
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
-};
+function toAbsoluteUrl(raw: string | undefined, baseUrl: string): string | undefined {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `${baseUrl}${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const baseUrl = getAppBaseUrl();
+  const [seo, general] = await Promise.all([
+    getSiteSeoSettings(),
+    getSiteGeneralSettings(),
+  ]);
+
+  const siteName = general.siteName || "Ôn IELTS";
+  const ogImageUrl = toAbsoluteUrl(seo.defaultOgImage, baseUrl);
+  const ogImageAlt = seo.defaultOgImageAlt || seo.defaultMetaTitle;
+
+  return {
+    metadataBase: new URL(baseUrl),
+    title: {
+      default: seo.defaultMetaTitle,
+      template: seo.titleTemplate.includes("%s")
+        ? seo.titleTemplate
+        : `%s | ${siteName}`,
+    },
+    description: seo.defaultMetaDescription,
+    keywords: seo.defaultKeywords.length > 0 ? seo.defaultKeywords : undefined,
+    openGraph: {
+      type: "website",
+      locale: "vi_VN",
+      alternateLocale: ["en_US"],
+      siteName,
+      title: seo.defaultMetaTitle,
+      description: seo.defaultMetaDescription,
+      images: ogImageUrl ? [{ url: ogImageUrl, alt: ogImageAlt }] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: seo.defaultMetaTitle,
+      description: seo.defaultMetaDescription,
+      creator: seo.twitterHandle || undefined,
+      images: ogImageUrl ? [ogImageUrl] : undefined,
+    },
+    verification: seo.googleSiteVerification
+      ? { google: seo.googleSiteVerification }
+      : undefined,
+    robots: {
+      index: true,
+      follow: true,
+    },
+  };
+}
 
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [locale, messages, authState, siteSettings] = await Promise.all([
-    getLocale(),
-    getMessages(),
-    getAuthState(),
-    getSiteGeneralSettings(),
-  ]);
+  const baseUrl = getAppBaseUrl();
+  const [locale, messages, authState, siteSettings, seoSettings] =
+    await Promise.all([
+      getLocale(),
+      getMessages(),
+      getAuthState(),
+      getSiteGeneralSettings(),
+      getSiteSeoSettings(),
+    ]);
 
   const sameAs = [
     siteSettings.socialYoutube,
@@ -70,13 +101,20 @@ export default async function RootLayout({
     siteSettings.socialZalo,
   ].filter((u) => u && /^https?:\/\//i.test(u));
 
+  const orgLogoUrl = toAbsoluteUrl(
+    seoSettings.organizationLogo || siteSettings.logoUrl,
+    baseUrl
+  );
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "EducationalOrganization",
     name: siteSettings.siteName || "Ôn IELTS",
-    url: process.env.NEXT_PUBLIC_APP_URL || "https://onielts.vn",
+    url: baseUrl,
+    logo: orgLogoUrl,
     description:
       siteSettings.taglineVi ||
+      seoSettings.defaultMetaDescription ||
       "Nền tảng tự học và luyện thi IELTS toàn diện tích hợp AI cho người học Việt Nam.",
     sameAs:
       sameAs.length > 0
@@ -89,6 +127,13 @@ export default async function RootLayout({
       ? siteSettings.announcementTextEn || siteSettings.announcementTextVi
       : siteSettings.announcementTextVi;
 
+  // Strict allowlist check before rendering GA4 script (prevents arbitrary script injection)
+  const ga4Id =
+    seoSettings.googleAnalyticsId &&
+    GA4_ID_REGEX.test(seoSettings.googleAnalyticsId.trim())
+      ? seoSettings.googleAnalyticsId.trim()
+      : "";
+
   return (
     <html lang={locale} suppressHydrationWarning className={beVietnamPro.variable}>
       <body className="min-h-screen flex flex-col bg-background text-foreground antialiased">
@@ -96,6 +141,20 @@ export default async function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
+        {ga4Id && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${ga4Id}');`}
+            </Script>
+          </>
+        )}
         <ThemeProvider>
           <NextIntlClientProvider locale={locale} messages={messages}>
             {siteSettings.announcementEnabled && announcementText && (

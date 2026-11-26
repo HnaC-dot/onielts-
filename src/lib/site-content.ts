@@ -11,12 +11,15 @@ import {
   DEFAULT_SITE_GENERAL_SETTINGS,
   DEFAULT_STATIC_PAGES,
 } from "./system-cms-shared";
+import { DEFAULT_SITE_SEO_SETTINGS } from "./seo-cms-shared";
 import type {
   ContentPublishStatus,
   FaqItem,
   ReferralConfigSettings,
   SeoMeta,
+  SeoRedirectItem,
   SiteGeneralSettings,
+  SiteSeoSettings,
   StaticPageItem,
 } from "./types";
 
@@ -240,3 +243,67 @@ export async function getPublicFaqs(category?: string): Promise<FaqItem[]> {
   }
   return data.map((r) => mapFaqRow(r as Record<string, unknown>));
 }
+
+export function mapSeoRedirectRow(row: Record<string, unknown>): SeoRedirectItem {
+  const code = Number(row.status_code ?? 301);
+  const status_code: 301 | 302 | 307 | 308 =
+    code === 302 || code === 307 || code === 308 ? code : 301;
+  return {
+    id: String(row.id),
+    source_path: String(row.source_path ?? ""),
+    destination_path: String(row.destination_path ?? ""),
+    status_code,
+    is_active: row.is_active !== false,
+    hit_count: Number(row.hit_count ?? 0),
+    created_at: String(row.created_at ?? new Date().toISOString()),
+    updated_at: String(row.updated_at ?? row.created_at ?? new Date().toISOString()),
+  };
+}
+
+export async function getSiteSeoSettings(): Promise<SiteSeoSettings> {
+  if (!isSupabaseConfigured()) {
+    return {
+      ...DEFAULT_SITE_SEO_SETTINGS,
+      ...(readStore().site_settings?.seo ?? {}),
+    };
+  }
+  try {
+    const sb = await getReadSb();
+    if (!sb) return DEFAULT_SITE_SEO_SETTINGS;
+    const { data, error } = await sb
+      .from("site_settings")
+      .select("value")
+      .eq("key", "seo")
+      .maybeSingle();
+    if (error || !data?.value || typeof data.value !== "object") {
+      return DEFAULT_SITE_SEO_SETTINGS;
+    }
+    return {
+      ...DEFAULT_SITE_SEO_SETTINGS,
+      ...(data.value as Partial<SiteSeoSettings>),
+    };
+  } catch {
+    return DEFAULT_SITE_SEO_SETTINGS;
+  }
+}
+
+export async function listPublicStaticPages(): Promise<StaticPageItem[]> {
+  if (!isSupabaseConfigured()) {
+    return readStore().static_pages.filter((p) => p.status === "published");
+  }
+  await ensureSystemContentSeeded();
+  const sb = await getReadSb();
+  if (!sb) {
+    return DEFAULT_STATIC_PAGES.filter((p) => p.status === "published");
+  }
+  const { data, error } = await sb
+    .from("static_pages")
+    .select("*")
+    .eq("status", "published")
+    .order("slug", { ascending: true });
+  if (error || !data || data.length === 0) {
+    return DEFAULT_STATIC_PAGES.filter((p) => p.status === "published");
+  }
+  return data.map((r) => mapStaticPageRow(r as Record<string, unknown>));
+}
+

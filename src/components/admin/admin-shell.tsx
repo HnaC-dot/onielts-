@@ -92,7 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Hộp thư & Phản hồi", href: "/admin/inbox", icon: Inbox },
       { label: "Trang tĩnh & FAQs", href: "/admin/pages", icon: FileCode2 },
       { label: "Cài đặt chung", href: "/admin/settings", icon: Settings, adminOnly: true },
-      { label: "SEO & Redirect 301", href: "/admin#roadmap", icon: Globe, adminOnly: true, phaseBadge: "GĐ6" },
+      { label: "SEO & Redirect 301", href: "/admin/seo", icon: Globe, adminOnly: true },
     ],
   },
 ];
@@ -371,7 +371,7 @@ export function AdminShell({
               {isAdmin ? "Admin" : "Editor"}
             </Badge>
             <span className="text-slate-500 dark:text-slate-400">
-              GĐ5 · System &amp; Users Active
+              CMS Hoàn chỉnh · 6/6 GĐ Active
             </span>
           </div>
         </div>

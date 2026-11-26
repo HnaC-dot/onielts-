@@ -12,6 +12,7 @@ import {
 } from "./blog-shared";
 import { extractPlainText, renderBlogContentToSafeHtml } from "./sanitize";
 import { slugifyVi } from "./seo";
+import { invalidateSeoRedirectCache } from "./seo-redirects-edge";
 import { readStore, updateStore } from "./store";
 import type { BlogPost, SeoMeta, SessionUser } from "./types";
 
@@ -425,6 +426,7 @@ export async function updateCmsBlogPost(
       .then(({ error: redErr }) => {
         if (!redErr) {
           redirectCreated = { from: sourcePath, to: destPath };
+          invalidateSeoRedirectCache();
         }
       });
   }

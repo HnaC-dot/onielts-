@@ -632,3 +632,56 @@ export interface ReferralConfigSettings {
   headlineVi: string;
   headlineEn: string;
 }
+
+export interface SiteSeoSettings {
+  defaultMetaTitle: string;
+  titleTemplate: string;
+  defaultMetaDescription: string;
+  defaultKeywords: string[];
+  defaultOgImage: string;
+  defaultOgImageAlt: string;
+  twitterHandle: string;
+  googleSiteVerification: string;
+  googleAnalyticsId: string;
+  organizationLogo: string;
+  robotsDisallowPaths: string[];
+  sitemapIncludeTests: boolean;
+  sitemapIncludeBlog: boolean;
+  sitemapIncludeCourses: boolean;
+  sitemapIncludePronunciation: boolean;
+  sitemapIncludeVideos: boolean;
+  sitemapIncludeStaticPages: boolean;
+}
+
+export interface SeoRedirectItem {
+  id: string;
+  source_path: string;
+  destination_path: string;
+  status_code: 301 | 302 | 307 | 308;
+  is_active: boolean;
+  hit_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SeoHealthIssue {
+  id: string;
+  module: "test" | "blog" | "course" | "pronunciation" | "video" | "page";
+  moduleLabel: string;
+  title: string;
+  publicPath: string;
+  editHref: string;
+  robotsIndex: boolean;
+  problems: string[];
+}
+
+export interface SeoHealthSummary {
+  totalPublicItems: number;
+  healthyCount: number;
+  needsAttentionCount: number;
+  missingDescCount: number;
+  missingOgImageCount: number;
+  noindexCount: number;
+  issues: SeoHealthIssue[];
+}
+

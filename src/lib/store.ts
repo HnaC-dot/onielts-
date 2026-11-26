@@ -24,7 +24,9 @@ import type {
   PronunciationSound,
   ReferralConfigSettings,
   ReferralRecord,
+  SeoRedirectItem,
   SiteGeneralSettings,
+  SiteSeoSettings,
   SpeakingSubmission,
   StaticPageItem,
   TestAttempt,
@@ -57,6 +59,7 @@ import {
   DEFAULT_SITE_GENERAL_SETTINGS,
   DEFAULT_STATIC_PAGES,
 } from "./system-cms-shared";
+import { DEFAULT_SITE_SEO_SETTINGS } from "./seo-cms-shared";
 import { FULL_SEED_TESTS } from "./seed-tests";
 
 export interface LocalStoreData {
@@ -89,15 +92,17 @@ export interface LocalStoreData {
   contact_messages: ContactMessageItem[];
   static_pages: StaticPageItem[];
   faqs: FaqItem[];
+  seo_redirects: SeoRedirectItem[];
   site_settings: {
     general: SiteGeneralSettings;
     referral: ReferralConfigSettings;
+    seo: SiteSeoSettings;
   };
 }
 
 const STORE_DIR = path.join(process.cwd(), ".local-data");
 const STORE_PATH = path.join(STORE_DIR, "store.json");
-const CURRENT_STORE_VERSION = 5;
+const CURRENT_STORE_VERSION = 6;
 
 function buildInitialStore(): LocalStoreData {
   return {
@@ -163,9 +168,11 @@ function buildInitialStore(): LocalStoreData {
     contact_messages: [],
     static_pages: structuredClone(DEFAULT_STATIC_PAGES),
     faqs: structuredClone(DEFAULT_FAQS),
+    seo_redirects: [],
     site_settings: {
       general: structuredClone(DEFAULT_SITE_GENERAL_SETTINGS),
       referral: structuredClone(DEFAULT_REFERRAL_CONFIG),
+      seo: structuredClone(DEFAULT_SITE_SEO_SETTINGS),
     },
   };
 }
@@ -208,11 +215,17 @@ function ensureStoreFile(): LocalStoreData {
           if (!Array.isArray(parsed.faqs)) {
             parsed.faqs = structuredClone(DEFAULT_FAQS);
           }
+          if (!Array.isArray(parsed.seo_redirects)) {
+            parsed.seo_redirects = [];
+          }
           if (!parsed.site_settings) {
             parsed.site_settings = {
               general: structuredClone(DEFAULT_SITE_GENERAL_SETTINGS),
               referral: structuredClone(DEFAULT_REFERRAL_CONFIG),
+              seo: structuredClone(DEFAULT_SITE_SEO_SETTINGS),
             };
+          } else if (!parsed.site_settings.seo) {
+            parsed.site_settings.seo = structuredClone(DEFAULT_SITE_SEO_SETTINGS);
           }
           parsed.version = CURRENT_STORE_VERSION;
           dirty = true;

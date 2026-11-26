@@ -35,7 +35,8 @@ const ENTITY_FILTERS = [
   { value: "feature_request", label: "Đề xuất tính năng" },
   { value: "static_page", label: "Trang tĩnh & Pháp lý" },
   { value: "faq", label: "Câu hỏi FAQ" },
-  { value: "site_settings", label: "Cài đặt chung / Referral" },
+  { value: "site_settings", label: "Cài đặt chung / SEO / Referral" },
+  { value: "seo_redirect", label: "Redirect 301 / 302" },
 ];
 
 export function AuditLogsClient({

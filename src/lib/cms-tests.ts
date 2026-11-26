@@ -11,6 +11,7 @@ import {
   type CmsTestFormInput,
 } from "./test-cms-shared";
 import { slugifyVi } from "./seo";
+import { invalidateSeoRedirectCache } from "./seo-redirects-edge";
 import { readStore, updateStore } from "./store";
 import type { IeltsTest, SeoMeta, SessionUser, TestSection } from "./types";
 
@@ -492,6 +493,7 @@ export async function updateCmsTest(
       .then(({ error: redErr }) => {
         if (!redErr) {
           redirectCreated = { from: sourcePath, to: destPath };
+          invalidateSeoRedirectCache();
         }
       });
   }

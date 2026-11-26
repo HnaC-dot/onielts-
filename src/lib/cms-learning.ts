@@ -8,6 +8,7 @@ import { recordAuditLog } from "./admin-auth";
 import { ensureSupabaseCatalogSeeded } from "./db";
 import { readStore, updateStore } from "./store";
 import { slugifyVi } from "./seo";
+import { invalidateSeoRedirectCache } from "./seo-redirects-edge";
 import { extractYoutubeVideoId, sanitizeRichHtml } from "./sanitize";
 import {
   conversationCmsSchema,
@@ -151,7 +152,11 @@ async function createAuto301Redirect(
       },
       { onConflict: "source_path" }
     );
-    return !error;
+    if (!error) {
+      invalidateSeoRedirectCache();
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }

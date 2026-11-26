@@ -1,15 +1,11 @@
 import type { MetadataRoute } from "next";
+import { getSiteSeoSettings } from "@/lib/site-content";
+import { buildRobotsConfig } from "@/lib/seo-cms-shared";
+import { getAppBaseUrl } from "@/lib/seo";
 
-export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://onielts.vn";
-  return {
-    rules: [
-      {
-        userAgent: "*",
-        allow: "/",
-        disallow: ["/admin", "/api/"],
-      },
-    ],
-    sitemap: `${baseUrl}/sitemap.xml`,
-  };
+export const dynamic = "force-dynamic";
+
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const seo = await getSiteSeoSettings();
+  return buildRobotsConfig(seo, getAppBaseUrl());
 }
