@@ -2,14 +2,20 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { checkUsageLimit } from "@/lib/usage-limits";
+import { reserveUsageLimit } from "@/lib/usage-limits";
 import { getGeneralAiTool } from "@/lib/ai-tools-config";
 import {
   buildGeneralToolMock,
   generateStructuredAi,
   generalToolOutputSchema,
+  getActiveGeminiModel,
   sanitizeUserDataForPrompt,
 } from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
+import { releaseAiQuotaRecord } from "@/lib/db";
 
 export const maxDuration = 60;
 
@@ -40,18 +46,7 @@ export async function POST(
     );
   }
 
-  const usage = await checkUsageLimit(user, "general_tool", clientKey);
-  if (!usage.allowed) {
-    return NextResponse.json(
-      {
-        error: "Bạn đã dùng hết lượt miễn phí trong ngày cho công cụ AI. Nâng cấp Premium để dùng không giới hạn.",
-        limitReached: true,
-        usage,
-      },
-      { status: 402 }
-    );
-  }
-
+  let parsedData: z.infer<typeof requestSchema>;
   try {
     const body = await req.json();
     const parsed = requestSchema.safeParse(body);
@@ -61,16 +56,32 @@ export async function POST(
         { status: 400 }
       );
     }
-
     if (parsed.data.input.length > tool.maxChars) {
       return NextResponse.json(
         { error: `Văn bản vượt quá giới hạn ${tool.maxChars} ký tự.` },
         { status: 400 }
       );
     }
+    parsedData = parsed.data;
+  } catch {
+    return NextResponse.json({ error: "Dữ liệu đầu vào không hợp lệ." }, { status: 400 });
+  }
 
-    const safeInput = sanitizeUserDataForPrompt(parsed.data.input, tool.maxChars);
-    const optionsSummary = Object.entries(parsed.data.options)
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "general_tool",
+    rawFeatureName: `tool:${tool.slug}`,
+    skill: "general_tool",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
+    const safeInput = sanitizeUserDataForPrompt(parsedData.input, tool.maxChars);
+    const optionsSummary = Object.entries(parsedData.options)
       .map(([k, v]) => `${k}: ${v}`)
       .join(", ");
 
@@ -78,6 +89,7 @@ export async function POST(
       feature: `tool:${tool.slug}`,
       skill: "general_tool",
       userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt: tool.systemPrompt,
       userPrompt: `Selected options: ${optionsSummary || "default"}\n\nLearner text:\n${safeInput}`,
       schema: generalToolOutputSchema,
@@ -87,7 +99,7 @@ export async function POST(
   "highlights": [{ "before": "string", "after": "string", "reasonVi": "string" }]
 }`,
       cacheTtlMs: 10 * 60 * 1000,
-      mockFallback: () => buildGeneralToolMock(tool.slug, parsed.data.input, parsed.data.options),
+      mockFallback: () => buildGeneralToolMock(tool.slug, parsedData.input, parsedData.options),
     });
 
     return NextResponse.json({
@@ -98,10 +110,8 @@ export async function POST(
       cached: aiRes.cached,
       mocked: aiRes.mocked,
     });
-  } catch {
-    return NextResponse.json(
-      { error: "Đã xảy ra lỗi khi xử lý yêu cầu AI." },
-      { status: 500 }
-    );
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Đã xảy ra lỗi khi xử lý yêu cầu AI.");
   }
 }

@@ -59,6 +59,7 @@ export function ConversationsClient({
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [listening, setListening] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [paywallOpen, setPaywallOpen] = useState(false);
 
   const activeTopic = topics.find((t) => t.slug === selectedSlug) ?? topics[0];
@@ -71,6 +72,7 @@ export function ConversationsClient({
       "To be honest, it has changed quite a lot for me over the last couple of years.",
       "One thing that stands out immediately is how much it helps me unwind.",
     ]);
+    setErrorMsg("");
     if (autoSpeak) speakEnglish(topic.opener);
   };
 
@@ -81,6 +83,7 @@ export function ConversationsClient({
     const nextHistory: ChatTurn[] = [...messages, { role: "user", text: content }];
     setMessages(nextHistory);
     setInput("");
+    setErrorMsg("");
     setLoading(true);
 
     try {
@@ -94,12 +97,19 @@ export function ConversationsClient({
           userMessage: content,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.status === 402 || data.limitReached) {
         setPaywallOpen(true);
         return;
       }
-      if (res.ok && data.reply) {
+      if (!res.ok) {
+        setErrorMsg(
+          data.error ||
+            (isEn ? "AI partner is temporarily unavailable." : "Không thể phản hồi hội thoại AI lúc này.")
+        );
+        return;
+      }
+      if (data.reply) {
         const aiTurn: ChatTurn = {
           role: "ai",
           text: data.reply.aiReply,
@@ -109,6 +119,8 @@ export function ConversationsClient({
         setSuggestions(data.reply.suggestedReplies ?? []);
         if (autoSpeak) speakEnglish(data.reply.aiReply);
       }
+    } catch {
+      setErrorMsg(isEn ? "Network connection error." : "Lỗi kết nối máy chủ.");
     } finally {
       setLoading(false);
     }
@@ -267,6 +279,12 @@ export function ConversationsClient({
               <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
               {isEn ? "AI partner is thinking..." : "Bạn luyện nói AI đang phản hồi..."}
             </div>
+          )}
+
+          {errorMsg && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              {errorMsg}
+            </p>
           )}
         </div>
 

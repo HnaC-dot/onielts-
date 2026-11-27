@@ -2,7 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
+import { reserveUsageLimit } from "@/lib/usage-limits";
+import {
+  generateStructuredAi,
+  getActiveGeminiModel,
+  sanitizeUserDataForPrompt,
+} from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
+import { releaseAiQuotaRecord } from "@/lib/db";
 
 export const maxDuration = 45;
 
@@ -36,14 +46,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Vui lòng đợi vài giây trước khi nhắn tiếp." }, { status: 429 });
   }
 
+  let parsedData: z.infer<typeof reqSchema>;
   try {
     const body = await req.json();
     const parsed = reqSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "Tin nhắn không hợp lệ." }, { status: 400 });
     }
+    parsedData = parsed.data;
+  } catch {
+    return NextResponse.json({ error: "Tin nhắn không hợp lệ." }, { status: 400 });
+  }
 
-    const { message, history } = parsed.data;
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "mentor",
+    rawFeatureName: "mentor:chat",
+    skill: "study_plan",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
+    const { message, history } = parsedData;
     const context = history
       .slice(-6)
       .map((m) => `${m.role === "mentor" ? "Mentor" : "Học viên"}: ${m.text}`)
@@ -53,6 +81,7 @@ export async function POST(req: Request) {
       feature: "mentor:chat",
       skill: "study_plan",
       userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt: `You are "Mentor Ôn IELTS", a warm, structured Vietnamese IELTS study advisor on onielts.vn.
 Always reply in clear, motivating Vietnamese. Build concrete study plans tailored to the learner's current band, target band, timeline, and weak skills, linking directly to Ôn IELTS features (/tests, /writing, /speaking, /pronunciation, /dictation, /flashcards, /daily-exam, /courses).`,
       userPrompt: `Recent chat:\n${context}\n\nLearner message:\n${sanitizeUserDataForPrompt(message, 1500)}`,
@@ -93,7 +122,8 @@ Always reply in clear, motivating Vietnamese. Build concrete study plans tailore
     });
 
     return NextResponse.json({ ok: true, mentor: aiRes.data, mocked: aiRes.mocked });
-  } catch {
-    return NextResponse.json({ error: "Mentor đang bận, thử lại sau nhé." }, { status: 500 });
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Mentor đang bận, thử lại sau nhé.");
   }
 }

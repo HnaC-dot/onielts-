@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { checkUsageLimit } from "@/lib/usage-limits";
-import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
+import { checkUsageLimit, reserveUsageLimit } from "@/lib/usage-limits";
+import {
+  generateStructuredAi,
+  getActiveGeminiModel,
+  sanitizeUserDataForPrompt,
+} from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
+import { releaseAiQuotaRecord } from "@/lib/db";
 
 export const maxDuration = 60;
 
@@ -33,28 +42,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Thao tác quá nhanh, vui lòng chờ vài giây." }, { status: 429 });
   }
 
-  const usage = await checkUsageLimit(user, "generator", clientKey);
-  if (!usage.allowed) {
-    return NextResponse.json(
-      { error: "Đã hết lượt tạo câu trả lời mẫu miễn phí hôm nay.", limitReached: true, usage },
-      { status: 402 }
-    );
-  }
-
+  let parsedData: z.infer<typeof reqSchema>;
   try {
     const body = await req.json();
     const parsed = reqSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "Chủ đề không hợp lệ" }, { status: 400 });
     }
+    parsedData = parsed.data;
+  } catch {
+    return NextResponse.json({ error: "Chủ đề không hợp lệ" }, { status: 400 });
+  }
 
-    const { part, topic } = parsed.data;
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "generator",
+    rawFeatureName: "speaking:generate",
+    skill: "speaking",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
+    const { part, topic } = parsedData;
     const safeTopic = sanitizeUserDataForPrompt(topic, 500);
 
     const aiRes = await generateStructuredAi({
       feature: "speaking:generate",
       skill: "speaking",
       userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt:
         "You are an IELTS Speaking Band 9 coach. Generate natural, original spoken questions and Band 8.5 sample answers for the requested Speaking Part and topic, with key collocations and concise Vietnamese strategy notes.",
       userPrompt: `Speaking Part: ${part}\nTopic:\n${safeTopic}`,
@@ -127,9 +147,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       result: aiRes.data,
+      usage: await checkUsageLimit(user, "generator", clientKey),
       mocked: aiRes.mocked,
     });
-  } catch {
-    return NextResponse.json({ error: "Không thể tạo bộ câu hỏi mẫu." }, { status: 500 });
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Không thể tạo bộ câu hỏi mẫu.");
   }
 }

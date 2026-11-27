@@ -25,6 +25,8 @@ Open `http://localhost:3000`.
 | `npm test` | Run Vitest unit & security test suite |
 | `npm run test:rls` | Run static RLS verification + live Postgres RLS tests (when `SUPABASE_DB_URL` is set) |
 | `npm run test:rls:docker` | Spin up an ephemeral `postgres:16-alpine` container, apply all migrations, and run live RLS integration tests |
+| `npm run seed` | Idempotently validate (Zod) and seed all 54 original IELTS tests + catalog tables into Supabase (`--dry-run` supported) |
+| `python3 scripts/generate-listening-audio.py` | Reproducibly synthesize multi-speaker neural English MP3s for all 40 Listening parts (`--force` to rebuild) |
 
 ---
 
@@ -36,12 +38,17 @@ Copy `.env.example` to `.env.local` locally, and configure the same keys in **Ve
 
 | Variable | Scope | Required (Prod) | Description | Where to get it |
 | --- | --- | --- | --- | --- |
-| `NEXT_PUBLIC_APP_URL` | Client + Server | **Yes** | Canonical public origin (e.g. `https://onielts.vercel.app`) used for SEO metadata and OAuth/OTP redirects | Your Vercel domain |
+| `NEXT_PUBLIC_SITE_URL` | Client + Server | **Yes** | Primary canonical domain URL (e.g. `https://onielts.vn`) used for canonical, OG, sitemap, robots, JSON-LD, OAuth/OTP redirects & 301 host redirects | Your custom domain |
+| `NEXT_PUBLIC_APP_URL` | Client + Server | Optional | Legacy fallback alias for `NEXT_PUBLIC_SITE_URL` | Your domain |
 | `NEXT_PUBLIC_SUPABASE_URL` | Client + Server | **Yes** | Supabase project URL (`https://<project-ref>.supabase.co`) | Supabase → Project Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client + Server | **Yes** | Supabase public `anon` / publishable key | Supabase → Project Settings → API Keys |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only** | **Yes** | Supabase `service_role` / secret key for admin queries, verified PayOS webhooks, and safe RLS profile provisioning fallback | Supabase → Project Settings → API Keys |
-| `GEMINI_API_KEY` | **Server-only** | **Yes** (for AI) | Google Gemini API key (centralized strictly inside `src/lib/ai.ts`) | Google AI Studio |
-| `GEMINI_MODEL` | **Server-only** | Optional | Gemini model ID (default: `gemini-2.5-flash`) | Google AI Studio |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only** | **Yes** | Supabase `service_role` / secret key for admin queries, atomic PayOS webhooks, and atomic AI quota reservations | Supabase → Project Settings → API Keys |
+| `GEMINI_API_KEY` | **Server-only** | **Yes** (for AI) | Google Gemini API key (centralized strictly inside `src/lib/ai.ts`; fail-closed 503 if unset) | Google AI Studio |
+| `GEMINI_MODEL` | **Server-only** | Optional | Gemini model ID (default: `gemini-2.5-flash`; model-aware USD cost tracking) | Google AI Studio |
+| `AI_PREMIUM_DAILY_LIMIT` | **Server-only** | Optional | Daily fair-use AI call cap per feature bucket for paid Premium accounts (default: `20`, Vietnam UTC+7) | Vercel Env |
+| `AI_DAILY_COST_ALERT_USD` | **Server-only** | Optional | Daily spend threshold (USD, UTC+7) that triggers `[ai.cost_alert]` warning logs | Vercel Env |
+| `AI_DAILY_BUDGET_USD` | **Server-only** | Optional | Hard daily AI spend circuit-breaker cap (USD, UTC+7); returns 503 without deducting quota if reached | Vercel Env |
+| `ALLOW_AI_MOCK` | **Server-only** | Optional | Local dev opt-in mock mode (`false` by default; strictly ignored when `NODE_ENV === "production"`) | Local `.env.local` |
 | `PAYOS_CLIENT_ID` | **Server-only** | **Yes** (for payments) | PayOS Client ID | PayOS Dashboard → Channels |
 | `PAYOS_API_KEY` | **Server-only** | **Yes** (for payments) | PayOS API Key | PayOS Dashboard → Channels |
 | `PAYOS_CHECKSUM_KEY` | **Server-only** | **Yes** (for payments) | PayOS HMAC-SHA256 webhook verification key (fail-closed in production) | PayOS Dashboard → Channels |
@@ -50,6 +57,7 @@ Copy `.env.example` to `.env.local` locally, and configure the same keys in **Ve
 | `UPSTASH_REDIS_REST_TOKEN` | **Server-only** | Recommended | Upstash Redis REST bearer token (also auto-detects `KV_REST_API_TOKEN`; falls back to bounded in-memory limiter locally) | Upstash Console / Vercel Marketplace |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Client + Server | Optional | Cloudflare Turnstile public site key | Cloudflare Dashboard |
 | `TURNSTILE_SECRET_KEY` | **Server-only** | Optional | Cloudflare Turnstile verification secret | Cloudflare Dashboard |
+| `ADMIN_SEED_EMAIL` | **Server-only** | Optional | Email of an existing signed-up user to promote via `npm run seed:admin` | Local / CI |
 | `SUPABASE_DB_URL` | Test/CI only | Optional | Direct PostgreSQL connection string for running `tests/rls.integration.test.ts` | `supabase status` or local Docker |
 
 ---
@@ -58,10 +66,14 @@ Copy `.env.example` to `.env.local` locally, and configure the same keys in **Ve
 
 Run the SQL migrations in **exact ascending order** inside **Supabase → SQL Editor** (or via `supabase db push`):
 
-1. `supabase/migrations/0001_initial_schema.sql` — Creates all 26 tables, `public.is_admin()`, triggers, storage buckets, and strict Row Level Security (RLS) policies on every table.
+1. `supabase/migrations/0001_initial_schema.sql` — Creates core tables (27 tables), `public.is_admin()`, triggers, storage buckets, and Row Level Security (RLS) policies.
 2. `supabase/migrations/0002_seed_config.sql` — Seeds initial band conversion tables, pricing plans, promo banner, and promo codes (idempotent).
 3. `supabase/migrations/0003_auth_profile_trigger.sql` — Auto-provisions `public.profiles` rows on new `auth.users` signup with safe defaults (`role = 'learner'`, `premium_expires_at = NULL`).
-4. `supabase/migrations/0004_public_grants.sql` — Grants base schema/table/sequence/function privileges to `anon`, `authenticated`, and `service_role` so PostgREST evaluates RLS policies instead of throwing PostgreSQL `42501` (`permission denied`).
+4. `supabase/migrations/0004_public_grants.sql` — Grants base schema/table/sequence/function privileges to `anon`, `authenticated`, and `service_role` so PostgREST evaluates RLS policies instead of throwing PostgreSQL `42501`.
+5. `supabase/migrations/0005_admin_cms_schema.sql` — Adds Admin CMS tables (`admin_audit_logs`, `media_assets`, `conversation_topics`, `writing_exercises`, `static_pages`, `faqs`, `site_settings`, `seo_redirects`), `public.is_staff()`, and `cms-media` bucket.
+6. `supabase/migrations/0006_progress_analytics.sql` — Adds `test_attempt_answers` and composite indexes for `/progress` analytics & `/admin/analytics`.
+7. `supabase/migrations/0007_content_production.sql` — Adds `content_calendar_items`, `newsletter_subscribers`, and `blog_posts.updated_at`.
+8. `supabase/migrations/0008_payments_ai_safety.sql` — Adds `orders.duration_months`, `order_code_seq`, atomic PayOS RPCs (`create_checkout_order_atomic`, `fulfill_paid_order_atomic`), `ai_usage_logs` reservation columns (`actor_key`, `quota_bucket`, `status`), and advisory-locked `reserve_ai_quota_atomic` RPC.
 
 ### Running Real RLS Integration Tests
 

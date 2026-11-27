@@ -2,7 +2,13 @@ import "server-only";
 import crypto from "node:crypto";
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { insertAiUsageLog } from "./db";
+import {
+  finalizeAiQuotaRecord,
+  getDailyAiCostUsdSince,
+  insertAiUsageLog,
+  releaseAiQuotaRecord,
+} from "./db";
+import { getVietnamDateString } from "./utils";
 
 /**
  * =============================================================================
@@ -14,17 +20,77 @@ import { insertAiUsageLog } from "./db";
  * - Server-only API key usage (GEMINI_API_KEY)
  * - Structured JSON output validated with Zod + 1 automatic retry
  * - Prompt-injection defense (<user_submission_data> isolation)
- * - Input caching (SHA-256)
- * - Token & estimated cost logging per user in ai_usage_logs
- * - Rich deterministic mock fallback when GEMINI_API_KEY is absent
+ * - Input caching (SHA-256) that never consumes user quota
+ * - Model-aware token & USD cost logging per user in ai_usage_logs
+ * - Fail-closed error reporting (HTTP 503 + quota release) whenever GEMINI_API_KEY
+ *   is missing or Gemini fails — NEVER serves silent fake scores in production
  * =============================================================================
  */
 
 export const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-// Estimated Gemini 2.5 Flash pricing (USD per 1M tokens) for admin cost tracking
-const COST_PER_1M_INPUT_USD = 0.15;
-const COST_PER_1M_OUTPUT_USD = 0.6;
+export function getActiveGeminiModel(): string {
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+}
+
+interface ModelPricingRate {
+  prefix: string;
+  inputPer1M: number;
+  outputPer1M: number;
+}
+
+// Estimated Gemini pricing (USD per 1M tokens) ordered most-specific prefix first
+const GEMINI_MODEL_PRICING: ModelPricingRate[] = [
+  { prefix: "gemini-2.5-flash-lite", inputPer1M: 0.1, outputPer1M: 0.4 },
+  { prefix: "gemini-2.5-flash", inputPer1M: 0.15, outputPer1M: 0.6 },
+  { prefix: "gemini-2.5-pro", inputPer1M: 1.25, outputPer1M: 10.0 },
+  { prefix: "gemini-2.0-flash-lite", inputPer1M: 0.075, outputPer1M: 0.3 },
+  { prefix: "gemini-2.0-flash", inputPer1M: 0.1, outputPer1M: 0.4 },
+  { prefix: "gemini-1.5-pro", inputPer1M: 1.25, outputPer1M: 5.0 },
+  { prefix: "gemini-1.5-flash", inputPer1M: 0.075, outputPer1M: 0.3 },
+];
+
+const DEFAULT_PRICING_RATE = { inputPer1M: 0.15, outputPer1M: 0.6 };
+
+export function getGeminiModelPricing(model: string): {
+  inputPer1M: number;
+  outputPer1M: number;
+} {
+  const normalized = model.trim().toLowerCase();
+  const matched = GEMINI_MODEL_PRICING.find((r) => normalized.startsWith(r.prefix));
+  return matched
+    ? { inputPer1M: matched.inputPer1M, outputPer1M: matched.outputPer1M }
+    : DEFAULT_PRICING_RATE;
+}
+
+export function estimateAiCostUsd(
+  model: string,
+  promptTokens: number,
+  completionTokens: number
+): number {
+  const rate = getGeminiModelPricing(model);
+  const p = Math.max(0, promptTokens);
+  const c = Math.max(0, completionTokens);
+  return Number(
+    ((p / 1_000_000) * rate.inputPer1M + (c / 1_000_000) * rate.outputPer1M).toFixed(6)
+  );
+}
+
+export type AiUnavailableCode =
+  | "AI_NOT_CONFIGURED"
+  | "AI_PROVIDER_ERROR"
+  | "AI_BUDGET_EXCEEDED";
+
+export class AiServiceUnavailableError extends Error {
+  readonly code: AiUnavailableCode;
+  readonly status = 503;
+
+  constructor(code: AiUnavailableCode, message: string) {
+    super(message);
+    this.name = "AiServiceUnavailableError";
+    this.code = code;
+  }
+}
 
 interface CacheEntry<T> {
   value: T;
@@ -32,9 +98,56 @@ interface CacheEntry<T> {
 }
 
 const memoryCache = new Map<string, CacheEntry<unknown>>();
+let lastCostAlertLoggedAt = 0;
+
+export function clearAiMemoryCacheForTests(): void {
+  memoryCache.clear();
+  lastCostAlertLoggedAt = 0;
+}
 
 export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 5);
+}
+
+/**
+ * Local-dev ONLY opt-in mock mode.
+ * Always returns false in production regardless of env flags.
+ */
+export function isAiMockAllowed(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  return process.env.ALLOW_AI_MOCK === "true";
+}
+
+function parseOptionalPositiveUsd(raw: string | undefined): number | null {
+  if (!raw?.trim()) return null;
+  const val = Number.parseFloat(raw.trim());
+  return Number.isFinite(val) && val > 0 ? val : null;
+}
+
+function getVietnamMidnightIso(now: Date = new Date()): string {
+  const vnDate = getVietnamDateString(now);
+  return new Date(`${vnDate}T00:00:00+07:00`).toISOString();
+}
+
+async function checkDailyCostAlertNonBlocking(): Promise<void> {
+  const alertUsd = parseOptionalPositiveUsd(process.env.AI_DAILY_COST_ALERT_USD);
+  if (!alertUsd) return;
+  const nowMs = Date.now();
+  if (nowMs - lastCostAlertLoggedAt < 10 * 60_000) return;
+
+  try {
+    const spent = await getDailyAiCostUsdSince(getVietnamMidnightIso());
+    if (spent >= alertUsd) {
+      lastCostAlertLoggedAt = nowMs;
+      console.warn("[ai.cost_alert] Daily AI spend threshold reached", {
+        vnDate: getVietnamDateString(),
+        dailyCostUsd: Number(spent.toFixed(4)),
+        thresholdUsd: alertUsd,
+      });
+    }
+  } catch {
+    // Non-blocking alert check
+  }
 }
 
 /**
@@ -59,7 +172,8 @@ function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-async function logAiUsage(params: {
+async function recordAiUsage(params: {
+  reservationId?: string | null;
   userId: string;
   feature: string;
   skill?: string | null;
@@ -70,25 +184,36 @@ async function logAiUsage(params: {
   latencyMs: number;
 }) {
   const totalTokens = params.promptTokens + params.completionTokens;
-  const costUsd = Number(
-    (
-      (params.promptTokens / 1_000_000) * COST_PER_1M_INPUT_USD +
-      (params.completionTokens / 1_000_000) * COST_PER_1M_OUTPUT_USD
-    ).toFixed(6)
-  );
+  const costUsd = params.cached
+    ? 0
+    : estimateAiCostUsd(params.model, params.promptTokens, params.completionTokens);
   try {
-    await insertAiUsageLog({
-      user_id: params.userId,
-      feature: params.feature,
-      skill: params.skill ?? null,
-      model: params.model,
-      prompt_tokens: params.promptTokens,
-      completion_tokens: params.completionTokens,
-      total_tokens: totalTokens,
-      estimated_cost_usd: costUsd,
-      cached: params.cached,
-      latency_ms: params.latencyMs,
-    });
+    if (params.reservationId) {
+      await finalizeAiQuotaRecord({
+        reservationId: params.reservationId,
+        model: params.model,
+        promptTokens: params.promptTokens,
+        completionTokens: params.completionTokens,
+        totalTokens,
+        estimatedCostUsd: costUsd,
+        cached: params.cached,
+        latencyMs: params.latencyMs,
+      });
+    } else {
+      await insertAiUsageLog({
+        user_id: params.userId,
+        feature: params.feature,
+        skill: params.skill ?? null,
+        model: params.model,
+        prompt_tokens: params.promptTokens,
+        completion_tokens: params.completionTokens,
+        total_tokens: totalTokens,
+        estimated_cost_usd: costUsd,
+        cached: params.cached,
+        latency_ms: params.latencyMs,
+        status: "completed",
+      });
+    }
   } catch {
     // Never break AI evaluation responses if logging fails transiently
   }
@@ -98,6 +223,7 @@ export interface StructuredAiRequest<T> {
   feature: string;
   skill?: string | null;
   userId: string;
+  reservationId?: string | null;
   systemPrompt: string;
   userPrompt: string;
   schema: z.ZodType<T>;
@@ -129,18 +255,22 @@ function extractJsonObject(raw: string): unknown {
 
 /**
  * Executes a structured Gemini JSON request with Zod validation + 1 retry.
- * Falls back cleanly to a Zod-validated mock adapter when GEMINI_API_KEY is absent.
+ * Fail-closed: throws AiServiceUnavailableError (HTTP 503) and releases any reserved
+ * quota slot whenever GEMINI_API_KEY is missing or Gemini fails, unless explicit
+ * non-production ALLOW_AI_MOCK=true is enabled.
  */
 export async function generateStructuredAi<T>(
   req: StructuredAiRequest<T>
 ): Promise<StructuredAiResponse<T>> {
   const startedAt = Date.now();
+  const activeModel = getActiveGeminiModel();
   const cacheKey = req.cacheTtlMs
     ? crypto
         .createHash("sha256")
         .update(
           JSON.stringify({
             feature: req.feature,
+            model: activeModel,
             systemPrompt: req.systemPrompt,
             userPrompt: req.userPrompt,
             mediaLen: req.inlineMedia?.base64Data.length ?? 0,
@@ -149,14 +279,16 @@ export async function generateStructuredAi<T>(
         .digest("hex")
     : null;
 
+  // 1. Cache hit — never consumes user quota (stored with cached=true, cost=0)
   if (cacheKey) {
     const hit = memoryCache.get(cacheKey);
     if (hit && hit.expiresAt > Date.now()) {
-      await logAiUsage({
+      await recordAiUsage({
+        reservationId: req.reservationId,
         userId: req.userId,
         feature: req.feature,
         skill: req.skill,
-        model: isGeminiConfigured() ? DEFAULT_GEMINI_MODEL : "mock-gemini",
+        model: activeModel,
         promptTokens: 0,
         completionTokens: 0,
         cached: true,
@@ -164,38 +296,47 @@ export async function generateStructuredAi<T>(
       });
       return {
         data: hit.value as T,
-        model: isGeminiConfigured() ? DEFAULT_GEMINI_MODEL : "mock-gemini",
+        model: activeModel,
         cached: true,
-        mocked: !isGeminiConfigured(),
+        mocked: false,
       };
     }
   }
 
-  // Mock adapter path when GEMINI_API_KEY is missing
+  // 2. Missing API key — fail closed (503 + release quota) unless dev explicitly opted into ALLOW_AI_MOCK=true
   if (!isGeminiConfigured()) {
-    const rawMock = req.mockFallback();
-    const validated = req.schema.parse(rawMock);
-    const pTok = estimateTokens(req.systemPrompt + req.userPrompt);
-    const cTok = estimateTokens(JSON.stringify(validated));
-    await logAiUsage({
-      userId: req.userId,
-      feature: req.feature,
-      skill: req.skill,
-      model: "mock-gemini",
-      promptTokens: pTok,
-      completionTokens: cTok,
-      cached: false,
-      latencyMs: Date.now() - startedAt,
-    });
-    if (cacheKey && req.cacheTtlMs) {
-      memoryCache.set(cacheKey, { value: validated, expiresAt: Date.now() + req.cacheTtlMs });
+    await releaseAiQuotaRecord(req.reservationId, Date.now() - startedAt);
+    if (isAiMockAllowed()) {
+      const validated = req.schema.parse(req.mockFallback());
+      return {
+        data: validated,
+        model: "mock-gemini",
+        cached: false,
+        mocked: true,
+      };
     }
-    return {
-      data: validated,
-      model: "mock-gemini",
-      cached: false,
-      mocked: true,
-    };
+    throw new AiServiceUnavailableError(
+      "AI_NOT_CONFIGURED",
+      "Dịch vụ AI tạm thời chưa sẵn sàng (chưa cấu hình khóa AI). Vui lòng thử lại sau — lượt sử dụng của bạn không bị trừ."
+    );
+  }
+
+  // 3. Optional daily cost budget circuit breaker
+  const dailyBudgetUsd = parseOptionalPositiveUsd(process.env.AI_DAILY_BUDGET_USD);
+  if (dailyBudgetUsd !== null) {
+    const spentToday = await getDailyAiCostUsdSince(getVietnamMidnightIso());
+    if (spentToday >= dailyBudgetUsd) {
+      await releaseAiQuotaRecord(req.reservationId, Date.now() - startedAt);
+      console.warn("[ai.budget] Daily AI budget cap reached; rejecting new call", {
+        vnDate: getVietnamDateString(),
+        dailyCostUsd: Number(spentToday.toFixed(4)),
+        budgetUsd: dailyBudgetUsd,
+      });
+      throw new AiServiceUnavailableError(
+        "AI_BUDGET_EXCEEDED",
+        "Hệ thống AI đã chạm ngưỡng chi phí an toàn trong ngày. Vui lòng thử lại vào ngày mai — lượt sử dụng của bạn không bị trừ."
+      );
+    }
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
@@ -203,7 +344,7 @@ export async function generateStructuredAi<T>(
 
   let lastError: unknown = null;
 
-  // Attempt 1 + 1 automatic retry if JSON or Zod validation fails
+  // 4. Attempt 1 + 1 automatic retry if JSON or Zod validation fails
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const retryNote =
@@ -226,7 +367,7 @@ export async function generateStructuredAi<T>(
       }
 
       const response = await ai.models.generateContent({
-        model: DEFAULT_GEMINI_MODEL,
+        model: activeModel,
         contents: [{ role: "user", parts }],
         config: {
           systemInstruction: fullSystem,
@@ -246,11 +387,12 @@ export async function generateStructuredAi<T>(
         response.usageMetadata?.candidatesTokenCount ??
         estimateTokens(rawText);
 
-      await logAiUsage({
+      await recordAiUsage({
+        reservationId: req.reservationId,
         userId: req.userId,
         feature: req.feature,
         skill: req.skill,
-        model: DEFAULT_GEMINI_MODEL,
+        model: activeModel,
         promptTokens: pTok,
         completionTokens: cTok,
         cached: false,
@@ -264,9 +406,11 @@ export async function generateStructuredAi<T>(
         });
       }
 
+      void checkDailyCostAlertNonBlocking();
+
       return {
         data: validated,
-        model: DEFAULT_GEMINI_MODEL,
+        model: activeModel,
         cached: false,
         mocked: false,
       };
@@ -275,15 +419,17 @@ export async function generateStructuredAi<T>(
     }
   }
 
-  // Final safety fallback so user experience stays resilient
-  console.error(`[AI ${req.feature}] Gemini failed after retry, falling back:`, lastError);
-  const fallbackData = req.schema.parse(req.mockFallback());
-  return {
-    data: fallbackData,
-    model: `${DEFAULT_GEMINI_MODEL}:fallback`,
-    cached: false,
-    mocked: true,
-  };
+  // 5. Gemini failed after retry — release reserved quota slot & report real 503 error (NEVER mock!)
+  await releaseAiQuotaRecord(req.reservationId, Date.now() - startedAt);
+  console.error("[ai.gateway] Gemini failed after retry", {
+    feature: req.feature,
+    model: activeModel,
+    message: lastError instanceof Error ? lastError.message : "unknown_error",
+  });
+  throw new AiServiceUnavailableError(
+    "AI_PROVIDER_ERROR",
+    "Hệ thống AI đang quá tải hoặc tạm gián đoạn. Vui lòng thử lại sau ít phút — lượt sử dụng của bạn không bị trừ."
+  );
 }
 
 // =============================================================================

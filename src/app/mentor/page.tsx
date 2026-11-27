@@ -36,6 +36,7 @@ export default function MentorPage() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const sendMessage = async (textOverride?: string) => {
     const content = (textOverride ?? input).trim();
@@ -44,6 +45,7 @@ export default function MentorPage() {
     const next = [...messages, { role: "user" as const, text: content }];
     setMessages(next);
     setInput("");
+    setErrorMsg("");
     setLoading(true);
     try {
       const res = await fetch("/api/mentor/chat", {
@@ -54,18 +56,22 @@ export default function MentorPage() {
           history: next.map((m) => ({ role: m.role, text: m.text })),
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "mentor",
-            text: data.mentor.replyVi,
-            steps: data.mentor.actionPlanSteps,
-            followUps: data.mentor.followUpQuestions,
-          },
-        ]);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrorMsg(data.error || "Mentor AI hiện đang tạm gián đoạn. Vui lòng thử lại sau.");
+        return;
       }
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "mentor",
+          text: data.mentor.replyVi,
+          steps: data.mentor.actionPlanSteps,
+          followUps: data.mentor.followUpQuestions,
+        },
+      ]);
+    } catch {
+      setErrorMsg("Lỗi kết nối máy chủ.");
     } finally {
       setLoading(false);
     }
@@ -169,6 +175,12 @@ export default function MentorPage() {
               <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
               Mentor Ôn IELTS đang thiết kế lộ trình...
             </div>
+          )}
+
+          {errorMsg && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              {errorMsg}
+            </p>
           )}
         </div>
 

@@ -169,7 +169,11 @@ export function resetInMemoryRateLimitForTests(): void {
 
 export function getRequestClientKey(req: Request, userId?: string | null): string {
   if (userId) return `u:${userId}`;
-  const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "local";
-  return `ip:${ip}`;
+  const trustedIp =
+    req.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("cf-connecting-ip")?.trim() ||
+    req.headers.get("x-real-ip")?.trim() ||
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "local";
+  return `ip:${trustedIp}`;
 }

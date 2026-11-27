@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { createOrderRecord, findActivePromoCode, getPricingPlans } from "@/lib/db";
+import {
+  attachOrderCheckoutDetails,
+  cancelPendingOrder,
+  createCheckoutOrderAtomic,
+  getPricingPlans,
+} from "@/lib/db";
 import { getPaymentProvider } from "@/lib/payments";
+import { isPayosSandboxAllowed } from "@/lib/payments/payos";
 
 const checkoutSchema = z.object({
   planSlug: z.string().min(1).max(60),
@@ -32,46 +38,55 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Không tìm thấy gói cước." }, { status: 404 });
     }
 
-    let discountVnd = 0;
-    let appliedPromo: string | null = null;
-    if (parsed.data.promoCode) {
-      const promo = await findActivePromoCode(parsed.data.promoCode);
-      if (
-        promo &&
-        (!promo.expires_at || new Date(promo.expires_at).getTime() > Date.now()) &&
-        (!promo.max_uses || promo.current_uses < promo.max_uses)
-      ) {
-        const rawDiscount = Math.round((plan.price_vnd * promo.discount_percent) / 100);
-        discountVnd = promo.max_discount_vnd
-          ? Math.min(rawDiscount, promo.max_discount_vnd)
-          : rawDiscount;
-        appliedPromo = promo.code;
-      }
+    const provider = getPaymentProvider(parsed.data.provider);
+    if (!provider.isConfigured() && !isPayosSandboxAllowed()) {
+      return NextResponse.json(
+        {
+          error:
+            "Cổng thanh toán PayOS chưa được kích hoạt trên hệ thống. Vui lòng liên hệ quản trị viên.",
+        },
+        { status: 503 }
+      );
     }
 
-    const finalAmount = Math.max(1000, plan.price_vnd - discountVnd);
-    const orderCode = Number(
-      `${Date.now().toString().slice(-8)}${Math.floor(10 + Math.random() * 89)}`
-    );
+    // Step 1: Atomically lock promo code (if any), reserve slot, allocate collision-free order_code,
+    // and insert pending order BEFORE calling external payment provider.
+    const created = await createCheckoutOrderAtomic({
+      userId: user.id,
+      planSlug: plan.slug,
+      provider: provider.isConfigured() ? provider.id : "mock",
+      promoCode: parsed.data.promoCode ?? null,
+    });
+
+    if (!created.ok || !created.order) {
+      return NextResponse.json(
+        { error: created.error || "Không thể khởi tạo đơn hàng." },
+        { status: created.status }
+      );
+    }
+
+    const order = created.order;
     const baseUrl = (
       process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
       process.env.NEXT_PUBLIC_APP_URL?.trim() ||
       new URL(req.url).origin
     ).replace(/\/+$/, "");
 
-    const provider = getPaymentProvider(parsed.data.provider);
+    // Step 2: Create PayOS payment link using the already-reserved unique order_code.
     let checkout;
     try {
       checkout = await provider.createCheckout({
-        orderCode,
-        amountVnd: finalAmount,
-        description: `OnIELTS ${plan.duration_months}M`,
+        orderCode: order.order_code,
+        amountVnd: order.amount_vnd,
+        description: `OnIELTS ${order.duration_months}M`,
         returnUrl: `${baseUrl}/pricing`,
         cancelUrl: `${baseUrl}/pricing?cancelled=1`,
         buyerEmail: user.email,
         buyerName: user.full_name,
       });
     } catch (err) {
+      // Immediately cancel pending order so reserved promo slot is released
+      await cancelPendingOrder(order.id).catch(() => {});
       if (err instanceof Error && err.message === "PAYOS_NOT_CONFIGURED") {
         return NextResponse.json(
           {
@@ -81,28 +96,39 @@ export async function POST(req: Request) {
           { status: 503 }
         );
       }
-      throw err;
+      console.error("[payments.checkout] provider.createCheckout failed", {
+        orderCode: order.order_code,
+        message: err instanceof Error ? err.message : "unknown_error",
+      });
+      return NextResponse.json(
+        { error: "Cổng thanh toán tạm thời không phản hồi. Vui lòng thử lại sau ít phút." },
+        { status: 502 }
+      );
     }
 
-    const order = await createOrderRecord({
-      userId: user.id,
-      plan,
-      orderCode,
-      provider: checkout.provider,
-      amountVnd: finalAmount,
-      discountVnd,
-      promoCode: appliedPromo,
-      checkoutUrl: checkout.checkoutUrl,
-      qrCode: checkout.qrCode,
-    });
+    const updatedOrder =
+      (await attachOrderCheckoutDetails({
+        orderId: order.id,
+        provider: checkout.provider,
+        checkoutUrl: checkout.checkoutUrl,
+        qrCode: checkout.qrCode,
+      })) ?? {
+        ...order,
+        provider: checkout.provider,
+        checkout_url: checkout.checkoutUrl,
+        qr_code: checkout.qrCode,
+      };
 
     return NextResponse.json({
       ok: true,
-      order,
+      order: updatedOrder,
       checkout,
       planName: plan.name_vi,
     });
-  } catch {
+  } catch (err) {
+    console.error("[payments.checkout] unexpected error", {
+      message: err instanceof Error ? err.message : "unknown_error",
+    });
     return NextResponse.json(
       { error: "Không thể khởi tạo thanh toán." },
       { status: 500 }

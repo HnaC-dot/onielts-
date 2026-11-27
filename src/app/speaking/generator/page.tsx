@@ -29,23 +29,34 @@ export default function SpeakingGeneratorPage() {
   const [topic, setTopic] = useState("Learning a practical new skill");
   const [result, setResult] = useState<SpeakingGenResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [paywallOpen, setPaywallOpen] = useState(false);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError("");
     try {
       const res = await fetch("/api/speaking/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ part, topic }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.status === 402 || data.limitReached) {
         setPaywallOpen(true);
         return;
       }
-      if (res.ok) setResult(data.result);
+      if (!res.ok) {
+        setError(
+          data.error ||
+            (isEn ? "Speaking sample generator is temporarily unavailable." : "Không thể tạo bộ câu hỏi mẫu lúc này.")
+        );
+        return;
+      }
+      setResult(data.result);
+    } catch {
+      setError(isEn ? "Network connection error." : "Lỗi kết nối máy chủ.");
     } finally {
       setLoading(false);
     }
@@ -112,6 +123,12 @@ export default function SpeakingGeneratorPage() {
           </div>
         </form>
       </Card>
+
+      {error && (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          {error}
+        </p>
+      )}
 
       {result && (
         <div className="space-y-4">

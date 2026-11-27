@@ -155,6 +155,8 @@ export interface OrderRecord {
 export interface AiUsageLog {
   id: string;
   user_id: string;
+  actor_key?: string | null;
+  quota_bucket?: string | null;
   feature: string;
   skill?: string | null;
   model: string;
@@ -164,6 +166,7 @@ export interface AiUsageLog {
   estimated_cost_usd: number;
   cached: boolean;
   latency_ms: number;
+  status?: "reserved" | "completed" | "released";
   created_at: string;
 }
 

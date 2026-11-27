@@ -31,6 +31,7 @@ export function PronunciationPracticeClient({ sound }: { sound: PronunciationSou
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PronResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -64,6 +65,7 @@ export function PronunciationPracticeClient({ sound }: { sound: PronunciationSou
 
   const evaluatePronunciation = async () => {
     setLoading(true);
+    setErrorMsg("");
     try {
       let audioBase64: string | undefined;
       let audioMimeType: string | undefined;
@@ -81,10 +83,17 @@ export function PronunciationPracticeClient({ sound }: { sound: PronunciationSou
           audioMimeType,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setResult(data.result);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrorMsg(
+          data.error ||
+            (isEn ? "Pronunciation AI is temporarily unavailable." : "Không thể chấm phát âm AI lúc này.")
+        );
+        return;
       }
+      setResult(data.result);
+    } catch {
+      setErrorMsg(isEn ? "Network connection error." : "Lỗi kết nối máy chủ.");
     } finally {
       setLoading(false);
     }
@@ -174,6 +183,12 @@ export function PronunciationPracticeClient({ sound }: { sound: PronunciationSou
         </div>
 
         {audioUrl && <audio controls src={audioUrl} className="w-full" />}
+
+        {errorMsg && (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            {errorMsg}
+          </p>
+        )}
 
         {result && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5 space-y-2 dark:border-emerald-900 dark:bg-emerald-950/30">

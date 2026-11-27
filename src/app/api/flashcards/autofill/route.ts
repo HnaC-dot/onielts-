@@ -2,7 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
+import { reserveUsageLimit } from "@/lib/usage-limits";
+import {
+  generateStructuredAi,
+  getActiveGeminiModel,
+  sanitizeUserDataForPrompt,
+} from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
+import { releaseAiQuotaRecord } from "@/lib/db";
 
 export const maxDuration = 30;
 
@@ -58,25 +68,54 @@ const BUILTIN_LEXICON: Record<string, z.infer<typeof flashcardFillSchema>> = {
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  const rate = await checkRateLimit(getRequestClientKey(req, user?.id), 30, 60_000);
+  const clientKey = getRequestClientKey(req, user?.id);
+  const rate = await checkRateLimit(clientKey, 30, 60_000);
   if (!rate.allowed) {
     return NextResponse.json({ error: "Quá nhiều yêu cầu, vui lòng đợi vài giây." }, { status: 429 });
   }
 
+  let rawTerm: string;
   try {
     const body = await req.json();
     const parsed = reqSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "Từ vựng không hợp lệ" }, { status: 400 });
     }
+    rawTerm = parsed.data.term;
+  } catch {
+    return NextResponse.json({ error: "Từ vựng không hợp lệ" }, { status: 400 });
+  }
 
-    const rawTerm = parsed.data.term;
-    const key = rawTerm.toLowerCase();
+  const key = rawTerm.toLowerCase();
 
+  // Serve verified built-in dictionary terms instantly without spending AI quota or calling Gemini
+  if (BUILTIN_LEXICON[key]) {
+    return NextResponse.json({
+      term: rawTerm,
+      ...BUILTIN_LEXICON[key],
+      mocked: false,
+      cached: true,
+    });
+  }
+
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "flashcard_autofill",
+    rawFeatureName: "flashcard:autofill",
+    skill: "vocabulary",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
     const aiRes = await generateStructuredAi({
       feature: "flashcard:autofill",
       skill: "vocabulary",
-      userId: user?.id ?? "guest",
+      userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt:
         "You are an IELTS English-Vietnamese lexicographer. For the given English word or phrase, return accurate British IPA phonetics, part of speech, clear Vietnamese meaning, concise English definition, and one original Band 8 IELTS example sentence.",
       userPrompt: `Define this vocabulary item:\n${sanitizeUserDataForPrompt(rawTerm, 120)}`,
@@ -89,22 +128,23 @@ export async function POST(req: Request) {
   "example_sentence": "original IELTS sentence"
 }`,
       cacheTtlMs: 24 * 60 * 60 * 1000,
-      mockFallback: () =>
-        BUILTIN_LEXICON[key] ?? {
-          phonetic: `/${key.replace(/\s+/g, " ")}/`,
-          part_of_speech: rawTerm.includes(" ") ? "phrase" : "vocabulary",
-          definition_vi: `Thuật ngữ tiếng Anh "${rawTerm}" (gợi ý tự động — chỉnh sửa theo ngữ cảnh bài học)`,
-          definition_en: `Academic IELTS expression: ${rawTerm}`,
-          example_sentence: `Mastering "${rawTerm}" accurately helps strengthen IELTS Writing and Speaking expression.`,
-        },
+      mockFallback: () => ({
+        phonetic: `/${key.replace(/\s+/g, " ")}/`,
+        part_of_speech: rawTerm.includes(" ") ? "phrase" : "vocabulary",
+        definition_vi: `Thuật ngữ tiếng Anh "${rawTerm}" (gợi ý tự động — chỉnh sửa theo ngữ cảnh bài học)`,
+        definition_en: `Academic IELTS expression: ${rawTerm}`,
+        example_sentence: `Mastering "${rawTerm}" accurately helps strengthen IELTS Writing and Speaking expression.`,
+      }),
     });
 
     return NextResponse.json({
       term: rawTerm,
       ...aiRes.data,
+      cached: aiRes.cached,
       mocked: aiRes.mocked,
     });
-  } catch {
-    return NextResponse.json({ error: "Không thể tự điền dữ liệu" }, { status: 500 });
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Không thể tự điền dữ liệu lúc này.");
   }
 }

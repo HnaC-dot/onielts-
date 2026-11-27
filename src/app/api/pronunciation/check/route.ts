@@ -2,7 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
+import { reserveUsageLimit } from "@/lib/usage-limits";
+import {
+  generateStructuredAi,
+  getActiveGeminiModel,
+  sanitizeUserDataForPrompt,
+} from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
+import { releaseAiQuotaRecord } from "@/lib/db";
 
 export const maxDuration = 45;
 
@@ -29,18 +39,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Quá nhiều lượt thử, đợi vài giây nhé." }, { status: 429 });
   }
 
+  let parsedData: z.infer<typeof reqSchema>;
   try {
     const body = await req.json();
     const parsed = reqSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "Dữ liệu không hợp lệ." }, { status: 400 });
     }
+    parsedData = parsed.data;
+  } catch {
+    return NextResponse.json({ error: "Dữ liệu không hợp lệ." }, { status: 400 });
+  }
 
-    const { symbol, targetSentence, audioBase64, audioMimeType } = parsed.data;
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "pronunciation",
+    rawFeatureName: "pronunciation:check",
+    skill: "speaking",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
+    const { symbol, targetSentence, audioBase64, audioMimeType } = parsedData;
     const aiRes = await generateStructuredAi({
       feature: "pronunciation:check",
       skill: "speaking",
       userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt:
         "You are an English phonetics coach helping Vietnamese IELTS learners practice specific IPA sounds. Provide an encouraging reference accuracy score (0-100), estimated pronunciation band, and specific mouth/tongue advice in Vietnamese. Always label labelVi as 'điểm tham khảo'.",
       userPrompt: `Target IPA sound: ${symbol}\nTarget sentence:\n${sanitizeUserDataForPrompt(targetSentence, 500)}`,
@@ -60,7 +89,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true, result: aiRes.data, mocked: aiRes.mocked });
-  } catch {
-    return NextResponse.json({ error: "Không thể chấm phát âm lúc này." }, { status: 500 });
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Không thể chấm phát âm lúc này.");
   }
 }

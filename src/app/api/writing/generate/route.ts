@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { checkUsageLimit } from "@/lib/usage-limits";
-import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
+import { checkUsageLimit, reserveUsageLimit } from "@/lib/usage-limits";
+import {
+  generateStructuredAi,
+  getActiveGeminiModel,
+  sanitizeUserDataForPrompt,
+} from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
+import { releaseAiQuotaRecord } from "@/lib/db";
 
 export const maxDuration = 60;
 
@@ -35,14 +44,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Vui lòng chờ một lát rồi thử lại." }, { status: 429 });
   }
 
-  const usage = await checkUsageLimit(user, "generator", clientKey);
-  if (!usage.allowed) {
-    return NextResponse.json(
-      { error: "Đã hết lượt tạo bài mẫu miễn phí hôm nay.", limitReached: true, usage },
-      { status: 402 }
-    );
-  }
-
+  let parsedData: z.infer<typeof reqSchema>;
   try {
     const body = await req.json();
     const parsed = reqSchema.safeParse(body);
@@ -52,14 +54,32 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    parsedData = parsed.data;
+  } catch {
+    return NextResponse.json({ error: "Đề bài không hợp lệ" }, { status: 400 });
+  }
 
-    const { taskType, topic, stance } = parsed.data;
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "generator",
+    rawFeatureName: "writing:generate",
+    skill: "writing",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
+    const { taskType, topic, stance } = parsedData;
     const safeTopic = sanitizeUserDataForPrompt(topic, 1500);
 
     const aiRes = await generateStructuredAi({
       feature: "writing:generate",
       skill: "writing",
       userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt:
         "You are a Band 9.0 IELTS Writing author. Write a 100% original Band 9 model response for the requested task type and topic, plus a concise Vietnamese outline, 5 C1/C2 vocabulary phrases with Vietnamese meanings, and an examiner note in Vietnamese.",
       userPrompt: `Task Type: ${taskType}\nStance/Style: ${stance}\nTopic:\n${safeTopic}`,
@@ -110,7 +130,8 @@ export async function POST(req: Request) {
       usage: await checkUsageLimit(user, "generator", clientKey),
       mocked: aiRes.mocked,
     });
-  } catch {
-    return NextResponse.json({ error: "Không thể tạo bài mẫu lúc này." }, { status: 500 });
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Không thể tạo bài mẫu lúc này.");
   }
 }

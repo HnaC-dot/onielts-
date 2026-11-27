@@ -2,10 +2,18 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { checkUsageLimit } from "@/lib/usage-limits";
-import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
+import { checkUsageLimit, reserveUsageLimit } from "@/lib/usage-limits";
+import {
+  generateStructuredAi,
+  getActiveGeminiModel,
+  sanitizeUserDataForPrompt,
+} from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
 import { calculateCriterionBand } from "@/lib/band-calculator";
-import { saveSpeakingSubmission } from "@/lib/db";
+import { releaseAiQuotaRecord, saveSpeakingSubmission } from "@/lib/db";
 import type { SpeakingEvaluation } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -113,18 +121,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const usage = await checkUsageLimit(user, "speaking_eval", clientKey);
-  if (!usage.allowed) {
-    return NextResponse.json(
-      {
-        error: "Bạn đã dùng hết 2 lượt chấm Speaking miễn phí trong tháng này.",
-        limitReached: true,
-        usage,
-      },
-      { status: 402 }
-    );
-  }
-
+  let parsedData: z.infer<typeof evaluateSpeakingSchema>;
   try {
     const body = await req.json();
     const parsed = evaluateSpeakingSchema.safeParse(body);
@@ -134,16 +131,33 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
-    const { part, promptText, durationSec, audioBase64, audioMimeType, transcriptHint } =
-      parsed.data;
-
+    const { audioBase64, transcriptHint } = parsed.data;
     if (!audioBase64 && (!transcriptHint || transcriptHint.length < 15)) {
       return NextResponse.json(
         { error: "Vui lòng ghi âm, tải tệp âm thanh hoặc nhập câu trả lời tối thiểu 15 ký tự." },
         { status: 400 }
       );
     }
+    parsedData = parsed.data;
+  } catch {
+    return NextResponse.json({ error: "Dữ liệu bài nói không hợp lệ." }, { status: 400 });
+  }
+
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "speaking_eval",
+    rawFeatureName: "speaking:evaluate",
+    skill: "speaking",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
+    const { part, promptText, durationSec, audioBase64, audioMimeType, transcriptHint } =
+      parsedData;
 
     const safePrompt = sanitizeUserDataForPrompt(promptText, 1500);
     const safeTranscript = transcriptHint
@@ -154,6 +168,7 @@ export async function POST(req: Request) {
       feature: "speaking:evaluate",
       skill: "speaking",
       userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt: `You are an IELTS Speaking Examiner evaluating a Vietnamese learner (${part}).
 If audio is attached, transcribe it accurately first, then evaluate Fluency & Coherence (FC), Lexical Resource (LR), Grammatical Range & Accuracy (GRA), and Pronunciation (clearly noting Pronunciation is an AI reference estimate — "điểm tham khảo").
 Provide actionable Vietnamese feedback and a natural Band 8.0+ improved spoken answer.`,
@@ -180,13 +195,24 @@ Provide actionable Vietnamese feedback and a natural Band 8.0+ improved spoken a
       mockFallback: () => buildMockSpeakingEvaluation(part, promptText, transcriptHint),
     });
 
-    const submission = await saveSpeakingSubmission({
-      userId: user?.id ?? null,
-      part,
-      promptText,
-      durationSec,
-      evaluation: aiRes.data,
-    });
+    // Persist real AI evaluations ONLY — never store mock transcripts/scores in database
+    const submission = aiRes.mocked
+      ? {
+          id: `mock-speaking-${Date.now()}`,
+          user_id: user?.id ?? "guest",
+          part,
+          prompt_text: promptText,
+          duration_sec: durationSec,
+          evaluation: aiRes.data,
+          created_at: new Date().toISOString(),
+        }
+      : await saveSpeakingSubmission({
+          userId: user?.id ?? null,
+          part,
+          promptText,
+          durationSec,
+          evaluation: aiRes.data,
+        });
 
     return NextResponse.json({
       ok: true,
@@ -194,7 +220,8 @@ Provide actionable Vietnamese feedback and a natural Band 8.0+ improved spoken a
       usage: await checkUsageLimit(user, "speaking_eval", clientKey),
       mocked: aiRes.mocked,
     });
-  } catch {
-    return NextResponse.json({ error: "Không thể chấm bài Speaking lúc này." }, { status: 500 });
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Không thể chấm bài Speaking lúc này.");
   }
 }

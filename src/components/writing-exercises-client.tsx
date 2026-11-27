@@ -33,6 +33,7 @@ export function WritingExercisesClient({
   const [hintsShown, setHintsShown] = useState<Record<string, boolean>>({});
   const [modelsShown, setModelsShown] = useState<Record<string, boolean>>({});
   const [feedbacks, setFeedbacks] = useState<Record<string, CheckFeedback>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const active = exercises.find((e) => e.slug === activeSlug) ?? exercises[0];
@@ -42,17 +43,30 @@ export function WritingExercisesClient({
     const userRewrite = (answers[sentenceId] ?? "").trim();
     if (!userRewrite) return;
     setLoadingId(sentenceId);
+    setErrors((prev) => ({ ...prev, [sentenceId]: "" }));
     try {
       const res = await fetch("/api/writing/exercise-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ weakSentence, userRewrite, band8Model }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setFeedbacks((prev) => ({ ...prev, [sentenceId]: data.result }));
-        setModelsShown((prev) => ({ ...prev, [sentenceId]: true }));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrors((prev) => ({
+          ...prev,
+          [sentenceId]:
+            data.error ||
+            (isEn ? "AI feedback is temporarily unavailable." : "Không thể chấm câu với AI lúc này."),
+        }));
+        return;
       }
+      setFeedbacks((prev) => ({ ...prev, [sentenceId]: data.result }));
+      setModelsShown((prev) => ({ ...prev, [sentenceId]: true }));
+    } catch {
+      setErrors((prev) => ({
+        ...prev,
+        [sentenceId]: isEn ? "Network connection error." : "Lỗi kết nối máy chủ.",
+      }));
     } finally {
       setLoadingId(null);
     }
@@ -178,6 +192,12 @@ export function WritingExercisesClient({
               {hintsShown[s.id] && (
                 <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   💡 {s.hint_vi}
+                </p>
+              )}
+
+              {errors[s.id] && (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+                  {errors[s.id]}
                 </p>
               )}
 

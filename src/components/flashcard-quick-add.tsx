@@ -65,16 +65,21 @@ export function GlobalFlashcardModal() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ term: word.trim() }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setPhonetic(data.phonetic ?? "");
-        setPartOfSpeech(data.part_of_speech ?? "");
-        setDefinitionVi(data.definition_vi ?? "");
-        setDefinitionEn(data.definition_en ?? "");
-        setExampleSentence(data.example_sentence ?? "");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrorMsg(
+          data.error ||
+            "Không thể tự điền từ vựng bằng AI lúc này. Bạn vẫn có thể nhập thủ công."
+        );
+        return;
       }
+      setPhonetic(data.phonetic ?? "");
+      setPartOfSpeech(data.part_of_speech ?? "");
+      setDefinitionVi(data.definition_vi ?? "");
+      setDefinitionEn(data.definition_en ?? "");
+      setExampleSentence(data.example_sentence ?? "");
     } catch {
-      // fallback silently
+      setErrorMsg("Lỗi kết nối AI tự điền. Bạn vẫn có thể nhập thủ công.");
     } finally {
       setIsAutofilling(false);
     }

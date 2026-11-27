@@ -255,7 +255,15 @@ export function WritingCheckerClient({
 
         <div className="flex items-center gap-2">
           {usage.isPremium ? (
-            <Badge>{isEn ? "Premium · Unlimited" : "Premium · Không giới hạn"}</Badge>
+            <Badge variant={usage.remaining === 0 ? "amber" : "default"}>
+              {usage.limit !== null
+                ? isEn
+                  ? `Premium · ${usage.remaining}/${usage.limit} checks left today`
+                  : `Premium · còn ${usage.remaining}/${usage.limit} lượt hôm nay`
+                : isEn
+                ? "Premium · Unlimited"
+                : "Premium · Không giới hạn"}
+            </Badge>
           ) : (
             <Badge variant={usage.remaining === 0 ? "amber" : "secondary"}>
               {isEn

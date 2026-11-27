@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { getConversationTopicBySlug } from "@/lib/db";
+import { getConversationTopicBySlug, releaseAiQuotaRecord } from "@/lib/db";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { checkUsageLimit } from "@/lib/usage-limits";
-import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
+import { reserveUsageLimit } from "@/lib/usage-limits";
+import {
+  generateStructuredAi,
+  getActiveGeminiModel,
+  sanitizeUserDataForPrompt,
+} from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
 
 export const maxDuration = 45;
 
@@ -36,22 +44,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bạn nhắn quá nhanh, chờ vài giây nhé." }, { status: 429 });
   }
 
-  const usage = await checkUsageLimit(user, "conversation", clientKey);
-  if (!usage.allowed) {
-    return NextResponse.json(
-      { error: "Đã hết lượt hội thoại AI miễn phí hôm nay.", limitReached: true, usage },
-      { status: 402 }
-    );
-  }
-
+  let parsedData: z.infer<typeof reqSchema>;
   try {
     const body = await req.json();
     const parsed = reqSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "Tin nhắn không hợp lệ" }, { status: 400 });
     }
+    parsedData = parsed.data;
+  } catch {
+    return NextResponse.json({ error: "Tin nhắn không hợp lệ" }, { status: 400 });
+  }
 
-    const { topicSlug, topicTitle, history, userMessage } = parsed.data;
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "conversation",
+    rawFeatureName: "conversation:reply",
+    skill: "speaking",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
+    const { topicSlug, topicTitle, history, userMessage } = parsedData;
     const dbTopic = topicSlug ? await getConversationTopicBySlug(topicSlug) : null;
     const customInstructions = dbTopic?.systemPrompt?.trim()
       ? `\n\nTopic-specific coaching instructions from academic editors:\n${dbTopic.systemPrompt.trim().slice(0, 2000)}`
@@ -70,6 +88,7 @@ export async function POST(req: Request) {
       feature: "conversation:reply",
       skill: "speaking",
       userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt: `You are a warm, encouraging IELTS Speaking partner role-playing the topic "${dbTopic?.title_en || topicTitle}".
 Respond naturally in 2-3 sentences and ask one engaging follow-up question.
 Also give one brief, helpful Vietnamese tip improving the learner's previous reply (grammar or natural vocabulary), plus 3 Band 7.5-8.5 reply suggestions the learner can use next.${vocabHint}${customInstructions}`,
@@ -97,7 +116,8 @@ Also give one brief, helpful Vietnamese tip improving the learner's previous rep
       reply: aiRes.data,
       mocked: aiRes.mocked,
     });
-  } catch {
-    return NextResponse.json({ error: "Không thể phản hồi hội thoại lúc này." }, { status: 500 });
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Không thể phản hồi hội thoại lúc này.");
   }
 }

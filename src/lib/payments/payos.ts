@@ -97,6 +97,31 @@ export function computeExtendedPremiumExpiry(
   return baseDate.toISOString();
 }
 
+let localOrderSeq = 0;
+
+/**
+ * Generates a positive PayOS-safe integer orderCode using monotonic sequence + CSPRNG suffix
+ * for local/non-SQL flows (Supabase mode uses PostgreSQL sequence `public.order_code_seq`).
+ */
+export function generateSafeOrderCode(existingCodes?: Iterable<number>): number {
+  const existing = existingCodes ? new Set(existingCodes) : null;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    localOrderSeq = (localOrderSeq + 1) % 10_000;
+    const secPart = Math.floor(Date.now() / 1000) % 100_000_000; // 8 digits (~3.17 years)
+    const seqPart = String(localOrderSeq).padStart(4, "0");
+    const randPart = String(crypto.randomInt(10, 99));
+    const candidate = Number(`${secPart}${seqPart}${randPart}`);
+    if (
+      Number.isSafeInteger(candidate) &&
+      candidate > 0 &&
+      (!existing || !existing.has(candidate))
+    ) {
+      return candidate;
+    }
+  }
+  return Number(`${Date.now()}${crypto.randomInt(10, 99)}`);
+}
+
 export const payosProvider: PaymentProvider = {
   id: "payos",
 
@@ -171,17 +196,19 @@ export const payosProvider: PaymentProvider = {
     if (!valid) return null;
 
     const orderCode = Number(data.orderCode);
-    const amountVnd = Number(data.amount ?? 0);
+    const amountVnd = Number(data.amount);
     const code = String(data.code ?? body.code ?? "");
+    const paid = code === "00";
     const eventId = String(data.reference || `payos-${orderCode}-${code}`);
 
     if (!Number.isFinite(orderCode) || orderCode <= 0) return null;
+    if (paid && (!Number.isFinite(amountVnd) || amountVnd <= 0)) return null;
 
     return {
       orderCode,
-      amountVnd,
+      amountVnd: Number.isFinite(amountVnd) ? amountVnd : 0,
       eventId,
-      paid: code === "00",
+      paid,
     };
   },
 };

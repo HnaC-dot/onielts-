@@ -2,10 +2,18 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
-import { checkUsageLimit } from "@/lib/usage-limits";
-import { generateStructuredAi, sanitizeUserDataForPrompt } from "@/lib/ai";
+import { checkUsageLimit, reserveUsageLimit } from "@/lib/usage-limits";
+import {
+  generateStructuredAi,
+  getActiveGeminiModel,
+  sanitizeUserDataForPrompt,
+} from "@/lib/ai";
+import {
+  buildAiErrorResponse,
+  buildQuotaDeniedResponse,
+} from "@/lib/ai-route-helpers";
 import { calculateCriterionBand } from "@/lib/band-calculator";
-import { saveWritingSubmission } from "@/lib/db";
+import { releaseAiQuotaRecord, saveWritingSubmission } from "@/lib/db";
 import type { WritingEvaluation } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -163,18 +171,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const usage = await checkUsageLimit(user, "writing_eval", clientKey);
-  if (!usage.allowed) {
-    return NextResponse.json(
-      {
-        error: "Bạn đã dùng hết 2 lượt chấm Writing miễn phí trong tháng này.",
-        limitReached: true,
-        usage,
-      },
-      { status: 402 }
-    );
-  }
-
+  let parsedData: z.infer<typeof evaluateSchema>;
   try {
     const body = await req.json();
     const parsed = evaluateSchema.safeParse(body);
@@ -184,9 +181,29 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    parsedData = parsed.data;
+  } catch {
+    return NextResponse.json(
+      { error: "Dữ liệu bài viết không hợp lệ." },
+      { status: 400 }
+    );
+  }
 
+  const reservation = await reserveUsageLimit({
+    user,
+    feature: "writing_eval",
+    rawFeatureName: "writing:evaluate",
+    skill: "writing",
+    model: getActiveGeminiModel(),
+    fallbackActorId: clientKey,
+  });
+  if (!reservation.allowed) {
+    return buildQuotaDeniedResponse(reservation);
+  }
+
+  try {
     const { taskType, promptText, essayText, chartImageBase64, chartImageMime, chartImageName } =
-      parsed.data;
+      parsedData;
     const wordCount = essayText.trim().split(/\s+/).filter(Boolean).length;
 
     const safePrompt = sanitizeUserDataForPrompt(promptText, 2000);
@@ -203,6 +220,7 @@ export async function POST(req: Request) {
       feature: "writing:evaluate",
       skill: "writing",
       userId: user?.id ?? clientKey,
+      reservationId: reservation.reservationId,
       systemPrompt: `You are a certified senior IELTS Writing Examiner teaching Vietnamese learners.
 Grade the learner's ${taskLabel} strictly against the 4 official IELTS Writing criteria (Task Achievement/Response, Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy).
 Identify specific exact substrings from the essay as inlineErrors with corrections and clear Vietnamese explanations. Suggest 3-5 vocabulary upgrades and provide a full Band 8.5+ rewrite.`,
@@ -228,16 +246,29 @@ Identify specific exact substrings from the essay as inlineErrors with correctio
       mockFallback: () => buildMockWritingEvaluation(taskType, essayText),
     });
 
-    // Persist submission — ALWAYS PRIVATE BY DEFAULT (is_public: false)
-    const submission = await saveWritingSubmission({
-      userId: user?.id ?? null,
-      taskType,
-      promptText,
-      chartImageName: chartImageName ?? null,
-      essayText,
-      wordCount,
-      evaluation: aiRes.data,
-    });
+    // Persist real AI evaluations ONLY — never store mock data in database
+    const submission = aiRes.mocked
+      ? {
+          id: `mock-writing-${Date.now()}`,
+          user_id: user?.id ?? "guest",
+          task_type: taskType,
+          prompt_text: promptText,
+          chart_image_name: chartImageName ?? null,
+          essay_text: essayText,
+          word_count: wordCount,
+          evaluation: aiRes.data,
+          is_public: false,
+          created_at: new Date().toISOString(),
+        }
+      : await saveWritingSubmission({
+          userId: user?.id ?? null,
+          taskType,
+          promptText,
+          chartImageName: chartImageName ?? null,
+          essayText,
+          wordCount,
+          evaluation: aiRes.data,
+        });
 
     const updatedUsage = await checkUsageLimit(user, "writing_eval", clientKey);
 
@@ -247,10 +278,8 @@ Identify specific exact substrings from the essay as inlineErrors with correctio
       usage: updatedUsage,
       mocked: aiRes.mocked,
     });
-  } catch {
-    return NextResponse.json(
-      { error: "Đã xảy ra lỗi khi chấm bài Writing." },
-      { status: 500 }
-    );
+  } catch (err) {
+    await releaseAiQuotaRecord(reservation.reservationId).catch(() => {});
+    return buildAiErrorResponse(err, "Đã xảy ra lỗi khi chấm bài Writing.");
   }
 }

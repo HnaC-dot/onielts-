@@ -542,5 +542,148 @@ describe.skipIf(!DB_URL)(
         expect(setting.rowCount).toBe(1);
       });
     });
+
+    it("locks Migration 0008 atomic RPCs to service_role and verifies live Postgres payment & AI quota atomicity", async () => {
+      // 1. Neither anon nor authenticated can execute SECURITY DEFINER payment/AI RPCs
+      for (const role of ["anon", "authenticated"] as const) {
+        const uid = role === "authenticated" ? LEARNER_A : null;
+
+        await withSessionRole(client, role, uid, async () => {
+          await expect(
+            client.query(
+              `SELECT public.fulfill_paid_order_atomic(123456, 199000, 'forged-evt')`
+            )
+          ).rejects.toMatchObject({ code: "42501" });
+        });
+
+        await withSessionRole(client, role, uid, async () => {
+          await expect(
+            client.query(
+              `SELECT public.create_checkout_order_atomic($1, 'premium-1m', 'payos', NULL, 30)`,
+              [LEARNER_A]
+            )
+          ).rejects.toMatchObject({ code: "42501" });
+        });
+
+        await withSessionRole(client, role, uid, async () => {
+          await expect(
+            client.query(
+              `SELECT public.reserve_ai_quota_atomic('u:test', NULL, 'writing_eval', 'writing:evaluate', 'writing', 'gemini-2.5-flash', 2, NOW() - INTERVAL '1 hour', 3)`
+            )
+          ).rejects.toMatchObject({ code: "42501" });
+        });
+      }
+
+      // 2. Execute live Migration 0008 payment + AI quota RPCs inside a rolled-back transaction as service_role
+      await client.query("BEGIN");
+      try {
+        await client.query("SET LOCAL ROLE service_role");
+
+        // Seed a 1-use promo code and a pending referral (LEARNER_B referred LEARNER_A)
+        await client.query(
+          `INSERT INTO public.promo_codes (code, discount_percent, max_discount_vnd, max_uses, current_uses, is_active)
+           VALUES ('PG1USE', 25, 100000, 1, 0, TRUE)
+           ON CONFLICT (code) DO UPDATE SET max_uses = 1, current_uses = 0, is_active = TRUE`
+        );
+        await client.query(
+          `INSERT INTO public.referrals (referrer_id, referred_user_id, referral_code, status)
+           VALUES ($1, $2, 'REFINT', 'signed_up')
+           ON CONFLICT (referred_user_id) DO NOTHING`,
+          [LEARNER_B, LEARNER_A]
+        );
+
+        // First checkout claims the sole promo slot
+        const c1 = await client.query(
+          `SELECT public.create_checkout_order_atomic($1, 'premium-1m', 'payos', 'PG1USE', 30) AS res`,
+          [LEARNER_A]
+        );
+        expect(c1.rows[0].res.ok).toBe(true);
+        const order = c1.rows[0].res.order;
+        expect(order.promo_code).toBe("PG1USE");
+        expect(order.duration_months).toBe(1);
+
+        // Second checkout with same 1-use promo is rejected immediately (400)
+        const c2 = await client.query(
+          `SELECT public.create_checkout_order_atomic($1, 'premium-1m', 'payos', 'PG1USE', 30) AS res`,
+          [LEARNER_B]
+        );
+        expect(c2.rows[0].res.ok).toBe(false);
+        expect(c2.rows[0].res.status).toBe(400);
+
+        // Underpayment is rejected (400)
+        const under = await client.query(
+          `SELECT public.fulfill_paid_order_atomic($1, $2, 'pg-evt-under') AS res`,
+          [order.order_code, Number(order.amount_vnd) - 100]
+        );
+        expect(under.rows[0].res.ok).toBe(false);
+        expect(under.rows[0].res.status).toBe(400);
+
+        // Full payment atomically updates order, promo_codes, buyer profile, and referrer bonus days
+        const paid = await client.query(
+          `SELECT public.fulfill_paid_order_atomic($1, $2, 'pg-evt-ok-1') AS res`,
+          [order.order_code, Number(order.amount_vnd)]
+        );
+        expect(paid.rows[0].res.ok).toBe(true);
+        expect(paid.rows[0].res.idempotent).toBe(false);
+        expect(paid.rows[0].res.premium_expires_at).toBeTruthy();
+
+        const promoCheck = await client.query(
+          `SELECT current_uses FROM public.promo_codes WHERE code = 'PG1USE'`
+        );
+        expect(promoCheck.rows[0].current_uses).toBe(1);
+
+        const referrerCheck = await client.query(
+          `SELECT premium_expires_at FROM public.profiles WHERE id = $1`,
+          [LEARNER_B]
+        );
+        expect(referrerCheck.rows[0].premium_expires_at).toBeTruthy();
+
+        // Duplicate webhook event returns 200 idempotent without double-incrementing promo
+        const dup = await client.query(
+          `SELECT public.fulfill_paid_order_atomic($1, $2, 'pg-evt-ok-1') AS res`,
+          [order.order_code, Number(order.amount_vnd)]
+        );
+        expect(dup.rows[0].res.ok).toBe(true);
+        expect(dup.rows[0].res.idempotent).toBe(true);
+        const promoCheck2 = await client.query(
+          `SELECT current_uses FROM public.promo_codes WHERE code = 'PG1USE'`
+        );
+        expect(promoCheck2.rows[0].current_uses).toBe(1);
+
+        // 3. AI quota reservation RPC enforces limit=2 and frees slot on release
+        const winStart = new Date(Date.now() - 3600_000).toISOString();
+        const r1 = await client.query(
+          `SELECT public.reserve_ai_quota_atomic($1, $2, 'writing_eval', 'writing:evaluate', 'writing', 'gemini-2.5-flash', 2, $3, 3) AS res`,
+          [`u:${LEARNER_A}`, LEARNER_A, winStart]
+        );
+        const r2 = await client.query(
+          `SELECT public.reserve_ai_quota_atomic($1, $2, 'writing_eval', 'writing:evaluate', 'writing', 'gemini-2.5-flash', 2, $3, 3) AS res`,
+          [`u:${LEARNER_A}`, LEARNER_A, winStart]
+        );
+        const r3 = await client.query(
+          `SELECT public.reserve_ai_quota_atomic($1, $2, 'writing_eval', 'writing:evaluate', 'writing', 'gemini-2.5-flash', 2, $3, 3) AS res`,
+          [`u:${LEARNER_A}`, LEARNER_A, winStart]
+        );
+        expect(r1.rows[0].res.allowed).toBe(true);
+        expect(r2.rows[0].res.allowed).toBe(true);
+        expect(r3.rows[0].res.allowed).toBe(false);
+
+        // Releasing r1 immediately frees a slot
+        await client.query(
+          `UPDATE public.ai_usage_logs SET status = 'released' WHERE id = $1`,
+          [r1.rows[0].res.reservation_id]
+        );
+        const r4 = await client.query(
+          `SELECT public.reserve_ai_quota_atomic($1, $2, 'writing_eval', 'writing:evaluate', 'writing', 'gemini-2.5-flash', 2, $3, 3) AS res`,
+          [`u:${LEARNER_A}`, LEARNER_A, winStart]
+        );
+        expect(r4.rows[0].res.allowed).toBe(true);
+
+        await client.query("ROLLBACK");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      }
+    });
   }
 );

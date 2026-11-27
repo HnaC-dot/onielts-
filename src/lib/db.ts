@@ -21,7 +21,11 @@ import {
   DEFAULT_WRITING_EXERCISES,
 } from "./seed-data";
 import { FULL_SEED_TESTS } from "./seed-tests";
-import { computeExtendedPremiumExpiry } from "./payments/payos";
+import {
+  computeExtendedPremiumExpiry,
+  generateSafeOrderCode,
+} from "./payments/payos";
+import { DEFAULT_REFERRAL_CONFIG } from "./system-cms-shared";
 import { computeNextSm2 } from "./srs";
 import { isBlogPostPubliclyVisible } from "./blog-shared";
 import { computeNextStreak } from "./progress-shared";
@@ -1771,6 +1775,253 @@ export async function createOrderRecord(input: {
   };
 }
 
+export interface CreateAtomicOrderResult {
+  ok: boolean;
+  status: number;
+  order?: OrderRecord;
+  error?: string;
+}
+
+const PROMO_RESERVATION_TTL_MINUTES = 30;
+
+function mapRawOrderRow(
+  data: Record<string, unknown>,
+  fallbackPlanSlug = "",
+  fallbackDurationMonths = 1
+): OrderRecord {
+  const plan = data.pricing_plans as { slug?: string; duration_months?: number } | null;
+  const resolvedDuration = Number(
+    data.duration_months ?? plan?.duration_months ?? fallbackDurationMonths ?? 1
+  );
+  return {
+    id: String(data.id),
+    user_id: String(data.user_id),
+    plan_id: String(data.plan_id ?? ""),
+    plan_slug: String(data.plan_slug ?? plan?.slug ?? fallbackPlanSlug),
+    duration_months: Number.isFinite(resolvedDuration) && resolvedDuration >= 1 ? resolvedDuration : 1,
+    order_code: Number(data.order_code),
+    provider: data.provider as OrderRecord["provider"],
+    amount_vnd: Number(data.amount_vnd),
+    discount_vnd: Number(data.discount_vnd ?? 0),
+    promo_code: data.promo_code ? String(data.promo_code) : null,
+    status: data.status as OrderRecord["status"],
+    checkout_url: data.checkout_url ? String(data.checkout_url) : null,
+    qr_code: data.qr_code ? String(data.qr_code) : null,
+    webhook_event_id: data.webhook_event_id ? String(data.webhook_event_id) : null,
+    paid_at: data.paid_at ? String(data.paid_at) : null,
+    created_at: String(data.created_at),
+  };
+}
+
+/**
+ * Atomically validates pricing plan + promo code (including active 30-min pending reservations
+ * to prevent concurrent max_uses bypass), allocates a collision-free order_code, and inserts
+ * a `pending` order BEFORE calling the external PayOS API.
+ */
+export async function createCheckoutOrderAtomic(input: {
+  userId: string;
+  planSlug: string;
+  provider: OrderRecord["provider"];
+  promoCode?: string | null;
+  reservationTtlMinutes?: number;
+}): Promise<CreateAtomicOrderResult> {
+  const ttlMinutes = Math.max(
+    5,
+    Math.min(120, input.reservationTtlMinutes ?? PROMO_RESERVATION_TTL_MINUTES)
+  );
+  const cleanPromo = input.promoCode?.trim().toUpperCase() || null;
+
+  if (!isSupabaseConfigured()) {
+    return updateStore((draft) => {
+      const plan = draft.pricing_plans.find(
+        (p) => p.slug === input.planSlug && p.is_active
+      );
+      if (!plan) {
+        return {
+          ok: false,
+          status: 404,
+          error: "Không tìm thấy gói cước đang hoạt động.",
+        };
+      }
+
+      let discountVnd = 0;
+      let appliedPromo: string | null = null;
+
+      if (cleanPromo) {
+        const promo = draft.promo_codes.find(
+          (c) => c.code.toUpperCase() === cleanPromo
+        );
+        if (!promo || !promo.is_active) {
+          return {
+            ok: false,
+            status: 400,
+            error: "Mã giảm giá không tồn tại hoặc đã ngừng áp dụng.",
+          };
+        }
+        if (promo.expires_at && new Date(promo.expires_at).getTime() <= Date.now()) {
+          return {
+            ok: false,
+            status: 400,
+            error: "Mã giảm giá đã hết hạn sử dụng.",
+          };
+        }
+        if (promo.max_uses != null) {
+          const cutoffMs = Date.now() - ttlMinutes * 60_000;
+          const activePendingCount = draft.orders.filter(
+            (o) =>
+              o.status === "pending" &&
+              o.promo_code?.toUpperCase() === promo.code.toUpperCase() &&
+              new Date(o.created_at).getTime() > cutoffMs
+          ).length;
+          if (promo.current_uses + activePendingCount >= promo.max_uses) {
+            return {
+              ok: false,
+              status: 400,
+              error: "Mã giảm giá đã hết lượt sử dụng.",
+            };
+          }
+        }
+
+        const rawDiscount = Math.round((plan.price_vnd * promo.discount_percent) / 100);
+        discountVnd =
+          promo.max_discount_vnd && promo.max_discount_vnd > 0
+            ? Math.min(rawDiscount, promo.max_discount_vnd)
+            : rawDiscount;
+        appliedPromo = promo.code;
+      }
+
+      const finalAmount = Math.max(1000, plan.price_vnd - discountVnd);
+      const orderCode = generateSafeOrderCode(draft.orders.map((o) => o.order_code));
+      const record: OrderRecord = {
+        id: `ord-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        user_id: input.userId,
+        plan_id: plan.id,
+        plan_slug: plan.slug,
+        duration_months: Math.max(1, plan.duration_months),
+        order_code: orderCode,
+        provider: input.provider,
+        amount_vnd: finalAmount,
+        discount_vnd: discountVnd,
+        promo_code: appliedPromo,
+        status: "pending",
+        checkout_url: null,
+        qr_code: null,
+        webhook_event_id: null,
+        paid_at: null,
+        created_at: new Date().toISOString(),
+      };
+      draft.orders.unshift(record);
+      return { ok: true, status: 201, order: record };
+    });
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) {
+    return {
+      ok: false,
+      status: 503,
+      error: "Thiếu kết nối máy chủ thanh toán (SUPABASE_SERVICE_ROLE_KEY).",
+    };
+  }
+
+  const { data, error } = await admin.rpc("create_checkout_order_atomic", {
+    p_user_id: input.userId,
+    p_plan_slug: input.planSlug,
+    p_provider: input.provider,
+    p_promo_code: cleanPromo,
+    p_reservation_ttl_minutes: ttlMinutes,
+  });
+
+  if (error) {
+    console.error("[payments.checkout] create_checkout_order_atomic RPC failed", {
+      code: error.code ?? null,
+      message: error.message,
+    });
+    return {
+      ok: false,
+      status: 503,
+      error:
+        "Hệ thống thanh toán chưa sẵn sàng (cần chạy migration 0008_payments_ai_safety.sql). Vui lòng thử lại sau.",
+    };
+  }
+
+  const payload = data as {
+    ok?: boolean;
+    status?: number;
+    error?: string;
+    order?: Record<string, unknown>;
+  } | null;
+
+  if (!payload || !payload.ok || !payload.order) {
+    return {
+      ok: false,
+      status: Number(payload?.status ?? 400),
+      error: String(payload?.error || "Không thể khởi tạo đơn hàng."),
+    };
+  }
+
+  return {
+    ok: true,
+    status: Number(payload.status ?? 201),
+    order: mapRawOrderRow(payload.order, input.planSlug),
+  };
+}
+
+export async function attachOrderCheckoutDetails(params: {
+  orderId: string;
+  provider: OrderRecord["provider"];
+  checkoutUrl: string;
+  qrCode: string;
+}): Promise<OrderRecord | null> {
+  if (!isSupabaseConfigured()) {
+    return updateStore((draft) => {
+      const target = draft.orders.find((o) => o.id === params.orderId);
+      if (!target) return null;
+      target.provider = params.provider;
+      target.checkout_url = params.checkoutUrl;
+      target.qr_code = params.qrCode;
+      return { ...target };
+    });
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) return null;
+
+  const { data, error } = await admin
+    .from("orders")
+    .update({
+      provider: params.provider,
+      checkout_url: params.checkoutUrl,
+      qr_code: params.qrCode,
+    })
+    .eq("id", params.orderId)
+    .eq("status", "pending")
+    .select("*, pricing_plans(slug, duration_months)")
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return mapRawOrderRow(data as Record<string, unknown>);
+}
+
+export async function cancelPendingOrder(orderId: string): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    updateStore((draft) => {
+      const target = draft.orders.find((o) => o.id === orderId && o.status === "pending");
+      if (target) target.status = "cancelled";
+    });
+    return;
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) return;
+
+  await admin
+    .from("orders")
+    .update({ status: "cancelled" })
+    .eq("id", orderId)
+    .eq("status", "pending");
+}
+
 export async function listOrders(): Promise<OrderRecord[]> {
   if (!isSupabaseConfigured()) {
     return readStore().orders;
@@ -1783,27 +2034,7 @@ export async function listOrders(): Promise<OrderRecord[]> {
     .order("created_at", { ascending: false })
     .limit(200);
   if (!data) return [];
-  return data.map((o) => {
-    const plan = o.pricing_plans as { slug?: string; duration_months?: number } | null;
-    return {
-      id: String(o.id),
-      user_id: String(o.user_id),
-      plan_id: String(o.plan_id ?? ""),
-      plan_slug: String(plan?.slug ?? ""),
-      duration_months: Number(plan?.duration_months ?? 1),
-      order_code: Number(o.order_code),
-      provider: o.provider as OrderRecord["provider"],
-      amount_vnd: Number(o.amount_vnd),
-      discount_vnd: Number(o.discount_vnd ?? 0),
-      promo_code: o.promo_code ? String(o.promo_code) : null,
-      status: o.status as OrderRecord["status"],
-      checkout_url: o.checkout_url ? String(o.checkout_url) : null,
-      qr_code: o.qr_code ? String(o.qr_code) : null,
-      webhook_event_id: o.webhook_event_id ? String(o.webhook_event_id) : null,
-      paid_at: o.paid_at ? String(o.paid_at) : null,
-      created_at: String(o.created_at),
-    };
-  });
+  return data.map((o) => mapRawOrderRow(o as Record<string, unknown>));
 }
 
 export async function findOrderByCodeForUser(
@@ -1825,25 +2056,7 @@ export async function findOrderByCodeForUser(
     .eq("user_id", userId)
     .maybeSingle();
   if (!data) return null;
-  const plan = data.pricing_plans as { slug?: string; duration_months?: number } | null;
-  return {
-    id: String(data.id),
-    user_id: String(data.user_id),
-    plan_id: String(data.plan_id ?? ""),
-    plan_slug: String(plan?.slug ?? ""),
-    duration_months: Number(plan?.duration_months ?? 1),
-    order_code: Number(data.order_code),
-    provider: data.provider as OrderRecord["provider"],
-    amount_vnd: Number(data.amount_vnd),
-    discount_vnd: Number(data.discount_vnd ?? 0),
-    promo_code: data.promo_code ? String(data.promo_code) : null,
-    status: data.status as OrderRecord["status"],
-    checkout_url: data.checkout_url ? String(data.checkout_url) : null,
-    qr_code: data.qr_code ? String(data.qr_code) : null,
-    webhook_event_id: data.webhook_event_id ? String(data.webhook_event_id) : null,
-    paid_at: data.paid_at ? String(data.paid_at) : null,
-    created_at: String(data.created_at),
-  };
+  return mapRawOrderRow(data as Record<string, unknown>);
 }
 
 export async function fulfillPaidOrderIdempotent(params: {
@@ -1857,16 +2070,25 @@ export async function fulfillPaidOrderIdempotent(params: {
   premiumExpiresAt?: string;
   message: string;
 }> {
+  if (!Number.isFinite(params.orderCode) || params.orderCode <= 0) {
+    return { ok: false, status: 400, message: "Mã đơn hàng không hợp lệ." };
+  }
+  if (!params.eventId || params.eventId.trim().length === 0) {
+    return { ok: false, status: 400, message: "Thiếu mã sự kiện webhook." };
+  }
+
   if (!isSupabaseConfigured()) {
     return updateStore((store) => {
       const alreadyEvent = store.orders.find(
         (o) => o.webhook_event_id && o.webhook_event_id === params.eventId
       );
       if (alreadyEvent) {
+        const existingProfile = store.profiles.find((p) => p.id === alreadyEvent.user_id);
         return {
           ok: true,
           status: 200,
           idempotent: true,
+          premiumExpiresAt: existingProfile?.premium_expires_at ?? undefined,
           message: "Webhook đã được xử lý trước đó (idempotent).",
         };
       }
@@ -1877,21 +2099,41 @@ export async function fulfillPaidOrderIdempotent(params: {
       }
 
       if (order.status === "paid") {
+        const existingProfile = store.profiles.find((p) => p.id === order.user_id);
         return {
           ok: true,
           status: 200,
           idempotent: true,
+          premiumExpiresAt: existingProfile?.premium_expires_at ?? undefined,
           message: "Đơn hàng đã thanh toán trước đó (idempotent).",
         };
       }
 
-      if (params.amountVnd > 0 && params.amountVnd < order.amount_vnd) {
+      if (order.status !== "pending") {
+        return {
+          ok: false,
+          status: 409,
+          message: `Đơn hàng đang ở trạng thái ${order.status}, không thể tự động kích hoạt.`,
+        };
+      }
+
+      if (!Number.isFinite(params.amountVnd) || params.amountVnd <= 0 || params.amountVnd < order.amount_vnd) {
         return { ok: false, status: 400, message: "Số tiền thanh toán không khớp đơn hàng." };
       }
 
+      const profile = store.profiles.find((p) => p.id === order.user_id);
+      if (!profile) {
+        return {
+          ok: false,
+          status: 500,
+          message: "Không tìm thấy hồ sơ người mua để kích hoạt Premium.",
+        };
+      }
+
+      const now = new Date();
       order.status = "paid";
       order.webhook_event_id = params.eventId;
-      order.paid_at = new Date().toISOString();
+      order.paid_at = now.toISOString();
 
       if (order.promo_code) {
         const codeObj = store.promo_codes.find(
@@ -1900,23 +2142,50 @@ export async function fulfillPaidOrderIdempotent(params: {
         if (codeObj) codeObj.current_uses += 1;
       }
 
-      const profile = store.profiles.find((p) => p.id === order.user_id);
-      let newExpiry: string | undefined;
-      if (profile) {
-        newExpiry = computeExtendedPremiumExpiry(
+      let newExpiryDate = new Date(
+        computeExtendedPremiumExpiry(
           profile.premium_expires_at,
-          order.duration_months
-        );
-        profile.premium_expires_at = newExpiry;
-      }
+          Math.max(1, order.duration_months),
+          now
+        )
+      );
 
       const ref = store.referrals.find(
         (r) => r.referred_user_id === order.user_id && r.status === "signed_up"
       );
       if (ref) {
         ref.status = "converted_premium";
-        ref.converted_at = new Date().toISOString();
+        ref.converted_at = now.toISOString();
+
+        const refCfg = {
+          ...DEFAULT_REFERRAL_CONFIG,
+          ...(store.site_settings?.referral ?? {}),
+        };
+        if (refCfg.isEnabled) {
+          const referredDays = Math.max(0, Math.min(90, Number(refCfg.referredBonusDays ?? 0)));
+          const referrerDays = Math.max(0, Math.min(90, Number(refCfg.referrerBonusDays ?? 0)));
+
+          if (referredDays > 0) {
+            newExpiryDate = new Date(newExpiryDate.getTime() + referredDays * 86_400_000);
+          }
+          if (referrerDays > 0 && ref.referrer_id !== order.user_id) {
+            const referrerProfile = store.profiles.find((p) => p.id === ref.referrer_id);
+            if (referrerProfile) {
+              const refBaseMs =
+                referrerProfile.premium_expires_at &&
+                new Date(referrerProfile.premium_expires_at).getTime() > now.getTime()
+                  ? new Date(referrerProfile.premium_expires_at).getTime()
+                  : now.getTime();
+              referrerProfile.premium_expires_at = new Date(
+                refBaseMs + referrerDays * 86_400_000
+              ).toISOString();
+            }
+          }
+        }
       }
+
+      const newExpiry = newExpiryDate.toISOString();
+      profile.premium_expires_at = newExpiry;
 
       return {
         ok: true,
@@ -1933,127 +2202,338 @@ export async function fulfillPaidOrderIdempotent(params: {
     return { ok: false, status: 500, message: "Thiếu kết nối Supabase Service Role." };
   }
 
-  // Idempotency check 1: duplicate webhook_event_id
-  const { data: existingEvent } = await admin
-    .from("orders")
-    .select("id")
-    .eq("webhook_event_id", params.eventId)
-    .maybeSingle();
-  if (existingEvent) {
+  // Single ACID PostgreSQL transaction: order paid + promo increment + Premium expiry + referral bonus
+  const { data, error } = await admin.rpc("fulfill_paid_order_atomic", {
+    p_order_code: params.orderCode,
+    p_amount_vnd: Math.round(params.amountVnd),
+    p_event_id: params.eventId.trim(),
+  });
+
+  if (error) {
+    console.error("[payments.webhook] fulfill_paid_order_atomic RPC failed", {
+      code: error.code ?? null,
+      message: error.message,
+    });
     return {
-      ok: true,
-      status: 200,
-      idempotent: true,
-      message: "Webhook đã được xử lý trước đó (idempotent).",
+      ok: false,
+      status: 500,
+      message:
+        "Lỗi giao dịch cơ sở dữ liệu khi kích hoạt Premium (vui lòng kiểm tra migration 0008_payments_ai_safety.sql).",
     };
   }
 
-  // Fetch order + duration
-  const { data: order } = await admin
-    .from("orders")
-    .select("*, pricing_plans(duration_months)")
-    .eq("order_code", params.orderCode)
-    .maybeSingle();
-  if (!order) {
-    return { ok: false, status: 404, message: "Không tìm thấy đơn hàng." };
-  }
-  if (order.status === "paid") {
+  const payload = data as {
+    ok?: boolean;
+    status?: number;
+    idempotent?: boolean;
+    premium_expires_at?: string | null;
+    message?: string;
+  } | null;
+
+  if (!payload) {
     return {
-      ok: true,
-      status: 200,
-      idempotent: true,
-      message: "Đơn hàng đã thanh toán trước đó (idempotent).",
+      ok: false,
+      status: 500,
+      message: "Phản hồi giao dịch thanh toán không hợp lệ.",
     };
   }
-
-  if (params.amountVnd > 0 && params.amountVnd < Number(order.amount_vnd)) {
-    return { ok: false, status: 400, message: "Số tiền thanh toán không khớp đơn hàng." };
-  }
-
-  // Atomic conditional update to guard against concurrent duplicate webhooks
-  const { data: updatedOrder, error: updErr } = await admin
-    .from("orders")
-    .update({
-      status: "paid",
-      webhook_event_id: params.eventId,
-      paid_at: new Date().toISOString(),
-    })
-    .eq("id", order.id)
-    .eq("status", "pending")
-    .select("id")
-    .maybeSingle();
-
-  if (updErr || !updatedOrder) {
-    return {
-      ok: true,
-      status: 200,
-      idempotent: true,
-      message: "Đơn hàng đã được xử lý trước đó (idempotent).",
-    };
-  }
-
-  if (order.promo_code) {
-    const { data: codeRow } = await admin
-      .from("promo_codes")
-      .select("id, current_uses")
-      .eq("code", String(order.promo_code).toUpperCase())
-      .maybeSingle();
-    if (codeRow) {
-      await admin
-        .from("promo_codes")
-        .update({ current_uses: Number(codeRow.current_uses ?? 0) + 1 })
-        .eq("id", codeRow.id);
-    }
-  }
-
-  const durationMonths = Number(
-    (order.pricing_plans as { duration_months?: number } | null)?.duration_months ?? 1
-  );
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("premium_expires_at")
-    .eq("id", order.user_id)
-    .maybeSingle();
-
-  const newExpiry = computeExtendedPremiumExpiry(
-    profile?.premium_expires_at ? String(profile.premium_expires_at) : null,
-    durationMonths
-  );
-
-  await admin
-    .from("profiles")
-    .update({ premium_expires_at: newExpiry })
-    .eq("id", order.user_id);
-
-  await admin
-    .from("referrals")
-    .update({
-      status: "converted_premium",
-      converted_at: new Date().toISOString(),
-    })
-    .eq("referred_user_id", order.user_id)
-    .eq("status", "signed_up");
 
   return {
-    ok: true,
-    status: 200,
-    idempotent: false,
-    premiumExpiresAt: newExpiry,
-    message: "Đã xác nhận thanh toán và kích hoạt Premium thành công.",
+    ok: Boolean(payload.ok),
+    status: Number(payload.status ?? (payload.ok ? 200 : 500)),
+    idempotent: Boolean(payload.idempotent),
+    premiumExpiresAt: payload.premium_expires_at
+      ? String(payload.premium_expires_at)
+      : undefined,
+    message: String(
+      payload.message ||
+        (payload.ok
+          ? "Đã xác nhận thanh toán và kích hoạt Premium thành công."
+          : "Không thể xác nhận thanh toán.")
+    ),
   };
 }
 
 // =============================================================================
-// 7. AI USAGE LOGS
+// 7. AI USAGE LOGS & ZERO-TOCTOU QUOTA RESERVATIONS
 // =============================================================================
 const guestMemoryLogs: AiUsageLog[] = [];
+const STALE_RESERVATION_MS = 3 * 60 * 1000;
+
+export function inferQuotaBucketFromFeature(feature: string): string {
+  if (feature === "writing:evaluate") return "writing_eval";
+  if (feature === "speaking:evaluate") return "speaking_eval";
+  if (feature.startsWith("tool:")) return "general_tool";
+  if (feature.endsWith(":generate")) return "generator";
+  if (feature === "conversation:reply") return "conversation";
+  if (feature === "mentor:chat") return "mentor";
+  if (feature === "pronunciation:check") return "pronunciation";
+  if (feature === "writing:exercise_check") return "writing_exercise";
+  if (feature === "flashcard:autofill") return "flashcard_autofill";
+  return feature;
+}
+
+export function normalizeAiActorKey(actorOrUserId: string): string {
+  if (actorOrUserId.startsWith("u:") || actorOrUserId.startsWith("ip:")) {
+    return actorOrUserId;
+  }
+  return isValidUuid(actorOrUserId) ? `u:${actorOrUserId}` : actorOrUserId;
+}
+
+function isActiveBillableLog(log: AiUsageLog, nowMs: number): boolean {
+  if (log.cached) return false;
+  const st = log.status ?? "completed";
+  if (st === "released") return false;
+  if (st === "reserved") {
+    return nowMs - new Date(log.created_at).getTime() < STALE_RESERVATION_MS;
+  }
+  return true;
+}
+
+export async function reserveAiQuotaRecord(params: {
+  actorKey: string;
+  userId: string | null;
+  quotaBucket: string;
+  feature: string;
+  skill?: string | null;
+  model: string;
+  limit: number | null;
+  windowStartIso: string;
+}): Promise<{
+  allowed: boolean;
+  used: number;
+  remaining: number | null;
+  reservationId: string | null;
+  error?: string;
+}> {
+  const actorKey = normalizeAiActorKey(params.actorKey);
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const nowMs = now.getTime();
+
+  if (!isSupabaseConfigured()) {
+    // Synchronous updateStore serializes concurrent Promise.all reservations in Node/tests
+    return updateStore((store) => {
+      const activeCount = store.ai_usage_logs.filter((l) => {
+        const logActor = l.actor_key ?? normalizeAiActorKey(l.user_id);
+        const logBucket = l.quota_bucket ?? inferQuotaBucketFromFeature(l.feature);
+        if (logActor !== actorKey && l.user_id !== params.userId) return false;
+        if (logBucket !== params.quotaBucket) return false;
+        if (l.created_at < params.windowStartIso) return false;
+        return isActiveBillableLog(l, nowMs);
+      }).length;
+
+      if (params.limit !== null && activeCount >= params.limit) {
+        return {
+          allowed: false,
+          used: activeCount,
+          remaining: 0,
+          reservationId: null,
+        };
+      }
+
+      const reservationId = `ai-res-${nowMs}-${Math.random().toString(36).slice(2, 8)}`;
+      store.ai_usage_logs.unshift({
+        id: reservationId,
+        user_id: params.userId ?? actorKey,
+        actor_key: actorKey,
+        quota_bucket: params.quotaBucket,
+        feature: params.feature,
+        skill: params.skill ?? null,
+        model: params.model,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        estimated_cost_usd: 0,
+        cached: false,
+        latency_ms: 0,
+        status: "reserved",
+        created_at: nowIso,
+      });
+      if (store.ai_usage_logs.length > 2000) {
+        store.ai_usage_logs = store.ai_usage_logs.slice(0, 2000);
+      }
+
+      const nextUsed = activeCount + 1;
+      return {
+        allowed: true,
+        used: nextUsed,
+        remaining: params.limit === null ? null : Math.max(0, params.limit - nextUsed),
+        reservationId,
+      };
+    });
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) {
+    return {
+      allowed: false,
+      used: 0,
+      remaining: 0,
+      reservationId: null,
+      error: "Thiếu cấu hình máy chủ Supabase Service Role cho hạn mức AI.",
+    };
+  }
+
+  const validUserId = params.userId && isValidUuid(params.userId) ? params.userId : null;
+  const { data, error } = await admin.rpc("reserve_ai_quota_atomic", {
+    p_actor_key: actorKey,
+    p_user_id: validUserId,
+    p_quota_bucket: params.quotaBucket,
+    p_feature: params.feature,
+    p_skill: params.skill ?? null,
+    p_model: params.model,
+    p_limit: params.limit,
+    p_window_start: params.windowStartIso,
+    p_stale_minutes: 3,
+  });
+
+  if (error) {
+    console.error("[ai.quota] reserve_ai_quota_atomic RPC failed", {
+      code: error.code ?? null,
+      message: error.message,
+    });
+    return {
+      allowed: false,
+      used: 0,
+      remaining: 0,
+      reservationId: null,
+      error:
+        "Hệ thống hạn mức AI tạm thời gián đoạn (vui lòng kiểm tra migration 0008_payments_ai_safety.sql).",
+    };
+  }
+
+  const payload = data as {
+    allowed?: boolean;
+    used?: number;
+    remaining?: number | null;
+    reservation_id?: string | null;
+  } | null;
+
+  return {
+    allowed: Boolean(payload?.allowed),
+    used: Number(payload?.used ?? 0),
+    remaining:
+      payload?.remaining === null || payload?.remaining === undefined
+        ? null
+        : Number(payload.remaining),
+    reservationId: payload?.reservation_id ? String(payload.reservation_id) : null,
+  };
+}
+
+export async function finalizeAiQuotaRecord(params: {
+  reservationId: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  cached: boolean;
+  latencyMs: number;
+}): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    updateStore((store) => {
+      const target = store.ai_usage_logs.find((l) => l.id === params.reservationId);
+      if (!target) return;
+      target.model = params.model;
+      target.prompt_tokens = params.promptTokens;
+      target.completion_tokens = params.completionTokens;
+      target.total_tokens = params.totalTokens;
+      target.estimated_cost_usd = params.estimatedCostUsd;
+      target.cached = params.cached;
+      target.latency_ms = params.latencyMs;
+      target.status = "completed";
+    });
+    return;
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) return;
+
+  await admin
+    .from("ai_usage_logs")
+    .update({
+      model: params.model,
+      prompt_tokens: params.promptTokens,
+      completion_tokens: params.completionTokens,
+      total_tokens: params.totalTokens,
+      estimated_cost_usd: params.estimatedCostUsd,
+      cached: params.cached,
+      latency_ms: params.latencyMs,
+      status: "completed",
+    })
+    .eq("id", params.reservationId);
+}
+
+export async function releaseAiQuotaRecord(
+  reservationId: string | null | undefined,
+  latencyMs = 0
+): Promise<void> {
+  if (!reservationId) return;
+
+  if (!isSupabaseConfigured()) {
+    updateStore((store) => {
+      const target = store.ai_usage_logs.find((l) => l.id === reservationId);
+      if (target) {
+        target.status = "released";
+        target.latency_ms = latencyMs;
+      }
+    });
+    return;
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) return;
+
+  await admin
+    .from("ai_usage_logs")
+    .update({
+      status: "released",
+      latency_ms: latencyMs,
+    })
+    .eq("id", reservationId);
+}
+
+export async function getDailyAiCostUsdSince(sinceIso: string): Promise<number> {
+  if (!isSupabaseConfigured()) {
+    return readStore()
+      .ai_usage_logs.filter(
+        (l) =>
+          l.created_at >= sinceIso &&
+          !l.cached &&
+          (l.status ?? "completed") === "completed"
+      )
+      .reduce((sum, l) => sum + Number(l.estimated_cost_usd ?? 0), 0);
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) return 0;
+
+  const { data, error } = await admin
+    .from("ai_usage_logs")
+    .select("estimated_cost_usd")
+    .gte("created_at", sinceIso)
+    .eq("cached", false)
+    .eq("status", "completed")
+    .limit(5000);
+
+  if (error || !data) return 0;
+  return data.reduce((sum, row) => sum + Number(row.estimated_cost_usd ?? 0), 0);
+}
 
 export async function insertAiUsageLog(entry: Omit<AiUsageLog, "id" | "created_at">): Promise<void> {
   const nowIso = new Date().toISOString();
+  const actorKey = entry.actor_key ?? normalizeAiActorKey(entry.user_id);
+  const quotaBucket = entry.quota_bucket ?? inferQuotaBucketFromFeature(entry.feature);
+  const status = entry.status ?? "completed";
+
   if (!isSupabaseConfigured()) {
     updateStore((store) => {
       store.ai_usage_logs.unshift({
         ...entry,
+        actor_key: actorKey,
+        quota_bucket: quotaBucket,
+        status,
         id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         created_at: nowIso,
       });
@@ -2065,9 +2545,11 @@ export async function insertAiUsageLog(entry: Omit<AiUsageLog, "id" | "created_a
   }
 
   if (!isValidUuid(entry.user_id)) {
-    // Track unauthenticated guests in memory for metering without violating UUID FK
     guestMemoryLogs.unshift({
       ...entry,
+      actor_key: actorKey,
+      quota_bucket: quotaBucket,
+      status,
       id: `ai-guest-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       created_at: nowIso,
     });
@@ -2076,8 +2558,10 @@ export async function insertAiUsageLog(entry: Omit<AiUsageLog, "id" | "created_a
 
   const admin = createSupabaseAdminClient();
   if (!admin) return;
-  await admin.from("ai_usage_logs").insert({
+  const { error } = await admin.from("ai_usage_logs").insert({
     user_id: isValidUuid(entry.user_id) ? entry.user_id : null,
+    actor_key: actorKey,
+    quota_bucket: quotaBucket,
     feature: entry.feature,
     skill: entry.skill ?? null,
     model: entry.model,
@@ -2087,12 +2571,31 @@ export async function insertAiUsageLog(entry: Omit<AiUsageLog, "id" | "created_a
     estimated_cost_usd: entry.estimated_cost_usd,
     cached: entry.cached,
     latency_ms: entry.latency_ms,
+    status,
   });
+
+  // Backward-compatible fallback if migration 0008 columns aren't applied yet
+  if (error?.code === "42703") {
+    await admin.from("ai_usage_logs").insert({
+      user_id: isValidUuid(entry.user_id) ? entry.user_id : null,
+      feature: entry.feature,
+      skill: entry.skill ?? null,
+      model: entry.model,
+      prompt_tokens: entry.prompt_tokens,
+      completion_tokens: entry.completion_tokens,
+      total_tokens: entry.total_tokens,
+      estimated_cost_usd: entry.estimated_cost_usd,
+      cached: entry.cached,
+      latency_ms: entry.latency_ms,
+    });
+  }
 }
 
 export async function listAiUsageLogs(limit = 100): Promise<AiUsageLog[]> {
   if (!isSupabaseConfigured()) {
-    return readStore().ai_usage_logs.slice(0, limit);
+    return readStore()
+      .ai_usage_logs.filter((l) => (l.status ?? "completed") !== "released")
+      .slice(0, limit);
   }
   const admin = createSupabaseAdminClient();
   if (!admin) return [];
@@ -2102,52 +2605,124 @@ export async function listAiUsageLogs(limit = 100): Promise<AiUsageLog[]> {
     .order("created_at", { ascending: false })
     .limit(limit);
   if (!data) return [];
-  return data.map((r) => ({
-    id: String(r.id),
-    user_id: r.user_id ? String(r.user_id) : "guest",
-    feature: String(r.feature),
-    skill: r.skill ? String(r.skill) : null,
-    model: String(r.model),
-    prompt_tokens: Number(r.prompt_tokens ?? 0),
-    completion_tokens: Number(r.completion_tokens ?? 0),
-    total_tokens: Number(r.total_tokens ?? 0),
-    estimated_cost_usd: Number(r.estimated_cost_usd ?? 0),
-    cached: Boolean(r.cached),
-    latency_ms: Number(r.latency_ms ?? 0),
-    created_at: String(r.created_at),
-  }));
+  return data
+    .filter((r) => (r.status ?? "completed") !== "released")
+    .map((r) => ({
+      id: String(r.id),
+      user_id: r.user_id ? String(r.user_id) : String(r.actor_key ?? "guest"),
+      actor_key: r.actor_key ? String(r.actor_key) : null,
+      quota_bucket: r.quota_bucket ? String(r.quota_bucket) : null,
+      feature: String(r.feature),
+      skill: r.skill ? String(r.skill) : null,
+      model: String(r.model),
+      prompt_tokens: Number(r.prompt_tokens ?? 0),
+      completion_tokens: Number(r.completion_tokens ?? 0),
+      total_tokens: Number(r.total_tokens ?? 0),
+      estimated_cost_usd: Number(r.estimated_cost_usd ?? 0),
+      cached: Boolean(r.cached),
+      latency_ms: Number(r.latency_ms ?? 0),
+      status: (r.status as AiUsageLog["status"]) ?? "completed",
+      created_at: String(r.created_at),
+    }));
 }
 
 export async function getUserAiUsageLogsSince(
   actorId: string,
   sinceIso: string
-): Promise<Pick<AiUsageLog, "feature" | "created_at">[]> {
+): Promise<Pick<AiUsageLog, "feature" | "quota_bucket" | "created_at">[]> {
+  const actorKey = normalizeAiActorKey(actorId);
+  const nowMs = Date.now();
+
   if (!isSupabaseConfigured()) {
     return readStore()
-      .ai_usage_logs.filter((l) => l.user_id === actorId && l.created_at >= sinceIso)
-      .map((l) => ({ feature: l.feature, created_at: l.created_at }));
-  }
-
-  if (!isValidUuid(actorId)) {
-    return guestMemoryLogs
-      .filter((l) => l.user_id === actorId && l.created_at >= sinceIso)
-      .map((l) => ({ feature: l.feature, created_at: l.created_at }));
+      .ai_usage_logs.filter((l) => {
+        const logActor = l.actor_key ?? normalizeAiActorKey(l.user_id);
+        if (logActor !== actorKey && l.user_id !== actorId) return false;
+        if (l.created_at < sinceIso) return false;
+        return isActiveBillableLog(l, nowMs);
+      })
+      .map((l) => ({
+        feature: l.feature,
+        quota_bucket: l.quota_bucket ?? inferQuotaBucketFromFeature(l.feature),
+        created_at: l.created_at,
+      }));
   }
 
   const admin = createSupabaseAdminClient();
   const sb = admin ?? (await createSupabaseServerClient());
-  if (!sb) return [];
+  if (!sb) {
+    if (!isValidUuid(actorId)) {
+      return guestMemoryLogs
+        .filter((l) => {
+          const logActor = l.actor_key ?? normalizeAiActorKey(l.user_id);
+          return (
+            (logActor === actorKey || l.user_id === actorId) &&
+            l.created_at >= sinceIso &&
+            isActiveBillableLog(l, nowMs)
+          );
+        })
+        .map((l) => ({
+          feature: l.feature,
+          quota_bucket: l.quota_bucket ?? inferQuotaBucketFromFeature(l.feature),
+          created_at: l.created_at,
+        }));
+    }
+    return [];
+  }
 
-  const { data } = await sb
+  let query = sb
     .from("ai_usage_logs")
-    .select("feature, created_at")
-    .eq("user_id", actorId)
+    .select("feature, quota_bucket, status, cached, created_at")
+    .eq("cached", false)
+    .in("status", ["completed", "reserved"])
     .gte("created_at", sinceIso);
 
-  return (data ?? []).map((r) => ({
-    feature: String(r.feature),
-    created_at: String(r.created_at),
-  }));
+  if (isValidUuid(actorId)) {
+    query = query.or(`actor_key.eq.${actorKey},user_id.eq.${actorId}`);
+  } else {
+    query = query.eq("actor_key", actorKey);
+  }
+
+  const { data, error } = await query;
+
+  if (error?.code === "42703") {
+    // Graceful read fallback before migration 0008 is applied
+    if (!isValidUuid(actorId)) {
+      return guestMemoryLogs
+        .filter((l) => l.user_id === actorId && l.created_at >= sinceIso && !l.cached)
+        .map((l) => ({
+          feature: l.feature,
+          quota_bucket: inferQuotaBucketFromFeature(l.feature),
+          created_at: l.created_at,
+        }));
+    }
+    const legacy = await sb
+      .from("ai_usage_logs")
+      .select("feature, cached, created_at")
+      .eq("user_id", actorId)
+      .eq("cached", false)
+      .gte("created_at", sinceIso);
+    return (legacy.data ?? []).map((r) => ({
+      feature: String(r.feature),
+      quota_bucket: inferQuotaBucketFromFeature(String(r.feature)),
+      created_at: String(r.created_at),
+    }));
+  }
+
+  return (data ?? [])
+    .filter((r) => {
+      if (r.status === "reserved") {
+        return nowMs - new Date(String(r.created_at)).getTime() < STALE_RESERVATION_MS;
+      }
+      return true;
+    })
+    .map((r) => ({
+      feature: String(r.feature),
+      quota_bucket: r.quota_bucket
+        ? String(r.quota_bucket)
+        : inferQuotaBucketFromFeature(String(r.feature)),
+      created_at: String(r.created_at),
+    }));
 }
 
 // =============================================================================
