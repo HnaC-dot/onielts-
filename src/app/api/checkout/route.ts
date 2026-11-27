@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { verifySameOrigin } from "@/lib/admin-auth";
 import { getCurrentUser } from "@/lib/auth";
 import {
   attachOrderCheckoutDetails,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/db";
 import { getPaymentProvider } from "@/lib/payments";
 import { isPayosSandboxAllowed } from "@/lib/payments/payos";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
 const checkoutSchema = z.object({
   planSlug: z.string().min(1).max(60),
@@ -17,11 +19,32 @@ const checkoutSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Nguồn yêu cầu không hợp lệ." },
+      { status: 403 }
+    );
+  }
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json(
       { error: "Vui lòng đăng nhập trước khi thanh toán gói Premium." },
       { status: 401 }
+    );
+  }
+
+  const rate = await checkRateLimit(
+    `checkout:${getRequestClientKey(req, user.id)}`,
+    10,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      {
+        error: `Bạn tạo quá nhiều yêu cầu thanh toán. Vui lòng thử lại sau ${rate.retryAfterSec} giây.`,
+      },
+      { status: 429 }
     );
   }
 

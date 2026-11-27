@@ -1,12 +1,35 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { verifySameOrigin } from "@/lib/admin-auth";
 import { findActivePromoCode } from "@/lib/db";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
 const schema = z.object({
   code: z.string().trim().min(2).max(40),
 });
 
 export async function POST(req: Request) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Nguồn yêu cầu không hợp lệ." },
+      { status: 403 }
+    );
+  }
+
+  const rate = await checkRateLimit(
+    `promo:${getRequestClientKey(req)}`,
+    10,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      {
+        error: `Bạn thử quá nhiều mã giảm giá. Vui lòng thử lại sau ${rate.retryAfterSec} giây.`,
+      },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await req.json();
     const parsed = schema.safeParse(body);

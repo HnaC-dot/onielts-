@@ -5,6 +5,7 @@ import { useLocale } from "next-intl";
 import { CheckCircle2, Mail, Send } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 
 export default function ContactPage() {
   const locale = useLocale();
@@ -14,6 +15,8 @@ export default function ContactPage() {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [honeypot, setHoneypot] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,11 +29,19 @@ export default function ContactPage() {
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, subject, message, honeypot }),
+        body: JSON.stringify({
+          name,
+          email,
+          subject,
+          message,
+          honeypot,
+          turnstileToken: turnstileToken || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Có lỗi xảy ra");
+        setTurnstileReset((n) => n + 1);
         return;
       }
       setSent(true);
@@ -38,6 +49,7 @@ export default function ContactPage() {
       setEmail("");
       setSubject("");
       setMessage("");
+      setTurnstileReset((n) => n + 1);
     } catch {
       setError("Lỗi kết nối máy chủ.");
     } finally {
@@ -133,6 +145,10 @@ export default function ContactPage() {
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
               />
             </div>
+            <TurnstileWidget
+              onToken={setTurnstileToken}
+              resetSignal={turnstileReset}
+            />
             {error && <p className="text-xs text-red-600">{error}</p>}
             <Button type="submit" disabled={loading}>
               <Send className="h-4 w-4" />

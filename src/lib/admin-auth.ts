@@ -30,17 +30,39 @@ export function isStaffRole(
   return role === "admin" || role === "editor";
 }
 
+export function maskEmailAddress(email: string): string {
+  const trimmed = email.trim();
+  const atIndex = trimmed.indexOf("@");
+  if (atIndex <= 0) return "***";
+  const local = trimmed.slice(0, atIndex);
+  const domain = trimmed.slice(atIndex + 1);
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}***@${domain}`;
+}
+
 /**
- * CSRF protection for mutating admin API requests (POST / PATCH / DELETE).
- * Validates Origin (or Referer fallback) against request Host and NEXT_PUBLIC_APP_URL.
+ * CSRF protection for mutating API requests (POST / PATCH / DELETE).
+ * - Rejects explicit cross-site browser requests (Sec-Fetch-Site: cross-site).
+ * - Rejects cookie-bearing requests with stripped Origin and Referer unless
+ *   Sec-Fetch-Site explicitly certifies same-origin.
+ * - Validates Origin (or Referer fallback) host against request Host and configured site URLs.
  */
 export function verifySameOrigin(req: Request): boolean {
+  const secFetchSite = req.headers.get("sec-fetch-site")?.trim().toLowerCase();
+  if (secFetchSite === "cross-site") {
+    return false;
+  }
+
   const origin = req.headers.get("origin");
   const referer = req.headers.get("referer");
   const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  const hasCookie = Boolean(req.headers.get("cookie")?.trim());
 
   if (!origin && !referer) {
-    // Non-browser server calls without Origin/Referer
+    if (hasCookie && secFetchSite !== "same-origin") {
+      return false;
+    }
+    // Non-cookie server-to-server calls without Origin/Referer
     return true;
   }
 
@@ -304,7 +326,10 @@ export async function listAuditLogs(options?: {
   };
 }
 
-export async function getAdminDashboardSummary() {
+export async function getAdminDashboardSummary(options?: {
+  includeAdminData?: boolean;
+}) {
+  const includeAdminData = options?.includeAdminData !== false;
   const vnToday = getVietnamDateString();
   const [
     tests,
@@ -326,12 +351,20 @@ export async function getAdminDashboardSummary() {
     getLearnVideos(),
     getDictationLessons(),
     getPronunciationSounds(),
-    listAllProfiles(),
-    listOrders(),
-    listAiUsageLogs(200),
+    includeAdminData ? listAllProfiles() : Promise.resolve([]),
+    includeAdminData ? listOrders() : Promise.resolve([]),
+    includeAdminData ? listAiUsageLogs(200) : Promise.resolve([]),
     getFeatureRequests(),
     getDailyExamState(vnToday, null),
-    listAuditLogs({ page: 1, pageSize: 8 }),
+    includeAdminData
+      ? listAuditLogs({ page: 1, pageSize: 8 })
+      : Promise.resolve({
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 8,
+          tableReady: true,
+        }),
   ]);
 
   let unreadContacts = 0;

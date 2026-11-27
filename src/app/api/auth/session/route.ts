@@ -13,7 +13,13 @@ import {
   createSupabaseRouteClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/server";
-import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
+import { verifySameOrigin } from "@/lib/admin-auth";
+import { verifyBotProtection } from "@/lib/bot-protection";
+import {
+  checkRateLimit,
+  getRequestClientKey,
+  getRequestIp,
+} from "@/lib/rate-limit";
 import { readStore } from "@/lib/store";
 
 const authActionSchema = z.discriminatedUnion("action", [
@@ -24,6 +30,8 @@ const authActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("send_otp"),
     email: z.string().email().max(200),
+    turnstileToken: z.string().optional(),
+    honeypot: z.string().optional(),
   }),
   z.object({
     action: z.literal("verify_otp"),
@@ -49,6 +57,13 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Nguồn yêu cầu không hợp lệ." },
+      { status: 403 }
+    );
+  }
+
   try {
     const body = await req.json();
     const parsed = authActionSchema.safeParse(body);
@@ -133,6 +148,18 @@ export async function POST(req: Request) {
     }
 
     if (data.action === "send_otp") {
+      const botCheck = await verifyBotProtection({
+        turnstileToken: data.turnstileToken,
+        honeypot: data.honeypot,
+        remoteIp: getRequestIp(req),
+      });
+      if (!botCheck.passed) {
+        return NextResponse.json(
+          { error: botCheck.reason || "Xác minh chống bot không thành công." },
+          { status: 400 }
+        );
+      }
+
       if (supabaseActive) {
         const routeClient = await createSupabaseRouteClient();
         if (!routeClient) {
@@ -150,6 +177,7 @@ export async function POST(req: Request) {
           options: {
             shouldCreateUser: true,
             emailRedirectTo: `${origin.replace(/\/+$/, "")}/auth/callback?next=/`,
+            ...(data.turnstileToken ? { captchaToken: data.turnstileToken } : {}),
           },
         });
         if (error) {

@@ -33,6 +33,15 @@ export async function POST(req: Request) {
 
   const kind = String(body.kind ?? "");
   if (kind === "page") {
+    const rawSlug =
+      body.page && typeof body.page === "object"
+        ? String((body.page as { slug?: unknown }).slug ?? "")
+        : "";
+    const normalizedSlug = rawSlug.trim().toLowerCase().replace(/^\/+/, "");
+    if (normalizedSlug.startsWith("legal/")) {
+      const adminGuard = await requireStaff("admin");
+      if (!adminGuard.ok) return adminGuard.response;
+    }
     const res = await upsertStaticPageCms(body.page, guard.user);
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
     return NextResponse.json({ ok: true, page: res.page });
@@ -50,7 +59,7 @@ export async function DELETE(req: Request) {
   if (!verifySameOrigin(req)) {
     return NextResponse.json({ error: "Yêu cầu khác nguồn không hợp lệ." }, { status: 403 });
   }
-  const guard = await requireStaff("editor");
+  const guard = await requireStaff("admin");
   if (!guard.ok) return guard.response;
 
   const { searchParams } = new URL(req.url);

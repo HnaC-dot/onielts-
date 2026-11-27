@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { verifySameOrigin } from "@/lib/admin-auth";
 import { createContactMessage } from "@/lib/db";
 import { verifyBotProtection } from "@/lib/bot-protection";
-import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  getRequestClientKey,
+  getRequestIp,
+} from "@/lib/rate-limit";
 
 const contactSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -14,9 +19,23 @@ const contactSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const rate = await checkRateLimit(getRequestClientKey(req), 10, 60_000);
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Nguồn yêu cầu không hợp lệ." },
+      { status: 403 }
+    );
+  }
+
+  const rate = await checkRateLimit(
+    `contact:${getRequestClientKey(req)}`,
+    10,
+    60_000
+  );
   if (!rate.allowed) {
-    return NextResponse.json({ error: "Vui lòng thử lại sau ít phút." }, { status: 429 });
+    return NextResponse.json(
+      { error: `Vui lòng thử lại sau ${rate.retryAfterSec} giây.` },
+      { status: 429 }
+    );
   }
 
   try {
@@ -31,6 +50,7 @@ export async function POST(req: Request) {
     const botCheck = await verifyBotProtection({
       turnstileToken: parsed.data.turnstileToken,
       honeypot: parsed.data.honeypot,
+      remoteIp: getRequestIp(req),
     });
     if (!botCheck.passed) {
       return NextResponse.json(

@@ -1,8 +1,12 @@
 import React from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { listAuditLogs } from "@/lib/admin-auth";
+import { getAuthState } from "@/lib/auth";
 import { AuditLogsClient } from "@/components/admin/audit-logs-client";
+import { Card } from "@/components/ui/card";
+
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Nhật ký hoạt động",
@@ -10,6 +14,21 @@ export const metadata = {
 };
 
 export default async function AdminAuditPage() {
+  const authState = await getAuthState();
+  if (authState.user?.role !== "admin") {
+    return (
+      <Card className="mx-auto max-w-lg p-8 text-center space-y-3">
+        <ShieldAlert className="mx-auto h-8 w-8 text-red-500" />
+        <h1 className="text-lg font-bold text-slate-900 dark:text-white">
+          Chỉ tài khoản Admin mới được xem Nhật ký hoạt động (Audit Logs)
+        </h1>
+        <p className="text-xs text-slate-500">
+          Nhật ký hệ thống chứa lịch sử thao tác quản trị, phân quyền và cấu hình bảo mật nên chỉ dành riêng cho quản trị viên.
+        </p>
+      </Card>
+    );
+  }
+
   const initial = await listAuditLogs({ page: 1, pageSize: 20 });
 
   return (

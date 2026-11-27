@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import {
   getBlogPosts,
+  getConversationTopics,
   getCourses,
   getDictationLessons,
   getIeltsTests,
   getLearnVideos,
   getPronunciationSounds,
 } from "@/lib/db";
-import { DEFAULT_CONVERSATION_TOPICS } from "@/lib/seed-data";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
 const STATIC_TOOLS = [
   { slug: "paraphraser", title: "Paraphraser — Diễn đạt lại học thuật", href: "/tools/paraphraser", category: "Công cụ AI" },
@@ -21,103 +22,142 @@ const STATIC_TOOLS = [
   { slug: "band-calculator", title: "IELTS Band Calculator — Tính điểm Band chuẩn", href: "/band-calculator", category: "Công cụ" },
 ];
 
+interface SearchCatalogEntry {
+  title: string;
+  href: string;
+  category: string;
+  haystack: string;
+}
+
+const CATALOG_TTL_MS = 60_000;
+let cachedCatalog: { expiresAt: number; entries: SearchCatalogEntry[] } | null = null;
+
+async function getSearchCatalog(): Promise<SearchCatalogEntry[]> {
+  const now = Date.now();
+  if (cachedCatalog && cachedCatalog.expiresAt > now) {
+    return cachedCatalog.entries;
+  }
+
+  const [tests, courses, sounds, conversations, dictations, videos, posts] =
+    await Promise.all([
+      getIeltsTests(false),
+      getCourses(),
+      getPronunciationSounds(),
+      getConversationTopics(false),
+      getDictationLessons(),
+      getLearnVideos(),
+      getBlogPosts(false),
+    ]);
+
+  const entries: SearchCatalogEntry[] = [];
+
+  for (const item of STATIC_TOOLS) {
+    entries.push({
+      title: item.title,
+      href: item.href,
+      category: item.category,
+      haystack: `${item.title} ${item.slug}`.toLowerCase(),
+    });
+  }
+
+  for (const t of tests) {
+    entries.push({
+      title: t.title_vi,
+      href: `/tests/${t.slug}`,
+      category: `Đề thi ${t.skill.toUpperCase()}`,
+      haystack: `${t.title_vi} ${t.title_en} ${t.skill} ${t.slug}`.toLowerCase(),
+    });
+  }
+
+  for (const c of courses) {
+    entries.push({
+      title: c.title_vi,
+      href: `/courses/${c.slug}`,
+      category: "Khóa học",
+      haystack: `${c.title_vi} ${c.title_en} ${c.slug}`.toLowerCase(),
+    });
+  }
+
+  for (const p of sounds) {
+    entries.push({
+      title: `${p.symbol} — ${p.title_vi}`,
+      href: `/pronunciation/${p.slug}`,
+      category: "Phát âm IPA",
+      haystack: `${p.symbol} ${p.title_vi} ${p.slug}`.toLowerCase(),
+    });
+  }
+
+  for (const topic of conversations) {
+    entries.push({
+      title: topic.title_vi,
+      href: `/conversations?topic=${topic.slug}`,
+      category: "Hội thoại AI",
+      haystack: `${topic.title_vi} ${topic.title_en} ${topic.slug}`.toLowerCase(),
+    });
+  }
+
+  for (const d of dictations) {
+    entries.push({
+      title: d.title_vi,
+      href: `/dictation?lesson=${d.slug}`,
+      category: "Chép chính tả",
+      haystack: `${d.title_vi} ${d.title_en} ${d.slug}`.toLowerCase(),
+    });
+  }
+
+  for (const v of videos) {
+    entries.push({
+      title: v.title_vi,
+      href: `/videos/${v.slug}`,
+      category: "Video học IELTS",
+      haystack: `${v.title_vi} ${v.title_en} ${v.slug}`.toLowerCase(),
+    });
+  }
+
+  for (const post of posts) {
+    entries.push({
+      title: post.title_vi,
+      href: `/blog/${post.slug}`,
+      category: "Blog IELTS",
+      haystack: `${post.title_vi} ${post.title_en} ${post.slug}`.toLowerCase(),
+    });
+  }
+
+  cachedCatalog = { expiresAt: now + CATALOG_TTL_MS, entries };
+  return entries;
+}
+
 export async function GET(req: Request) {
+  const rate = await checkRateLimit(
+    `search:${getRequestClientKey(req)}`,
+    45,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: `Bạn tìm kiếm quá nhanh. Vui lòng thử lại sau ${rate.retryAfterSec} giây.` },
+      { status: 429 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
-  const q = (searchParams.get("q") ?? "").trim().toLowerCase();
+  const q = (searchParams.get("q") ?? "").trim().toLowerCase().slice(0, 100);
   if (!q) {
     return NextResponse.json({ results: STATIC_TOOLS.slice(0, 6) });
   }
 
-  const [tests, courses, sounds, dictations, videos, posts] = await Promise.all([
-    getIeltsTests(false),
-    getCourses(),
-    getPronunciationSounds(),
-    getDictationLessons(),
-    getLearnVideos(),
-    getBlogPosts(false),
-  ]);
-
-  const results: { title: string; href: string; category: string; subtitle?: string }[] = [];
-
-  for (const item of STATIC_TOOLS) {
-    if (item.title.toLowerCase().includes(q) || item.slug.includes(q)) {
-      results.push({ title: item.title, href: item.href, category: item.category });
-    }
-  }
-
-  for (const t of tests) {
-    if (
-      t.title_vi.toLowerCase().includes(q) ||
-      t.title_en.toLowerCase().includes(q) ||
-      t.skill.includes(q)
-    ) {
+  const catalog = await getSearchCatalog();
+  const results: { title: string; href: string; category: string }[] = [];
+  for (const entry of catalog) {
+    if (entry.haystack.includes(q)) {
       results.push({
-        title: t.title_vi,
-        href: `/tests/${t.slug}`,
-        category: `Đề thi ${t.skill.toUpperCase()}`,
+        title: entry.title,
+        href: entry.href,
+        category: entry.category,
       });
+      if (results.length >= 12) break;
     }
   }
 
-  for (const c of courses) {
-    if (c.title_vi.toLowerCase().includes(q) || c.title_en.toLowerCase().includes(q)) {
-      results.push({ title: c.title_vi, href: `/courses/${c.slug}`, category: "Khóa học" });
-    }
-  }
-
-  for (const p of sounds) {
-    if (
-      p.symbol.toLowerCase().includes(q) ||
-      p.title_vi.toLowerCase().includes(q) ||
-      p.slug.includes(q)
-    ) {
-      results.push({
-        title: `${p.symbol} — ${p.title_vi}`,
-        href: `/pronunciation/${p.slug}`,
-        category: "Phát âm IPA",
-      });
-    }
-  }
-
-  for (const topic of DEFAULT_CONVERSATION_TOPICS) {
-    if (topic.title_vi.toLowerCase().includes(q) || topic.title_en.toLowerCase().includes(q)) {
-      results.push({
-        title: topic.title_vi,
-        href: `/conversations?topic=${topic.slug}`,
-        category: "Hội thoại AI",
-      });
-    }
-  }
-
-  for (const d of dictations) {
-    if (d.title_vi.toLowerCase().includes(q) || d.title_en.toLowerCase().includes(q)) {
-      results.push({
-        title: d.title_vi,
-        href: `/dictation?lesson=${d.slug}`,
-        category: "Chép chính tả",
-      });
-    }
-  }
-
-  for (const v of videos) {
-    if (v.title_vi.toLowerCase().includes(q) || v.title_en.toLowerCase().includes(q)) {
-      results.push({
-        title: v.title_vi,
-        href: `/videos/${v.slug}`,
-        category: "Video học IELTS",
-      });
-    }
-  }
-
-  for (const post of posts) {
-    if (post.title_vi.toLowerCase().includes(q) || post.title_en.toLowerCase().includes(q)) {
-      results.push({
-        title: post.title_vi,
-        href: `/blog/${post.slug}`,
-        category: "Blog IELTS",
-      });
-    }
-  }
-
-  return NextResponse.json({ results: results.slice(0, 12) });
+  return NextResponse.json({ results });
 }

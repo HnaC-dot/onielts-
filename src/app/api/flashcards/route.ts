@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { verifySameOrigin } from "@/lib/admin-auth";
 import { getCurrentUser } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { createFlashcardItem, getFlashcardsForUser } from "@/lib/db";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
 const createCardSchema = z.object({
   term: z.string().trim().min(1).max(120),
@@ -22,7 +24,36 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Nguồn yêu cầu không hợp lệ." },
+      { status: 403 }
+    );
+  }
+
   try {
+    const user = await getCurrentUser();
+    if (isSupabaseConfigured() && !user) {
+      return NextResponse.json(
+        { error: "Vui lòng đăng nhập để lưu Flashcard vào tài khoản của bạn." },
+        { status: 401 }
+      );
+    }
+
+    const rate = await checkRateLimit(
+      `fc-create:${getRequestClientKey(req, user?.id)}`,
+      30,
+      60_000
+    );
+    if (!rate.allowed) {
+      return NextResponse.json(
+        {
+          error: `Bạn tạo thẻ quá nhanh. Vui lòng thử lại sau ${rate.retryAfterSec} giây.`,
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const parsed = createCardSchema.safeParse(body);
     if (!parsed.success) {
@@ -32,16 +63,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await getCurrentUser();
-    if (isSupabaseConfigured() && !user) {
-      return NextResponse.json(
-        { error: "Vui lòng đăng nhập để lưu Flashcard vào tài khoản của bạn." },
-        { status: 401 }
-      );
-    }
-
     const result = await createFlashcardItem(user?.id ?? null, parsed.data);
     if (!result) {
+      if (parsed.data.set_id) {
+        return NextResponse.json(
+          { error: "Bộ thẻ không tồn tại hoặc không thuộc quyền sở hữu của bạn." },
+          { status: 403 }
+        );
+      }
       return NextResponse.json({ error: "Không thể lưu thẻ" }, { status: 500 });
     }
 

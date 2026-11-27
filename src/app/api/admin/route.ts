@@ -118,11 +118,11 @@ export async function GET() {
   ] = await Promise.all([
     isAdmin ? listAllProfiles() : Promise.resolve([]),
     getBandConversionTables(),
-    getPricingPlans(true),
-    getPromoBanner(),
+    isAdmin ? getPricingPlans(true) : Promise.resolve([]),
+    isAdmin ? getPromoBanner() : Promise.resolve(null),
     isAdmin ? getPromoCodes() : Promise.resolve([]),
     isAdmin ? listOrders() : Promise.resolve([]),
-    listAiUsageLogs(100),
+    isAdmin ? listAiUsageLogs(100) : Promise.resolve([]),
     getIeltsTests(true),
     getBlogPosts(true),
     getSampleTestimonials(),
@@ -149,6 +149,11 @@ export async function POST(req: Request) {
     );
   }
 
+  const baseGuard = await requireStaff("editor");
+  if (!baseGuard.ok) {
+    return baseGuard.response;
+  }
+
   try {
     const body = await req.json();
     const parsed = adminActionSchema.safeParse(body);
@@ -160,12 +165,14 @@ export async function POST(req: Request) {
     }
 
     const d = parsed.data;
-    const minRole = ADMIN_ONLY_ACTIONS.has(d.action) ? "admin" : "editor";
-    const guard = await requireStaff(minRole);
-    if (!guard.ok) {
-      return guard.response;
+    let actor = baseGuard.user;
+    if (ADMIN_ONLY_ACTIONS.has(d.action) && actor.role !== "admin") {
+      const adminGuard = await requireStaff("admin");
+      if (!adminGuard.ok) {
+        return adminGuard.response;
+      }
+      actor = adminGuard.user;
     }
-    const actor = guard.user;
 
     if (d.action === "update_band_row") {
       await adminUpdateBandRow(d.id, {

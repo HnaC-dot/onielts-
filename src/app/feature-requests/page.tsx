@@ -6,6 +6,7 @@ import { Lightbulb, ThumbsUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import type { FeatureRequestItem } from "@/lib/types";
 
 export default function FeatureRequestsPage() {
@@ -14,6 +15,11 @@ export default function FeatureRequestsPage() {
   const [items, setItems] = useState<FeatureRequestItem[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [honeypot, setHoneypot] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
+  const [error, setError] = useState("");
+  const [voteNotice, setVoteNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
@@ -40,30 +46,54 @@ export default function FeatureRequestsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setError("");
     try {
       const res = await fetch("/api/feature-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description }),
+        body: JSON.stringify({
+          title,
+          description,
+          honeypot,
+          turnstileToken: turnstileToken || undefined,
+        }),
       });
-      if (res.ok) {
-        setTitle("");
-        setDescription("");
-        await load();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || (isEn ? "Could not submit your idea." : "Không thể gửi đề xuất."));
+        setTurnstileReset((n) => n + 1);
+        return;
       }
+      setTitle("");
+      setDescription("");
+      setTurnstileReset((n) => n + 1);
+      await load();
+    } catch {
+      setError(isEn ? "Server connection error." : "Lỗi kết nối máy chủ.");
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleVote = async (id: string) => {
-    const res = await fetch("/api/feature-requests", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    if (res.ok) {
+    setVoteNotice("");
+    try {
+      const res = await fetch("/api/feature-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setVoteNotice(
+          data.error ||
+            (isEn ? "Unable to record your vote right now." : "Không thể bình chọn lúc này.")
+        );
+        return;
+      }
       await load();
+    } catch {
+      setVoteNotice(isEn ? "Server connection error." : "Lỗi kết nối máy chủ.");
     }
   };
 
@@ -82,6 +112,15 @@ export default function FeatureRequestsPage() {
 
       <Card className="p-6">
         <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="text"
+            value={honeypot}
+            onChange={(e) => setHoneypot(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+            className="hidden"
+            aria-hidden="true"
+          />
           <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
             <Lightbulb className="h-4 w-4 text-emerald-600" />
             {isEn ? "Suggest a feature" : "Gửi đề xuất của bạn"}
@@ -102,11 +141,22 @@ export default function FeatureRequestsPage() {
             placeholder={isEn ? "How would this help your IELTS prep?" : "Tính năng này giúp ích thế nào cho việc ôn thi của bạn?"}
             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
           />
+          <TurnstileWidget
+            onToken={setTurnstileToken}
+            resetSignal={turnstileReset}
+          />
+          {error && <p className="text-xs font-medium text-red-600 dark:text-red-400">{error}</p>}
           <Button type="submit" disabled={submitting}>
             {isEn ? "Submit Idea" : "Gửi đề xuất"}
           </Button>
         </form>
       </Card>
+
+      {voteNotice && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          {voteNotice}
+        </p>
+      )}
 
       <div className="space-y-3">
         {items.map((item) => (

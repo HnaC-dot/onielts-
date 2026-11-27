@@ -95,7 +95,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Yêu cầu khác nguồn không hợp lệ." }, { status: 403 });
   }
 
-  const guard = await requireStaff("editor");
+  const guard = await requireStaff("admin");
   if (!guard.ok) return guard.response;
 
   const { module: mod, id } = await context.params;

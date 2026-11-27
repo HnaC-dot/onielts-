@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { verifySameOrigin } from "@/lib/admin-auth";
 import { getCurrentUser } from "@/lib/auth";
 import {
   completeDailyExamAttempt,
@@ -7,6 +8,7 @@ import {
   getDailyExamState,
   startDailyExamAttempt,
 } from "@/lib/db";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 import { gradeObjectiveTest, sanitizeTestForClient } from "@/lib/test-grader";
 import { getVietnamDateString } from "@/lib/utils";
 
@@ -35,6 +37,13 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Nguồn yêu cầu không hợp lệ." },
+      { status: 403 }
+    );
+  }
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json(
@@ -43,6 +52,20 @@ export async function POST(req: Request) {
           "Vui lòng đăng nhập để tham gia Đề thi mỗi ngày và ghi nhận bảng xếp hạng.",
       },
       { status: 401 }
+    );
+  }
+
+  const rate = await checkRateLimit(
+    `daily-exam:${getRequestClientKey(req, user.id)}`,
+    20,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      {
+        error: `Bạn thao tác quá nhanh. Vui lòng thử lại sau ${rate.retryAfterSec} giây.`,
+      },
+      { status: 429 }
     );
   }
 

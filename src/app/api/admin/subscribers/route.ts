@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireStaff, verifySameOrigin } from "@/lib/admin-auth";
+import {
+  maskEmailAddress,
+  recordAuditLog,
+  requireStaff,
+  verifySameOrigin,
+} from "@/lib/admin-auth";
 import {
   deleteNewsletterSubscriber,
   listNewsletterSubscribers,
@@ -10,18 +15,27 @@ import { getVietnamDateString } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const guard = await requireStaff("editor");
-  if (!guard.ok) return guard.response;
-
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "";
   const format = searchParams.get("format") ?? "json";
 
-  const result = await listNewsletterSubscribers({ q });
-
   if (format === "csv") {
+    const adminGuard = await requireStaff("admin");
+    if (!adminGuard.ok) return adminGuard.response;
+
+    const result = await listNewsletterSubscribers({ q });
     const csv = buildSubscribersCsv(result.items);
     const dateStamp = getVietnamDateString();
+
+    await recordAuditLog({
+      actor: adminGuard.user,
+      action: "newsletter_subscriber.export_csv",
+      entityType: "newsletter_subscribers",
+      entityLabel: `CSV (${result.items.length} emails)`,
+      summary: `Xuất danh sách ${result.items.length} email đăng ký nhận bài (CSV${q ? `, lọc="${q}"` : ""})`,
+      metadata: { count: result.items.length, filterQuery: q || null },
+    });
+
     return new NextResponse(csv, {
       status: 200,
       headers: {
@@ -32,18 +46,35 @@ export async function GET(req: Request) {
     });
   }
 
-  return NextResponse.json({
-    items: result.items,
-    total: result.items.length,
-    tableReady: result.tableReady,
-  });
+  const guard = await requireStaff("editor");
+  if (!guard.ok) return guard.response;
+
+  const isAdmin = guard.user.role === "admin";
+  const result = await listNewsletterSubscribers({ q });
+  const items = isAdmin
+    ? result.items
+    : result.items.map((item) => ({
+        ...item,
+        email: maskEmailAddress(item.email),
+      }));
+
+  return NextResponse.json(
+    {
+      items,
+      total: items.length,
+      tableReady: result.tableReady,
+      isAdmin,
+      emailsMasked: !isAdmin,
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 export async function DELETE(req: Request) {
   if (!verifySameOrigin(req)) {
     return NextResponse.json({ error: "Nguồn yêu cầu không hợp lệ." }, { status: 403 });
   }
-  const guard = await requireStaff("editor");
+  const guard = await requireStaff("admin");
   if (!guard.ok) return guard.response;
 
   const { searchParams } = new URL(req.url);

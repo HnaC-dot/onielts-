@@ -407,16 +407,28 @@ describe.skipIf(!DB_URL)(
         expect(cards.rowCount).toBe(0);
       });
 
+      // Migration 0009: learner CANNOT insert a forged completed/scored attempt
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        await expect(
+          client.query(
+            `INSERT INTO public.daily_exam_attempts (daily_exam_id, user_id, display_name, raw_score, is_completed)
+             VALUES ($1, $2, 'Learner A', 9, TRUE)`,
+            [DAILY_EXAM_ID, LEARNER_A]
+          )
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+
+      // Learner CAN start an unscored attempt, and UNIQUE(daily_exam_id, user_id) still blocks duplicates
       await withSessionRole(client, "authenticated", LEARNER_A, async () => {
         await client.query(
-          `INSERT INTO public.daily_exam_attempts (daily_exam_id, user_id, display_name, raw_score, is_completed)
-           VALUES ($1, $2, 'Learner A', 9, TRUE)`,
+          `INSERT INTO public.daily_exam_attempts (daily_exam_id, user_id, display_name, raw_score, band_score, duration_seconds, is_completed)
+           VALUES ($1, $2, 'Learner A', 0, 0, 0, FALSE)`,
           [DAILY_EXAM_ID, LEARNER_A]
         );
         await expect(
           client.query(
-            `INSERT INTO public.daily_exam_attempts (daily_exam_id, user_id, display_name, raw_score, is_completed)
-             VALUES ($1, $2, 'Learner A', 10, TRUE)`,
+            `INSERT INTO public.daily_exam_attempts (daily_exam_id, user_id, display_name, raw_score, band_score, duration_seconds, is_completed)
+             VALUES ($1, $2, 'Learner A', 0, 0, 0, FALSE)`,
             [DAILY_EXAM_ID, LEARNER_A]
           )
         ).rejects.toMatchObject({ code: "23505" });
@@ -439,7 +451,7 @@ describe.skipIf(!DB_URL)(
       });
     });
 
-    it("enforces migration 0005 RBAC: editor manages content but not users/settings, learner cannot self-escalate to editor", async () => {
+    it("enforces migration 0005 & 0009 RBAC: editor manages content but not users/settings/audit logs, learner cannot self-escalate to editor", async () => {
       // Learner cannot self-escalate to editor
       await withSessionRole(client, "authenticated", LEARNER_A, async () => {
         await expect(
@@ -464,7 +476,7 @@ describe.skipIf(!DB_URL)(
         ).rejects.toMatchObject({ code: "42501" });
       });
 
-      // Editor can read draft tests & audit logs, insert media_assets & seo_redirects, but cannot see other profiles
+      // Editor can read draft tests, insert media_assets & seo_redirects, but CANNOT read audit logs or other profiles (Migration 0009)
       await withSessionRole(client, "authenticated", EDITOR_ID, async () => {
         const tests = await client.query(
           "SELECT id FROM public.ielts_tests WHERE id IN ($1, $2)",
@@ -473,7 +485,7 @@ describe.skipIf(!DB_URL)(
         expect(tests.rowCount).toBe(2);
 
         const logs = await client.query("SELECT id FROM public.admin_audit_logs");
-        expect((logs.rowCount ?? 0) >= 1).toBe(true);
+        expect(logs.rowCount).toBe(0);
 
         const profiles = await client.query(
           "SELECT id FROM public.profiles WHERE id IN ($1, $2, $3)",
@@ -684,6 +696,200 @@ describe.skipIf(!DB_URL)(
         await client.query("ROLLBACK");
         throw err;
       }
+    });
+
+    it("enforces Migration 0009 hardening on live PostgreSQL (answer keys, daily exam, profiles, site_settings, PII, promo, flashcards, content visibility, audit logs)", async () => {
+      // Seed fixture rows needed for Migration 0009 checks (as superuser)
+      await client.query(
+        `INSERT INTO public.site_settings (key, value)
+         VALUES
+           ('general', '{"siteName":"On IELTS"}'::jsonb),
+           ('appearance_history', '[{"actor":"admin@secret.vn"}]'::jsonb),
+           ('appearance_draft', '{"draft":true}'::jsonb)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
+      );
+      await client.query(
+        `INSERT INTO public.feature_requests (id, user_id, email, title, description, votes, status)
+         VALUES ('60000000-0000-4000-8000-000000000001', $1, 'private-submitter@example.com', 'Dark Mode', 'Add dark mode support', 5, 'open')
+         ON CONFLICT (id) DO NOTHING`,
+        [LEARNER_A]
+      );
+      await client.query(
+        `INSERT INTO public.pronunciation_sounds (slug, symbol, title_vi, title_en, category, tip_vi, tip_en, is_published)
+         VALUES
+           ('pub-ipa-09', '/i:/', 'Âm i dài', 'Long i', 'vowel', 'Kéo dài âm i', 'Hold the i sound', TRUE),
+           ('draft-ipa-09', '/æ/', 'Âm ae nháp', 'Draft ae', 'vowel', 'Mở miệng rộng', 'Open mouth wide', FALSE)
+         ON CONFLICT (slug) DO UPDATE SET is_published = EXCLUDED.is_published`
+      );
+      await client.query(
+        `INSERT INTO public.blog_posts (slug, title_vi, title_en, excerpt_vi, excerpt_en, content_vi, content_en, category, is_published, status, scheduled_at)
+         VALUES
+           ('pub-blog-09', 'Public Post', 'Public Post', 'Ex', 'Ex', 'Body', 'Body', 'tips', TRUE, 'published', NOW() - INTERVAL '1 day'),
+           ('future-blog-09', 'Future Post', 'Future Post', 'Ex', 'Ex', 'Body', 'Body', 'tips', TRUE, 'scheduled', NOW() + INTERVAL '5 days'),
+           ('draft-blog-09', 'Draft Post', 'Draft Post', 'Ex', 'Ex', 'Body', 'Body', 'tips', TRUE, 'draft', NULL)
+         ON CONFLICT (slug) DO UPDATE SET is_published = EXCLUDED.is_published, status = EXCLUDED.status, scheduled_at = EXCLUDED.scheduled_at`
+      );
+      await client.query(
+        `INSERT INTO public.daily_exam_attempts (daily_exam_id, user_id, display_name, answers, raw_score, max_score, band_score, duration_seconds, is_completed, submitted_at)
+         VALUES ($1, $2, 'Learner A', '{"q1":"TRUE"}'::jsonb, 9, 10, 8.5, 180, TRUE, NOW())
+         ON CONFLICT (daily_exam_id, user_id) DO NOTHING`,
+        [DAILY_EXAM_ID, LEARNER_A]
+      );
+
+      // 1. ielts_tests: anon & authenticated CANNOT read test_data (answer keys), CAN read slug metadata
+      for (const role of ["anon", "authenticated"] as const) {
+        const uid = role === "authenticated" ? LEARNER_A : null;
+        await withSessionRole(client, role, uid, async () => {
+          const meta = await client.query(
+            "SELECT id, slug, title_vi FROM public.ielts_tests WHERE id = $1",
+            [PUB_TEST_ID]
+          );
+          expect(meta.rowCount).toBe(1);
+        });
+        await withSessionRole(client, role, uid, async () => {
+          await expect(
+            client.query("SELECT test_data FROM public.ielts_tests WHERE id = $1", [
+              PUB_TEST_ID,
+            ])
+          ).rejects.toMatchObject({ code: "42501" });
+        });
+      }
+
+      // 2. daily_exam_attempts: Learner B cannot read Learner A's answers, Learner A cannot self-update score,
+      //    and public leaderboard view exposes safe fields without answers/user_id
+      await withSessionRole(client, "authenticated", LEARNER_B, async () => {
+        const snooped = await client.query(
+          "SELECT answers FROM public.daily_exam_attempts WHERE user_id = $1",
+          [LEARNER_A]
+        );
+        expect(snooped.rowCount).toBe(0);
+      });
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        const tampered = await client.query(
+          "UPDATE public.daily_exam_attempts SET raw_score = 40 WHERE user_id = $1 RETURNING id",
+          [LEARNER_A]
+        );
+        expect(tampered.rowCount).toBe(0);
+      });
+      await withSessionRole(client, "anon", null, async () => {
+        const lb = await client.query(
+          "SELECT display_name, raw_score, band_score FROM public.daily_exam_leaderboard_public WHERE daily_exam_id = $1",
+          [DAILY_EXAM_ID]
+        );
+        expect((lb.rowCount ?? 0) >= 1).toBe(true);
+      });
+
+      // 3. profiles: Learner A cannot self-update streak_count, email_verified, or referral_code,
+      //    but CAN still update own full_name
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        await expect(
+          client.query("UPDATE public.profiles SET streak_count = 999 WHERE id = $1", [
+            LEARNER_A,
+          ])
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        await expect(
+          client.query("UPDATE public.profiles SET email_verified = FALSE WHERE id = $1", [
+            LEARNER_A,
+          ])
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        const okUpd = await client.query(
+          "UPDATE public.profiles SET full_name = 'Learner A Updated' WHERE id = $1 RETURNING full_name",
+          [LEARNER_A]
+        );
+        expect(okUpd.rows[0]?.full_name).toBe("Learner A Updated");
+      });
+
+      // 4. site_settings: anon can read 'general' but CANNOT read 'appearance_history' or 'appearance_draft'
+      await withSessionRole(client, "anon", null, async () => {
+        const rows = await client.query(
+          "SELECT key FROM public.site_settings WHERE key IN ('general', 'appearance_history', 'appearance_draft')"
+        );
+        expect(rows.rows.map((r) => r.key)).toEqual(["general"]);
+      });
+
+      // 5. feature_requests: anon can read public columns, CANNOT select email or directly INSERT
+      await withSessionRole(client, "anon", null, async () => {
+        const pub = await client.query(
+          "SELECT id, title, votes, status FROM public.feature_requests WHERE id = '60000000-0000-4000-8000-000000000001'"
+        );
+        expect(pub.rowCount).toBe(1);
+      });
+      await withSessionRole(client, "anon", null, async () => {
+        await expect(
+          client.query("SELECT email FROM public.feature_requests")
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await withSessionRole(client, "anon", null, async () => {
+        await expect(
+          client.query(
+            "INSERT INTO public.feature_requests (title, description) VALUES ('Spam', 'Direct spam bypass')"
+          )
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+
+      // 6. contact_messages & newsletter_subscribers: anon CANNOT directly INSERT
+      await withSessionRole(client, "anon", null, async () => {
+        await expect(
+          client.query(
+            "INSERT INTO public.contact_messages (name, email, subject, message) VALUES ('Bot', 'bot@spam.io', 'Hi', 'Direct PostgREST spam')"
+          )
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await withSessionRole(client, "anon", null, async () => {
+        await expect(
+          client.query(
+            "INSERT INTO public.newsletter_subscribers (email) VALUES ('bot@spam.io')"
+          )
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+
+      // 7. promo_codes: authenticated learner cannot enumerate active promo codes
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        const promos = await client.query("SELECT code FROM public.promo_codes");
+        expect(promos.rowCount).toBe(0);
+      });
+
+      // 8. flashcards: Learner B CANNOT insert a flashcard into Learner A's flashcard_sets
+      await withSessionRole(client, "authenticated", LEARNER_B, async () => {
+        await expect(
+          client.query(
+            `INSERT INTO public.flashcards (set_id, user_id, term, definition_vi)
+             VALUES ($1, $2, 'injected', 'xâm nhập')`,
+            [SET_A_ID, LEARNER_B]
+          )
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+        const ownCard = await client.query(
+          `INSERT INTO public.flashcards (set_id, user_id, term, definition_vi)
+           VALUES ($1, $2, 'legitimate', 'hợp lệ') RETURNING id`,
+          [SET_A_ID, LEARNER_A]
+        );
+        expect(ownCard.rowCount).toBe(1);
+      });
+
+      // 9. pronunciation_sounds & blog_posts: anon only sees published & non-future items
+      await withSessionRole(client, "anon", null, async () => {
+        const ipa = await client.query(
+          "SELECT slug FROM public.pronunciation_sounds WHERE slug IN ('pub-ipa-09', 'draft-ipa-09')"
+        );
+        expect(ipa.rows.map((r) => r.slug)).toEqual(["pub-ipa-09"]);
+
+        const blogs = await client.query(
+          "SELECT slug FROM public.blog_posts WHERE slug IN ('pub-blog-09', 'future-blog-09', 'draft-blog-09')"
+        );
+        expect(blogs.rows.map((r) => r.slug)).toEqual(["pub-blog-09"]);
+      });
+
+      // 10. admin_audit_logs: Admin can SELECT (>=1), Editor gets 0
+      await withSessionRole(client, "authenticated", ADMIN_ID, async () => {
+        const logs = await client.query("SELECT id FROM public.admin_audit_logs");
+        expect((logs.rowCount ?? 0) >= 1).toBe(true);
+      });
     });
   }
 );

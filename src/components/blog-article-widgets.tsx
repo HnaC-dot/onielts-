@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Check, Copy, Mail, Send, Share2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 
 interface BlogShareButtonsProps {
   url: string;
@@ -114,6 +115,9 @@ export function BlogNewsletterBox({
   isEn = false,
 }: BlogNewsletterBoxProps) {
   const [email, setEmail] = useState("");
+  const [honeypot, setHoneypot] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [isError, setIsError] = useState(false);
@@ -136,11 +140,14 @@ export function BlogNewsletterBox({
           email: trimmed,
           source_slug: sourceSlug ?? null,
           locale: isEn ? "en" : "vi",
+          honeypot,
+          turnstileToken: turnstileToken || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         setIsError(true);
+        setTurnstileReset((n) => n + 1);
         setStatusMessage(
           data.error ||
             (isEn
@@ -151,6 +158,7 @@ export function BlogNewsletterBox({
       }
       setSubscribed(true);
       setEmail("");
+      setTurnstileReset((n) => n + 1);
       setStatusMessage(
         data.message ||
           (isEn
@@ -193,6 +201,15 @@ export function BlogNewsletterBox({
           onSubmit={handleSubmit}
           className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[300px]"
         >
+          <input
+            type="text"
+            value={honeypot}
+            onChange={(e) => setHoneypot(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+            className="hidden"
+            aria-hidden="true"
+          />
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="email"
@@ -218,6 +235,11 @@ export function BlogNewsletterBox({
                 : "Đăng ký"}
             </Button>
           </div>
+          <TurnstileWidget
+            onToken={setTurnstileToken}
+            resetSignal={turnstileReset}
+            size="compact"
+          />
           {statusMessage && (
             <p
               className={`text-xs font-medium ${

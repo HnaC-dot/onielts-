@@ -7,6 +7,7 @@ import { CheckCircle2, Crown, Loader2, Mail, Shield, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand-logo";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import {
   createSupabaseBrowserClient,
   isSupabaseClientConfigured,
@@ -61,6 +62,9 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [honeypot, setHoneypot] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
   const [statusMsg, setStatusMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -144,6 +148,7 @@ export default function AuthPage() {
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (honeypot.trim().length > 0) return;
     setLoading(true);
     setErrorMsg("");
     setStatusMsg("");
@@ -156,6 +161,7 @@ export default function AuthPage() {
             options: {
               shouldCreateUser: true,
               emailRedirectTo: buildCallbackUrl(),
+              ...(turnstileToken ? { captchaToken: turnstileToken } : {}),
             },
           });
           if (error) {
@@ -165,9 +171,11 @@ export default function AuthPage() {
                   ? "Could not send sign-in email."
                   : "Không thể gửi email đăng nhập.")
             );
+            setTurnstileReset((n) => n + 1);
             return;
           }
           setOtpSent(true);
+          setTurnstileReset((n) => n + 1);
           setStatusMsg(
             isEn
               ? "Sign-in email sent! Open your inbox and click the sign-in link (or enter the 6-digit OTP code if shown)."
@@ -180,14 +188,21 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_otp", email }),
+        body: JSON.stringify({
+          action: "send_otp",
+          email,
+          honeypot,
+          turnstileToken: turnstileToken || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setErrorMsg(data.error || "Không thể gửi mã OTP");
+        setTurnstileReset((n) => n + 1);
         return;
       }
       setOtpSent(true);
+      setTurnstileReset((n) => n + 1);
       setStatusMsg(data.message || "Đã gửi email đăng nhập.");
     } catch {
       setErrorMsg(isEn ? "Server connection error." : "Lỗi kết nối máy chủ.");
@@ -292,6 +307,15 @@ export default function AuthPage() {
 
         {!otpSent ? (
           <form onSubmit={handleSendOtp} className="space-y-3">
+            <input
+              type="text"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+              className="hidden"
+              aria-hidden="true"
+            />
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {t("emailLabel")}
@@ -308,6 +332,10 @@ export default function AuthPage() {
                 />
               </div>
             </div>
+            <TurnstileWidget
+              onToken={setTurnstileToken}
+              resetSignal={turnstileReset}
+            />
             <Button type="submit" disabled={loading} className="w-full">
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               {t("sendOtp")}

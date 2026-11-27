@@ -4,7 +4,7 @@ import { listAuditLogs, requireStaff } from "@/lib/admin-auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const guard = await requireStaff("editor");
+  const guard = await requireStaff("admin");
   if (!guard.ok) return guard.response;
 
   const { searchParams } = new URL(req.url);

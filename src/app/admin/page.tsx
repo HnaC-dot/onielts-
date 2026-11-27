@@ -97,13 +97,10 @@ const ROADMAP_MODULES = [
 ];
 
 export default async function AdminDashboardPage() {
-  const [authState, summary] = await Promise.all([
-    getAuthState(),
-    getAdminDashboardSummary(),
-  ]);
-
+  const authState = await getAuthState();
   const user = authState.user;
   const isAdmin = user?.role === "admin";
+  const summary = await getAdminDashboardSummary({ includeAdminData: isAdmin });
   const { counts } = summary;
 
   return (
@@ -350,22 +347,34 @@ export default async function AdminDashboardPage() {
 
       {/* Main 2-column area: Recent Audit Logs + CMS Roadmap */}
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* Recent Audit Logs */}
+        {/* Recent Audit Logs (Admin only) */}
         <Card className="p-5 lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-              Nhật ký hoạt động gần đây
+              {isAdmin ? "Nhật ký hoạt động gần đây" : "Không gian biên tập nội dung"}
             </h2>
-            <Link
-              href="/admin/audit"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
-            >
-              Xem tất cả
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            {isAdmin && (
+              <Link
+                href="/admin/audit"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+              >
+                Xem tất cả
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
           </div>
 
-          {summary.recentAuditLogs.length === 0 ? (
+          {!isAdmin ? (
+            <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800 space-y-1.5">
+              <Activity className="mx-auto h-5 w-5 opacity-40" />
+              <p className="font-semibold text-slate-700 dark:text-slate-300">
+                Quyền Biên tập viên (Editor)
+              </p>
+              <p>
+                Bạn có thể tạo &amp; cập nhật đề thi, blog, khóa học và lịch nội dung. Nhật ký quản trị hệ thống và thao tác xóa vĩnh viễn chỉ dành cho Admin.
+              </p>
+            </div>
+          ) : summary.recentAuditLogs.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
               <Activity className="mx-auto mb-2 h-5 w-5 opacity-40" />
               Chưa có hoạt động quản trị nào được ghi lại. Mọi thao tác thêm/sửa trên CMS sẽ tự động lưu tại đây.

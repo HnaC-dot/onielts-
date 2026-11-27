@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { verifySameOrigin } from "@/lib/admin-auth";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getBandConversionTables,
   getIeltsTestBySlug,
   saveTestAttempt,
 } from "@/lib/db";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 import { gradeObjectiveTest } from "@/lib/test-grader";
 import { getVietnamDateString } from "@/lib/utils";
 
@@ -16,7 +18,29 @@ const submitSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Nguồn yêu cầu không hợp lệ." },
+      { status: 403 }
+    );
+  }
+
   try {
+    const user = await getCurrentUser();
+    const rate = await checkRateLimit(
+      `test-submit:${getRequestClientKey(req, user?.id)}`,
+      20,
+      60_000
+    );
+    if (!rate.allowed) {
+      return NextResponse.json(
+        {
+          error: `Bạn nộp bài quá nhanh. Vui lòng thử lại sau ${rate.retryAfterSec} giây.`,
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const parsed = submitSchema.safeParse(body);
     if (!parsed.success) {
@@ -26,7 +50,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await getCurrentUser();
     const isStaff = Boolean(
       user && (user.role === "admin" || user.role === "editor") && !user.is_locked
     );

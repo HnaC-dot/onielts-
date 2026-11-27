@@ -1107,7 +1107,12 @@ export async function getDailyExamState(vnDate: string, userId: string | null) {
       : null;
     const leaderboard = store.daily_exam_attempts
       .filter((a) => a.exam_date === vnDate && a.is_completed)
-      .sort((a, b) => b.raw_score - a.raw_score || a.duration_seconds - b.duration_seconds);
+      .sort((a, b) => b.raw_score - a.raw_score || a.duration_seconds - b.duration_seconds)
+      .map((a) => ({
+        ...a,
+        user_id: isValidUuid(a.user_id) ? "" : a.user_id,
+        answers: {},
+      }));
     return {
       dailyTest,
       durationSeconds,
@@ -1165,30 +1170,40 @@ export async function getDailyExamState(vnDate: string, userId: string | null) {
 
   const { data: lbRows } = await sb
     .from("daily_exam_attempts")
-    .select("*")
+    .select(
+      "id, display_name, started_at, submitted_at, raw_score, max_score, band_score, duration_seconds, is_completed"
+    )
     .eq("daily_exam_id", dailyExamId)
     .eq("is_completed", true)
     .order("raw_score", { ascending: false })
     .order("duration_seconds", { ascending: true })
     .limit(50);
 
-  const mapRow = (r: Record<string, unknown>): DailyExamAttempt => ({
+  const mapLeaderboardRow = (r: Record<string, unknown>): DailyExamAttempt => ({
     id: String(r.id),
     exam_date: vnDate,
     test_slug: dailyTest.slug,
-    user_id: String(r.user_id),
+    user_id: "",
     display_name: String(r.display_name ?? "Học viên"),
-    started_at: String(r.started_at),
+    started_at: String(r.started_at ?? ""),
     submitted_at: r.submitted_at ? String(r.submitted_at) : null,
-    answers: (r.answers as Record<string, string>) ?? {},
+    answers: {},
     raw_score: Number(r.raw_score ?? 0),
-    max_score: maxScore,
+    max_score: Number(r.max_score ?? maxScore) || maxScore,
     band_score: Number(r.band_score ?? 0),
     duration_seconds: Number(r.duration_seconds ?? 0),
     is_completed: Boolean(r.is_completed),
   });
 
-  const leaderboard = (lbRows ?? []).map((r) => mapRow(r as Record<string, unknown>));
+  const mapOwnRow = (r: Record<string, unknown>): DailyExamAttempt => ({
+    ...mapLeaderboardRow(r),
+    user_id: String(r.user_id ?? ""),
+    answers: (r.answers as Record<string, string>) ?? {},
+  });
+
+  const leaderboard = (lbRows ?? []).map((r) =>
+    mapLeaderboardRow(r as Record<string, unknown>)
+  );
 
   let existingAttempt: DailyExamAttempt | null = null;
   if (isValidUuid(userId)) {
@@ -1199,7 +1214,7 @@ export async function getDailyExamState(vnDate: string, userId: string | null) {
       .eq("user_id", userId)
       .maybeSingle();
     if (ownRow) {
-      existingAttempt = mapRow(ownRow as Record<string, unknown>);
+      existingAttempt = mapOwnRow(ownRow as Record<string, unknown>);
     }
   }
 
@@ -2994,52 +3009,98 @@ export async function getFlashcardsForUser(userId: string | null): Promise<{
   if (!isSupabaseConfigured()) {
     const store = readStore();
     const uid = userId ?? "demo-free-001";
-    const sets = store.flashcard_sets.filter((s) => s.user_id === uid || s.is_public);
+    const sets = store.flashcard_sets
+      .filter((s) => s.user_id === uid || s.is_public)
+      .map((s) => ({
+        ...s,
+        user_id: s.user_id === uid ? s.user_id : "public",
+      }));
     const allowedSetIds = new Set(sets.map((s) => s.id));
-    const cards = store.flashcards.filter(
-      (c) => c.user_id === uid || allowedSetIds.has(c.set_id)
-    );
+    const cards = store.flashcards
+      .filter((c) => c.user_id === uid || allowedSetIds.has(c.set_id))
+      .map((c) => ({
+        ...c,
+        user_id: c.user_id === uid ? c.user_id : "public",
+      }));
     return { sets, cards };
   }
 
   const sb = await createSupabaseServerClient();
   if (!sb) return { sets: [], cards: [] };
 
-  const { data: setRows } = await sb
+  const hasValidUser = isValidUuid(userId);
+  let setQuery = sb
     .from("flashcard_sets")
     .select("*")
     .order("created_at", { ascending: false });
 
-  const { data: cardRows } = await sb
-    .from("flashcards")
-    .select("*")
-    .order("created_at", { ascending: false });
+  if (hasValidUser) {
+    setQuery = setQuery.or(`user_id.eq.${userId},is_public.eq.true`);
+  } else {
+    setQuery = setQuery.eq("is_public", true);
+  }
 
-  const sets: FlashcardSet[] = (setRows ?? []).map((s) => ({
-    id: String(s.id),
-    user_id: String(s.user_id),
-    title: String(s.title),
-    description: String(s.description ?? ""),
-    is_public: Boolean(s.is_public),
-    created_at: String(s.created_at),
-  }));
+  const { data: setRows } = await setQuery;
 
-  const cards: FlashcardItem[] = (cardRows ?? []).map((c) => ({
-    id: String(c.id),
-    set_id: String(c.set_id),
-    user_id: String(c.user_id),
-    term: String(c.term),
-    phonetic: String(c.phonetic ?? ""),
-    part_of_speech: String(c.part_of_speech ?? ""),
-    definition_vi: String(c.definition_vi),
-    definition_en: String(c.definition_en ?? ""),
-    example_sentence: String(c.example_sentence ?? ""),
-    ease_factor: Number(c.ease_factor ?? 2.5),
-    interval_days: Number(c.interval_days ?? 0),
-    repetitions: Number(c.repetitions ?? 0),
-    next_review_at: String(c.next_review_at),
-    created_at: String(c.created_at),
-  }));
+  const sets: FlashcardSet[] = (setRows ?? []).map((s) => {
+    const ownerId = String(s.user_id);
+    return {
+      id: String(s.id),
+      user_id: hasValidUser && ownerId === userId ? ownerId : "public",
+      title: String(s.title),
+      description: String(s.description ?? ""),
+      is_public: Boolean(s.is_public),
+      created_at: String(s.created_at),
+    };
+  });
+
+  const allowedSetIds = sets.map((s) => s.id);
+  let cardRows: Record<string, unknown>[] = [];
+  if (allowedSetIds.length > 0 || hasValidUser) {
+    let cardQuery = sb
+      .from("flashcards")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (hasValidUser && allowedSetIds.length > 0) {
+      cardQuery = cardQuery.or(
+        `user_id.eq.${userId},set_id.in.(${allowedSetIds.join(",")})`
+      );
+    } else if (hasValidUser) {
+      cardQuery = cardQuery.eq("user_id", userId);
+    } else {
+      cardQuery = cardQuery.in("set_id", allowedSetIds);
+    }
+
+    const { data } = await cardQuery;
+    cardRows = (data ?? []) as Record<string, unknown>[];
+  }
+
+  const allowedSetIdSet = new Set(allowedSetIds);
+  const cards: FlashcardItem[] = cardRows
+    .filter((c) => {
+      const ownerId = String(c.user_id);
+      return (hasValidUser && ownerId === userId) || allowedSetIdSet.has(String(c.set_id));
+    })
+    .map((c) => {
+      const ownerId = String(c.user_id);
+      return {
+        id: String(c.id),
+        set_id: String(c.set_id),
+        user_id: hasValidUser && ownerId === userId ? ownerId : "public",
+        term: String(c.term),
+        phonetic: String(c.phonetic ?? ""),
+        part_of_speech: String(c.part_of_speech ?? ""),
+        definition_vi: String(c.definition_vi),
+        definition_en: String(c.definition_en ?? ""),
+        example_sentence: String(c.example_sentence ?? ""),
+        ease_factor: Number(c.ease_factor ?? 2.5),
+        interval_days: Number(c.interval_days ?? 0),
+        repetitions: Number(c.repetitions ?? 0),
+        next_review_at: String(c.next_review_at),
+        created_at: String(c.created_at),
+      };
+    });
 
   return { sets, cards };
 }
@@ -3060,7 +3121,7 @@ export async function createFlashcardItem(
   if (!isSupabaseConfigured()) {
     const uid = userId ?? "demo-free-001";
     return updateStore((store) => {
-      let targetSetId = data.set_id;
+      let targetSetId: string | undefined;
       if (data.new_set_title && data.new_set_title.length > 0) {
         const newSet: FlashcardSet = {
           id: `set-${Date.now()}`,
@@ -3072,7 +3133,16 @@ export async function createFlashcardItem(
         };
         store.flashcard_sets.unshift(newSet);
         targetSetId = newSet.id;
-      } else if (!targetSetId || !store.flashcard_sets.some((s) => s.id === targetSetId)) {
+      } else if (data.set_id && data.set_id.trim().length > 0) {
+        // Strictly verify caller owns the target flashcard set (prevents cross-user IDOR)
+        const ownedSet = store.flashcard_sets.find(
+          (s) => s.id === data.set_id && s.user_id === uid
+        );
+        if (!ownedSet) {
+          return null;
+        }
+        targetSetId = ownedSet.id;
+      } else {
         const firstOwned = store.flashcard_sets.find((s) => s.user_id === uid);
         if (firstOwned) {
           targetSetId = firstOwned.id;
@@ -3115,7 +3185,7 @@ export async function createFlashcardItem(
   const sb = await createSupabaseServerClient();
   if (!sb) return null;
 
-  let targetSetId = isValidUuid(data.set_id) ? data.set_id : null;
+  let targetSetId: string | null = null;
 
   if (data.new_set_title && data.new_set_title.length > 0) {
     const { data: createdSet } = await sb
@@ -3129,6 +3199,17 @@ export async function createFlashcardItem(
       .select("id")
       .single();
     targetSetId = createdSet?.id ? String(createdSet.id) : null;
+  } else if (data.set_id && data.set_id.trim().length > 0) {
+    if (!isValidUuid(data.set_id)) return null;
+    // Strictly verify caller owns the target flashcard set (prevents cross-user set_id IDOR)
+    const { data: ownedSet } = await sb
+      .from("flashcard_sets")
+      .select("id")
+      .eq("id", data.set_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!ownedSet?.id) return null;
+    targetSetId = String(ownedSet.id);
   }
 
   if (!targetSetId) {
@@ -3210,10 +3291,7 @@ export async function reviewFlashcardItem(
     const uid = userId ?? "demo-free-001";
     return updateStore((store) => {
       const card = store.flashcards.find(
-        (c) =>
-          c.id === cardId &&
-          (c.user_id === uid ||
-            store.flashcard_sets.some((s) => s.id === c.set_id && s.is_public))
+        (c) => c.id === cardId && c.user_id === uid
       );
       if (!card) return null;
       const next = computeNextSm2(card, quality);
@@ -3402,12 +3480,18 @@ export async function toggleCourseLessonProgress(params: {
         };
         store.course_progress.push(prog);
       }
-      const set = new Set(prog.completed_lesson_ids);
+      const validLessonIds = new Set(course.lessons.map((l) => l.id));
+      if (!validLessonIds.has(params.lessonId)) return null;
+      const set = new Set(prog.completed_lesson_ids.filter((id) => validLessonIds.has(id)));
       if (params.completed) set.add(params.lessonId);
       else set.delete(params.lessonId);
       prog.completed_lesson_ids = [...set];
-      prog.progress_percent = Math.round(
-        (prog.completed_lesson_ids.length / Math.max(1, course.lessons.length)) * 100
+      prog.progress_percent = Math.min(
+        100,
+        Math.max(
+          0,
+          Math.round((prog.completed_lesson_ids.length / Math.max(1, course.lessons.length)) * 100)
+        )
       );
       prog.updated_at = new Date().toISOString();
       return prog;
@@ -3424,7 +3508,16 @@ export async function toggleCourseLessonProgress(params: {
     .eq("id", params.courseId)
     .maybeSingle();
   if (!courseRow) return null;
-  const totalLessons = Array.isArray(courseRow.lessons) ? courseRow.lessons.length : 1;
+  const rawLessons = Array.isArray(courseRow.lessons)
+    ? (courseRow.lessons as Array<{ id?: unknown }>)
+    : [];
+  const validLessonIds = new Set(
+    rawLessons.map((l) => (l && typeof l.id === "string" ? l.id : "")).filter(Boolean)
+  );
+  if (validLessonIds.size > 0 && !validLessonIds.has(params.lessonId)) {
+    return null;
+  }
+  const totalLessons = Math.max(1, validLessonIds.size || rawLessons.length || 1);
 
   const { data: existing } = await sb
     .from("course_progress")
@@ -3435,13 +3528,18 @@ export async function toggleCourseLessonProgress(params: {
 
   const set = new Set<string>(
     Array.isArray(existing?.completed_lesson_ids)
-      ? (existing.completed_lesson_ids as string[])
+      ? (existing.completed_lesson_ids as string[]).filter(
+          (id) => validLessonIds.size === 0 || validLessonIds.has(id)
+        )
       : []
   );
   if (params.completed) set.add(params.lessonId);
   else set.delete(params.lessonId);
   const completedIds = [...set];
-  const progressPercent = Math.round((completedIds.length / Math.max(1, totalLessons)) * 100);
+  const progressPercent = Math.min(
+    100,
+    Math.max(0, Math.round((completedIds.length / totalLessons) * 100))
+  );
 
   const { data: saved } = await sb
     .from("course_progress")
@@ -3883,7 +3981,7 @@ export async function getFeatureRequests(): Promise<FeatureRequestItem[]> {
   if (!sb) return DEFAULT_FEATURE_REQUESTS;
   const { data } = await sb
     .from("feature_requests")
-    .select("*")
+    .select("id, title, description, votes, status, created_at")
     .order("votes", { ascending: false })
     .order("created_at", { ascending: false });
   if (!data) return [];
@@ -3917,7 +4015,9 @@ export async function createFeatureRequest(input: {
       return created;
     });
   }
-  const sb = (await createSupabaseServerClient()) ?? createSupabaseAdminClient();
+  // Insert via service_role after server-side rate-limit & bot-protection checks
+  // (Migration 0009 revokes direct anon INSERT to block PostgREST spam bypass)
+  const sb = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
   if (!sb) throw new Error("Database unavailable");
   const { data, error } = await sb
     .from("feature_requests")
@@ -3929,7 +4029,7 @@ export async function createFeatureRequest(input: {
       votes: 1,
       status: "open",
     })
-    .select("*")
+    .select("id, title, description, votes, status, created_at")
     .single();
   if (error || !data) throw new Error(error?.message || "Cannot create feature request");
   return {
@@ -3956,7 +4056,7 @@ export async function voteFeatureRequest(id: string): Promise<FeatureRequestItem
   if (!admin) return null;
   const { data: curr } = await admin
     .from("feature_requests")
-    .select("*")
+    .select("id, votes")
     .eq("id", id)
     .maybeSingle();
   if (!curr) return null;
@@ -3964,7 +4064,7 @@ export async function voteFeatureRequest(id: string): Promise<FeatureRequestItem
     .from("feature_requests")
     .update({ votes: Number(curr.votes ?? 0) + 1 })
     .eq("id", id)
-    .select("*")
+    .select("id, title, description, votes, status, created_at")
     .single();
   if (!updated) return null;
   return {
@@ -3998,7 +4098,8 @@ export async function createContactMessage(input: {
       return msg;
     });
   }
-  const sb = (await createSupabaseServerClient()) ?? createSupabaseAdminClient();
+  // Insert via service_role so .select().single() succeeds cleanly under RLS (non-admins have no SELECT on contact_messages)
+  const sb = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
   if (!sb) throw new Error("Database unavailable");
   const { data, error } = await sb
     .from("contact_messages")
@@ -4009,7 +4110,7 @@ export async function createContactMessage(input: {
       message: input.message,
       status: "new",
     })
-    .select("*")
+    .select("id, name, email, subject, message, status, created_at")
     .single();
   if (error || !data) throw new Error(error?.message || "Cannot save contact message");
   return {

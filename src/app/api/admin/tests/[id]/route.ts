@@ -102,7 +102,7 @@ export async function DELETE(
       { status: 403 }
     );
   }
-  const guard = await requireStaff("editor");
+  const guard = await requireStaff("admin");
   if (!guard.ok) return guard.response;
 
   const { id } = await context.params;

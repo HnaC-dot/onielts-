@@ -167,13 +167,17 @@ export function resetInMemoryRateLimitForTests(): void {
   warnedProdMemoryFallback = false;
 }
 
-export function getRequestClientKey(req: Request, userId?: string | null): string {
-  if (userId) return `u:${userId}`;
-  const trustedIp =
+export function getRequestIp(req: Request): string {
+  return (
     req.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
     req.headers.get("cf-connecting-ip")?.trim() ||
     req.headers.get("x-real-ip")?.trim() ||
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "local";
-  return `ip:${trustedIp}`;
+    "local"
+  );
+}
+
+export function getRequestClientKey(req: Request, userId?: string | null): string {
+  if (userId) return `u:${userId}`;
+  return `ip:${getRequestIp(req)}`;
 }

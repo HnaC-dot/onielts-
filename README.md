@@ -74,6 +74,7 @@ Run the SQL migrations in **exact ascending order** inside **Supabase → SQL Ed
 6. `supabase/migrations/0006_progress_analytics.sql` — Adds `test_attempt_answers` and composite indexes for `/progress` analytics & `/admin/analytics`.
 7. `supabase/migrations/0007_content_production.sql` — Adds `content_calendar_items`, `newsletter_subscribers`, and `blog_posts.updated_at`.
 8. `supabase/migrations/0008_payments_ai_safety.sql` — Adds `orders.duration_months`, `order_code_seq`, atomic PayOS RPCs (`create_checkout_order_atomic`, `fulfill_paid_order_atomic`), `ai_usage_logs` reservation columns (`actor_key`, `quota_bucket`, `status`), and advisory-locked `reserve_ai_quota_atomic` RPC.
+9. `supabase/migrations/0009_security_rls_hardening.sql` — Hardens column grants and RLS across `ielts_tests` (hides `test_data` from `anon`/`authenticated`), `daily_exam_attempts` (anti-cheating score lock + safe leaderboard view), `profiles` (locks streak/referral/verification columns), `site_settings` (whitelist public keys), `feature_requests`/`contact_messages`/`newsletter_subscribers` (service-role write only, hides PII columns), `promo_codes`, `flashcards` (set ownership check), `pronunciation_sounds`, `blog_posts`, `admin_audit_logs` (admin-only SELECT), and `cms-media` Storage (admin-only direct writes).
 
 ### Running Real RLS Integration Tests
 
@@ -144,7 +145,7 @@ Never auto-grant admin in application code. To promote an account to `admin`:
 ## 7. Vercel Deploy Checklist
 
 - [ ] All required environment variables set for **Production** (and **Preview** if desired), with zero server secrets prefixed with `NEXT_PUBLIC_`.
-- [ ] All 4 Supabase SQL migrations (`0001`–`0004`) executed in order.
+- [ ] All 9 Supabase SQL migrations (`0001`–`0009`) executed in order.
 - [ ] Google OAuth Client ID/Secret saved in Supabase and `https://<domain>/auth/callback**` added to Supabase **Redirect URLs**.
 - [ ] Upstash Redis (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) configured for distributed production rate limiting.
 - [ ] Redeploy triggered after any env var change.

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { verifySameOrigin } from "@/lib/admin-auth";
+import { verifyBotProtection } from "@/lib/bot-protection";
 import { subscribeNewsletterEmail } from "@/lib/cms-content-production";
-import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  getRequestClientKey,
+  getRequestIp,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +29,20 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Dữ liệu đăng ký không hợp lệ." }, { status: 400 });
+  }
+
+  const rawBody = body as Record<string, unknown>;
+  const botCheck = await verifyBotProtection({
+    turnstileToken:
+      typeof rawBody.turnstileToken === "string" ? rawBody.turnstileToken : undefined,
+    honeypot: typeof rawBody.honeypot === "string" ? rawBody.honeypot : undefined,
+    remoteIp: getRequestIp(req),
+  });
+  if (!botCheck.passed) {
+    return NextResponse.json(
+      { error: botCheck.reason || "Xác minh chống bot không thành công." },
+      { status: 400 }
+    );
   }
 
   const res = await subscribeNewsletterEmail(body);

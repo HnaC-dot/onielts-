@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { verifySameOrigin } from "@/lib/admin-auth";
 import { getCurrentUser } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import {
   getUserWritingSubmissions,
   toggleWritingSubmissionPrivacy,
 } from "@/lib/db";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
 const togglePrivacySchema = z.object({
   id: z.string().min(1),
@@ -14,17 +16,36 @@ const togglePrivacySchema = z.object({
 
 export async function GET() {
   const user = await getCurrentUser();
-  const submissions = await getUserWritingSubmissions(
-    user?.id ?? null,
-    user?.role === "admin"
-  );
+  // Always scope personal endpoint to caller's own submissions (never dump other users' private essays)
+  const submissions = await getUserWritingSubmissions(user?.id ?? null, false);
   return NextResponse.json({ submissions });
 }
 
 export async function PATCH(req: Request) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { error: "Nguồn yêu cầu không hợp lệ." },
+      { status: 403 }
+    );
+  }
+
   const user = await getCurrentUser();
   if (isSupabaseConfigured() && !user) {
     return NextResponse.json({ error: "Vui lòng đăng nhập." }, { status: 401 });
+  }
+
+  const rate = await checkRateLimit(
+    `writing-privacy:${getRequestClientKey(req, user?.id)}`,
+    30,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      {
+        error: `Bạn thao tác quá nhanh. Vui lòng thử lại sau ${rate.retryAfterSec} giây.`,
+      },
+      { status: 429 }
+    );
   }
 
   try {

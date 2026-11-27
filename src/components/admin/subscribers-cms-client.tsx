@@ -13,11 +13,13 @@ import { Badge } from "@/components/ui/badge";
 interface SubscribersCmsClientProps {
   initialItems: NewsletterSubscriber[];
   initialTableReady: boolean;
+  isAdmin?: boolean;
 }
 
 export function SubscribersCmsClient({
   initialItems,
   initialTableReady,
+  isAdmin = false,
 }: SubscribersCmsClientProps) {
   const toast = useAdminToast();
   const [items, setItems] = useState<NewsletterSubscriber[]>(initialItems);
@@ -102,6 +104,9 @@ export function SubscribersCmsClient({
               />
             </div>
             <Badge variant="secondary">Tổng: {filtered.length} email</Badge>
+            {!isAdmin && (
+              <Badge variant="outline">Chế độ ẩn email (Chỉ Admin xuất CSV/xóa)</Badge>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -115,12 +120,14 @@ export function SubscribersCmsClient({
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               Tải lại
             </Button>
-            <a href={exportUrl} download>
-              <Button type="button" size="sm" disabled={filtered.length === 0}>
-                <Download className="h-3.5 w-3.5" />
-                Xuất danh sách CSV ({filtered.length})
-              </Button>
-            </a>
+            {isAdmin && (
+              <a href={exportUrl} download>
+                <Button type="button" size="sm" disabled={filtered.length === 0}>
+                  <Download className="h-3.5 w-3.5" />
+                  Xuất danh sách CSV ({filtered.length})
+                </Button>
+              </a>
+            )}
           </div>
         </div>
       </Card>
@@ -134,13 +141,18 @@ export function SubscribersCmsClient({
                 <th className="px-4 py-3 font-semibold">Bài viết nguồn</th>
                 <th className="px-4 py-3 font-semibold">Ngôn ngữ</th>
                 <th className="px-4 py-3 font-semibold">Ngày đăng ký</th>
-                <th className="px-4 py-3 font-semibold text-right">Thao tác</th>
+                {isAdmin && (
+                  <th className="px-4 py-3 font-semibold text-right">Thao tác</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
+                  <td
+                    colSpan={isAdmin ? 5 : 4}
+                    className="px-4 py-12 text-center text-slate-500"
+                  >
                     <Mail className="mx-auto mb-2 h-6 w-6 opacity-40" />
                     Chưa có email đăng ký nhận bài viết nào.
                   </td>
@@ -175,18 +187,20 @@ export function SubscribersCmsClient({
                         timeZone: "Asia/Ho_Chi_Minh",
                       })}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDeleteTarget(sub)}
-                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                        aria-label={`Xóa ${sub.email}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </td>
+                    {isAdmin && (
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(sub)}
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                          aria-label={`Xóa ${sub.email}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

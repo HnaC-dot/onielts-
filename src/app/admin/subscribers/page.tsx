@@ -1,6 +1,8 @@
 import React from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays } from "lucide-react";
+import { maskEmailAddress } from "@/lib/admin-auth";
+import { getAuthState } from "@/lib/auth";
 import { listNewsletterSubscribers } from "@/lib/cms-content-production";
 import { SubscribersCmsClient } from "@/components/admin/subscribers-cms-client";
 import { Button } from "@/components/ui/button";
@@ -11,7 +13,17 @@ export const metadata = {
 };
 
 export default async function AdminSubscribersPage() {
-  const initial = await listNewsletterSubscribers();
+  const [authState, initial] = await Promise.all([
+    getAuthState(),
+    listNewsletterSubscribers(),
+  ]);
+  const isAdmin = authState.user?.role === "admin";
+  const initialItems = isAdmin
+    ? initial.items
+    : initial.items.map((item) => ({
+        ...item,
+        email: maskEmailAddress(item.email),
+      }));
 
   return (
     <div className="space-y-5">
@@ -28,7 +40,10 @@ export default async function AdminSubscribersPage() {
             Danh sách Email đăng ký nhận bài mới
           </h1>
           <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-            Thu thập tự động từ form &ldquo;Đăng ký nhận bài mới qua email&rdquo; ở cuối các bài viết Blog. Hỗ trợ tìm kiếm và xuất file CSV chuẩn Excel.
+            Thu thập tự động từ form &ldquo;Đăng ký nhận bài mới qua email&rdquo; ở cuối các bài viết Blog.
+            {isAdmin
+              ? " Hỗ trợ tìm kiếm và xuất file CSV chuẩn Excel."
+              : " Tài khoản Editor xem email ở chế độ ẩn một phần; chỉ Admin có quyền xuất CSV và xóa."}
           </p>
         </div>
 
@@ -41,8 +56,9 @@ export default async function AdminSubscribersPage() {
       </div>
 
       <SubscribersCmsClient
-        initialItems={initial.items}
+        initialItems={initialItems}
         initialTableReady={initial.tableReady}
+        isAdmin={isAdmin}
       />
     </div>
   );
