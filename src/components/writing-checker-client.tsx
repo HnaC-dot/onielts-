@@ -132,7 +132,7 @@ export function WritingCheckerClient({
           chartImageName: taskType === "academic_t1" ? chartName : undefined,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.status === 402 || data.limitReached) {
         if (data.usage) setUsage(data.usage);
         setPaywallOpen(true);
@@ -156,15 +156,23 @@ export function WritingCheckerClient({
 
   const handleTogglePrivacy = async (sub: WritingSubmission) => {
     const nextPublic = !sub.is_public;
-    const res = await fetch("/api/writing/submissions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: sub.id, is_public: nextPublic }),
-    });
-    if (res.ok) {
+    setError("");
+    try {
+      const res = await fetch("/api/writing/submissions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sub.id, is_public: nextPublic }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Không thể cập nhật quyền riêng tư bài viết.");
+        return;
+      }
       const updated = { ...sub, is_public: nextPublic };
       setActiveSubmission(updated);
       setSubmissions((prev) => prev.map((s) => (s.id === sub.id ? updated : s)));
+    } catch {
+      setError("Lỗi kết nối máy chủ khi cập nhật quyền riêng tư.");
     }
   };
 

@@ -33,6 +33,7 @@ export function FlashcardsClient({
   const [reviewMode, setReviewMode] = useState(false);
   const [reviewIdx, setReviewIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const visibleCards = useMemo(
     () =>
@@ -43,43 +44,85 @@ export function FlashcardsClient({
   );
 
   const refreshCards = async () => {
-    const res = await fetch("/api/flashcards");
-    if (res.ok) {
-      const d = await res.json();
-      setSets(d.sets ?? []);
-      setCards(d.cards ?? []);
+    try {
+      const res = await fetch("/api/flashcards");
+      if (res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSets(d.sets ?? []);
+        setCards(d.cards ?? []);
+        setActionError("");
+      }
+    } catch {
+      setActionError(
+        isEn
+          ? "Could not refresh flashcards. Please try again."
+          : "Không thể tải lại danh sách thẻ. Vui lòng thử lại."
+      );
     }
   };
 
   const handleGrade = async (quality: 1 | 3 | 4 | 5) => {
     const card = visibleCards[reviewIdx];
     if (!card) return;
-    const res = await fetch("/api/flashcards/review", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cardId: card.id, quality }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setCards((prev) => prev.map((c) => (c.id === card.id ? data.card : c)));
-    }
-    setFlipped(false);
-    if (reviewIdx + 1 < visibleCards.length) {
-      setReviewIdx(reviewIdx + 1);
-    } else {
-      setReviewMode(false);
-      setReviewIdx(0);
+    setActionError("");
+    try {
+      const res = await fetch("/api/flashcards/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId: card.id, quality }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(
+          data.error ||
+            (isEn
+              ? "Could not save review progress."
+              : "Không thể lưu kết quả ôn tập. Vui lòng thử lại.")
+        );
+        return;
+      }
+      if (data.card) {
+        setCards((prev) => prev.map((c) => (c.id === card.id ? data.card : c)));
+      }
+      setFlipped(false);
+      if (reviewIdx + 1 < visibleCards.length) {
+        setReviewIdx(reviewIdx + 1);
+      } else {
+        setReviewMode(false);
+        setReviewIdx(0);
+      }
+    } catch {
+      setActionError(
+        isEn
+          ? "Network error while saving review."
+          : "Lỗi kết nối máy chủ khi lưu tiến độ ôn thẻ."
+      );
     }
   };
 
   const handleDelete = async (cardId: string) => {
-    const res = await fetch("/api/flashcards/review", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cardId }),
-    });
-    if (res.ok) {
+    setActionError("");
+    try {
+      const res = await fetch("/api/flashcards/review", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(
+          data.error ||
+            (isEn ? "Could not delete flashcard." : "Không thể xóa thẻ lúc này.")
+        );
+        return;
+      }
       setCards((prev) => prev.filter((c) => c.id !== cardId));
+    } catch {
+      setActionError(
+        isEn
+          ? "Network error while deleting flashcard."
+          : "Lỗi kết nối máy chủ khi xóa thẻ."
+      );
     }
   };
 
@@ -87,6 +130,14 @@ export function FlashcardsClient({
 
   return (
     <div className="space-y-6">
+      {actionError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+        >
+          {actionError}
+        </div>
+      )}
       {/* Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">

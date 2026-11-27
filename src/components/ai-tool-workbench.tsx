@@ -73,7 +73,7 @@ export function AiToolWorkbench({ tool, allTools }: AiToolWorkbenchProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input: input.trim(), options }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || "Không thể xử lý yêu cầu.");
         return;
@@ -107,9 +107,17 @@ export function AiToolWorkbench({ tool, allTools }: AiToolWorkbenchProps) {
 
   const handleCopy = async () => {
     if (!output) return;
-    await navigator.clipboard.writeText(output.resultText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await navigator.clipboard.writeText(output.resultText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError(
+        isEn
+          ? "Could not access clipboard. Please select and copy manually."
+          : "Không thể truy cập clipboard. Vui lòng bôi đen và sao chép thủ công."
+      );
+    }
   };
 
   const clearHistory = () => {

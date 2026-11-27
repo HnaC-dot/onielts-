@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import {
   createSupabaseAdminClient,
   createSupabaseServerClient,
@@ -772,65 +773,149 @@ const HIDDEN_LEGACY_DEMO_SLUGS = new Set(["custom-reading-demo-04"]);
 function isHiddenIncompleteDemoTest(test: IeltsTest): boolean {
   if (!HIDDEN_LEGACY_DEMO_SLUGS.has(test.slug)) return false;
   if (test.skill === "reading" || test.skill === "listening") {
-    const actualQ = test.sections.reduce((s, sec) => s + sec.questions.length, 0);
+    const actualQ =
+      test.sections.length > 0
+        ? test.sections.reduce((s, sec) => s + sec.questions.length, 0)
+        : test.questionCount;
     return actualQ < 40;
   }
   return false;
 }
 
-export async function getIeltsTests(includeUnpublished = false): Promise<IeltsTest[]> {
-  if (!isSupabaseConfigured()) {
-    const list = readStore().ielts_tests;
-    return includeUnpublished
-      ? list
-      : list.filter((t) => t.is_published && !isHiddenIncompleteDemoTest(t));
-  }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return FULL_SEED_TESTS;
-
-  let query = sb.from("ielts_tests").select("*").order("created_at", { ascending: true });
-  if (!includeUnpublished) {
-    query = query.eq("is_published", true);
-  }
-  const { data, error } = await query;
-  if (error || !data || data.length === 0) return FULL_SEED_TESTS;
-  const mapped = data.map((row) => mapTestRow(row as Record<string, unknown>));
-  return includeUnpublished
-    ? mapped
-    : mapped.filter((t) => !isHiddenIncompleteDemoTest(t));
+function mapTestSummaryRow(row: Record<string, unknown>): IeltsTest {
+  const rawSeo = row.seo_meta;
+  return {
+    id: String(row.id),
+    slug: String(row.slug),
+    skill: row.skill as IeltsTest["skill"],
+    module: (row.module as IeltsTest["module"]) ?? "academic",
+    title_vi: String(row.title_vi ?? ""),
+    title_en: String(row.title_en ?? row.title_vi ?? ""),
+    description_vi: String(row.description_vi ?? ""),
+    description_en: String(row.description_en ?? ""),
+    duration_minutes: Number(row.duration_minutes ?? 60),
+    difficulty: (row.difficulty as IeltsTest["difficulty"]) ?? "band_6_7",
+    questionCount: Number(row.question_count ?? 0),
+    is_published: Boolean(row.is_published),
+    is_daily_eligible: Boolean(row.is_daily_eligible),
+    is_premium: Boolean(row.is_premium),
+    seo_meta:
+      rawSeo && typeof rawSeo === "object"
+        ? (rawSeo as SeoMeta)
+        : {},
+    sections: [],
+    created_at: String(row.created_at ?? new Date().toISOString()),
+  };
 }
+
+const getIeltsTestSummariesCached = cache(
+  async (includeUnpublished: boolean): Promise<IeltsTest[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().ielts_tests;
+      return includeUnpublished
+        ? list
+        : list.filter((t) => t.is_published && !isHiddenIncompleteDemoTest(t));
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return FULL_SEED_TESTS;
+
+    let query = sb
+      .from("ielts_tests")
+      .select(
+        "id, slug, skill, module, title_vi, title_en, description_vi, description_en, duration_minutes, difficulty, is_published, is_daily_eligible, is_premium, seo_meta, created_at, question_count:test_data->>questionCount"
+      )
+      .order("created_at", { ascending: true });
+    if (!includeUnpublished) {
+      query = query.eq("is_published", true);
+    }
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) return FULL_SEED_TESTS;
+    const mapped = data.map((row) => mapTestSummaryRow(row as Record<string, unknown>));
+    return includeUnpublished
+      ? mapped
+      : mapped.filter((t) => !isHiddenIncompleteDemoTest(t));
+  }
+);
+
+/**
+ * Lightweight catalog listing for Homepage, /tests, /sitemap.xml, and /api/search.
+ * Reads metadata + `test_data->>questionCount` WITHOUT pulling megabytes of passages/questions JSONB.
+ */
+export async function getIeltsTestSummaries(
+  includeUnpublished = false
+): Promise<IeltsTest[]> {
+  return getIeltsTestSummariesCached(Boolean(includeUnpublished));
+}
+
+const getIeltsTestsCached = cache(
+  async (includeUnpublished: boolean): Promise<IeltsTest[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().ielts_tests;
+      return includeUnpublished
+        ? list
+        : list.filter((t) => t.is_published && !isHiddenIncompleteDemoTest(t));
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return FULL_SEED_TESTS;
+
+    let query = sb
+      .from("ielts_tests")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (!includeUnpublished) {
+      query = query.eq("is_published", true);
+    }
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) return FULL_SEED_TESTS;
+    const mapped = data.map((row) => mapTestRow(row as Record<string, unknown>));
+    return includeUnpublished
+      ? mapped
+      : mapped.filter((t) => !isHiddenIncompleteDemoTest(t));
+  }
+);
+
+export async function getIeltsTests(includeUnpublished = false): Promise<IeltsTest[]> {
+  return getIeltsTestsCached(Boolean(includeUnpublished));
+}
+
+const getIeltsTestBySlugCached = cache(
+  async (slug: string, includeUnpublished: boolean): Promise<IeltsTest | null> => {
+    if (!isSupabaseConfigured()) {
+      const found = readStore().ielts_tests.find((t) => t.slug === slug) ?? null;
+      if (!found) return null;
+      if (!includeUnpublished && (!found.is_published || isHiddenIncompleteDemoTest(found))) {
+        return null;
+      }
+      return found;
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return FULL_SEED_TESTS.find((t) => t.slug === slug) ?? null;
+
+    const { data } = await sb
+      .from("ielts_tests")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (!data) {
+      return FULL_SEED_TESTS.find((t) => t.slug === slug) ?? null;
+    }
+    const mapped = mapTestRow(data as Record<string, unknown>);
+    if (!includeUnpublished && (!mapped.is_published || isHiddenIncompleteDemoTest(mapped))) {
+      return null;
+    }
+    return mapped;
+  }
+);
 
 export async function getIeltsTestBySlug(
   slug: string,
   includeUnpublished = false
 ): Promise<IeltsTest | null> {
-  if (!isSupabaseConfigured()) {
-    const found = readStore().ielts_tests.find((t) => t.slug === slug) ?? null;
-    if (!found) return null;
-    if (!includeUnpublished && (!found.is_published || isHiddenIncompleteDemoTest(found))) {
-      return null;
-    }
-    return found;
-  }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return FULL_SEED_TESTS.find((t) => t.slug === slug) ?? null;
-
-  const { data } = await sb
-    .from("ielts_tests")
-    .select("*")
-    .eq("slug", slug)
-    .maybeSingle();
-
-  if (!data) {
-    return FULL_SEED_TESTS.find((t) => t.slug === slug) ?? null;
-  }
-  const mapped = mapTestRow(data as Record<string, unknown>);
-  if (!includeUnpublished && (!mapped.is_published || isHiddenIncompleteDemoTest(mapped))) {
-    return null;
-  }
-  return mapped;
+  return getIeltsTestBySlugCached(slug, Boolean(includeUnpublished));
 }
 
 export async function adminToggleTestPublish(id: string, is_published: boolean): Promise<void> {
@@ -1156,12 +1241,12 @@ async function ensureDailyExamRow(vnDate: string, test: IeltsTest): Promise<stri
 }
 
 export async function getDailyExamState(vnDate: string, userId: string | null) {
-  const tests = await getIeltsTests(false);
-  let dailyTest = pickDailySprintTest(tests, vnDate);
   let durationSeconds = 900;
   let isExplicitlyScheduled = false;
 
   if (!isSupabaseConfigured()) {
+    const tests = await getIeltsTests(false);
+    const dailyTest = pickDailySprintTest(tests, vnDate);
     const store = readStore();
     const existingAttempt = userId
       ? store.daily_exam_attempts.find(
@@ -1188,6 +1273,7 @@ export async function getDailyExamState(vnDate: string, userId: string | null) {
   await ensureSupabaseCatalogSeeded();
   const sb = await getReadSupabase();
   let dailyExamId: string | null = null;
+  let dailyTest: IeltsTest | null = null;
 
   if (sb) {
     const { data: scheduledRow } = await sb
@@ -1200,18 +1286,56 @@ export async function getDailyExamState(vnDate: string, userId: string | null) {
       dailyExamId = String(scheduledRow.id);
       isExplicitlyScheduled = true;
       durationSeconds = Number(scheduledRow.duration_seconds ?? 900) || 900;
-      const scheduledTest = tests.find((t) => t.id === String(scheduledRow.test_id));
-      if (scheduledTest && scheduledTest.sections.length > 0) {
-        const firstSection = scheduledTest.sections[0];
-        dailyTest = {
-          ...scheduledTest,
-          title_vi: String(scheduledRow.title_vi || scheduledTest.title_vi),
-          title_en: String(scheduledRow.title_en || scheduledTest.title_en),
-          duration_minutes: Math.max(5, Math.round(durationSeconds / 60)),
-          questionCount: firstSection.questions.length,
-          sections: [firstSection],
-        };
+      if (scheduledRow.test_id) {
+        const { data: scheduledTestRow } = await sb
+          .from("ielts_tests")
+          .select("*")
+          .eq("id", String(scheduledRow.test_id))
+          .maybeSingle();
+        if (scheduledTestRow) {
+          const scheduledTest = mapTestRow(scheduledTestRow as Record<string, unknown>);
+          if (scheduledTest.sections.length > 0) {
+            const firstSection = scheduledTest.sections[0];
+            dailyTest = {
+              ...scheduledTest,
+              title_vi: String(scheduledRow.title_vi || scheduledTest.title_vi),
+              title_en: String(scheduledRow.title_en || scheduledTest.title_en),
+              duration_minutes: Math.max(5, Math.round(durationSeconds / 60)),
+              questionCount: firstSection.questions.length,
+              sections: [firstSection],
+            };
+          }
+        }
       }
+    }
+  }
+
+  if (!dailyTest) {
+    const summaries = await getIeltsTestSummaries(false);
+    const eligible = summaries.filter(
+      (t) =>
+        t.is_published &&
+        t.is_daily_eligible &&
+        (t.skill === "reading" || t.skill === "listening") &&
+        t.questionCount > 0
+    );
+    const pool =
+      eligible.length > 0
+        ? eligible
+        : summaries.filter(
+            (t) =>
+              (t.skill === "reading" || t.skill === "listening") &&
+              t.questionCount > 0
+          );
+    const dayNum = Number(vnDate.replace(/-/g, "")) || 1;
+    const chosenSummary = pool.length > 0 ? pool[dayNum % pool.length] : null;
+    const chosenFull = chosenSummary
+      ? await getIeltsTestBySlug(chosenSummary.slug, false)
+      : null;
+    if (chosenFull && chosenFull.sections.length > 0) {
+      dailyTest = pickDailySprintTest([chosenFull], vnDate);
+    } else {
+      dailyTest = pickDailySprintTest(await getIeltsTests(false), vnDate);
     }
   }
 
@@ -3448,26 +3572,32 @@ export async function deleteFlashcardItem(
 // =============================================================================
 // 10. COURSES & PROGRESS
 // =============================================================================
-export async function getCourses(includeUnpublished = false): Promise<CourseItem[]> {
-  if (!isSupabaseConfigured()) {
-    const list = readStore().courses;
-    return includeUnpublished ? list : list.filter((c) => c.is_published);
-  }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return DEFAULT_COURSES;
+const getCoursesCached = cache(
+  async (includeUnpublished: boolean): Promise<CourseItem[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().courses;
+      return includeUnpublished ? list : list.filter((c) => c.is_published);
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return DEFAULT_COURSES;
 
-  let query = sb
-    .from("courses")
-    .select("*")
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-  if (!includeUnpublished) {
-    query = query.eq("is_published", true);
+    let query = sb
+      .from("courses")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (!includeUnpublished) {
+      query = query.eq("is_published", true);
+    }
+    const { data } = await query;
+    if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_COURSES;
+    return data.map((r) => mapCourseRow(r as Record<string, unknown>));
   }
-  const { data } = await query;
-  if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_COURSES;
-  return data.map((r) => mapCourseRow(r as Record<string, unknown>));
+);
+
+export async function getCourses(includeUnpublished = false): Promise<CourseItem[]> {
+  return getCoursesCached(Boolean(includeUnpublished));
 }
 
 export async function getCourseBySlug(
@@ -3669,25 +3799,31 @@ function mapDbBlogPost(p: Record<string, unknown>): BlogPost {
   };
 }
 
-export async function getBlogPosts(includeUnpublished = false): Promise<BlogPost[]> {
-  if (!isSupabaseConfigured()) {
-    const list = readStore().blog_posts;
-    return includeUnpublished ? list : list.filter((p) => isBlogPostPubliclyVisible(p));
+const getBlogPostsCached = cache(
+  async (includeUnpublished: boolean): Promise<BlogPost[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().blog_posts;
+      return includeUnpublished ? list : list.filter((p) => isBlogPostPubliclyVisible(p));
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return DEFAULT_BLOG_POSTS;
+
+    const { data } = await sb
+      .from("blog_posts")
+      .select("*")
+      .order("published_at", { ascending: false });
+    if (!data || data.length === 0) return DEFAULT_BLOG_POSTS;
+
+    const mapped = data.map((p) => mapDbBlogPost(p as Record<string, unknown>));
+    return includeUnpublished
+      ? mapped
+      : mapped.filter((p) => isBlogPostPubliclyVisible(p));
   }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return DEFAULT_BLOG_POSTS;
+);
 
-  const { data } = await sb
-    .from("blog_posts")
-    .select("*")
-    .order("published_at", { ascending: false });
-  if (!data || data.length === 0) return DEFAULT_BLOG_POSTS;
-
-  const mapped = data.map((p) => mapDbBlogPost(p as Record<string, unknown>));
-  return includeUnpublished
-    ? mapped
-    : mapped.filter((p) => isBlogPostPubliclyVisible(p));
+export async function getBlogPosts(includeUnpublished = false): Promise<BlogPost[]> {
+  return getBlogPostsCached(Boolean(includeUnpublished));
 }
 
 export async function getBlogPostBySlug(
@@ -3772,49 +3908,61 @@ export async function adminCreateBlogPost(input: {
   });
 }
 
+const getDictationLessonsCached = cache(
+  async (includeUnpublished: boolean): Promise<DictationLesson[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().dictation_lessons;
+      return includeUnpublished ? list : list.filter((d) => d.is_published !== false);
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return DEFAULT_DICTATION_LESSONS;
+    let query = sb
+      .from("dictation_lessons")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (!includeUnpublished) {
+      query = query.eq("is_published", true);
+    }
+    const { data } = await query;
+    if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_DICTATION_LESSONS;
+    return data.map((d) => mapDictationRow(d as Record<string, unknown>));
+  }
+);
+
 export async function getDictationLessons(
   includeUnpublished = false
 ): Promise<DictationLesson[]> {
-  if (!isSupabaseConfigured()) {
-    const list = readStore().dictation_lessons;
-    return includeUnpublished ? list : list.filter((d) => d.is_published !== false);
-  }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return DEFAULT_DICTATION_LESSONS;
-  let query = sb
-    .from("dictation_lessons")
-    .select("*")
-    .order("created_at", { ascending: true });
-  if (!includeUnpublished) {
-    query = query.eq("is_published", true);
-  }
-  const { data } = await query;
-  if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_DICTATION_LESSONS;
-  return data.map((d) => mapDictationRow(d as Record<string, unknown>));
+  return getDictationLessonsCached(Boolean(includeUnpublished));
 }
+
+const getPronunciationSoundsCached = cache(
+  async (includeUnpublished: boolean): Promise<PronunciationSound[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().pronunciation_sounds;
+      return includeUnpublished ? list : list.filter((s) => s.is_published !== false);
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return DEFAULT_IPA_SOUNDS;
+
+    let query = sb
+      .from("pronunciation_sounds")
+      .select("*")
+      .order("sort_order", { ascending: true });
+    if (!includeUnpublished) {
+      query = query.eq("is_published", true);
+    }
+    const { data } = await query;
+    if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_IPA_SOUNDS;
+    return data.map((row) => mapPronunciationRow(row as Record<string, unknown>));
+  }
+);
 
 export async function getPronunciationSounds(
   includeUnpublished = false
 ): Promise<PronunciationSound[]> {
-  if (!isSupabaseConfigured()) {
-    const list = readStore().pronunciation_sounds;
-    return includeUnpublished ? list : list.filter((s) => s.is_published !== false);
-  }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return DEFAULT_IPA_SOUNDS;
-
-  let query = sb
-    .from("pronunciation_sounds")
-    .select("*")
-    .order("sort_order", { ascending: true });
-  if (!includeUnpublished) {
-    query = query.eq("is_published", true);
-  }
-  const { data } = await query;
-  if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_IPA_SOUNDS;
-  return data.map((row) => mapPronunciationRow(row as Record<string, unknown>));
+  return getPronunciationSoundsCached(Boolean(includeUnpublished));
 }
 
 export async function getPronunciationSoundBySlug(
@@ -3846,24 +3994,30 @@ export async function getPronunciationSoundBySlug(
   return mapped;
 }
 
+const getLearnVideosCached = cache(
+  async (includeUnpublished: boolean): Promise<LearnVideo[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().learn_videos;
+      return includeUnpublished ? list : list.filter((v) => v.is_published !== false);
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return DEFAULT_LEARN_VIDEOS;
+    let query = sb
+      .from("learn_videos")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!includeUnpublished) {
+      query = query.eq("is_published", true);
+    }
+    const { data } = await query;
+    if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_LEARN_VIDEOS;
+    return data.map((v) => mapVideoRow(v as Record<string, unknown>));
+  }
+);
+
 export async function getLearnVideos(includeUnpublished = false): Promise<LearnVideo[]> {
-  if (!isSupabaseConfigured()) {
-    const list = readStore().learn_videos;
-    return includeUnpublished ? list : list.filter((v) => v.is_published !== false);
-  }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return DEFAULT_LEARN_VIDEOS;
-  let query = sb
-    .from("learn_videos")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (!includeUnpublished) {
-    query = query.eq("is_published", true);
-  }
-  const { data } = await query;
-  if (!data || data.length === 0) return includeUnpublished ? [] : DEFAULT_LEARN_VIDEOS;
-  return data.map((v) => mapVideoRow(v as Record<string, unknown>));
+  return getLearnVideosCached(Boolean(includeUnpublished));
 }
 
 export async function getLearnVideoBySlug(
@@ -3895,56 +4049,68 @@ export async function getLearnVideoBySlug(
   return mapped;
 }
 
+const getWritingExercisesCached = cache(
+  async (includeUnpublished: boolean): Promise<WritingExercise[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().writing_exercises;
+      return includeUnpublished ? list : list.filter((w) => w.status !== "draft");
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return DEFAULT_WRITING_EXERCISES;
+
+    let query = sb
+      .from("writing_exercises")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (!includeUnpublished) {
+      query = query.eq("status", "published");
+    }
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) {
+      return includeUnpublished ? [] : DEFAULT_WRITING_EXERCISES;
+    }
+    return data.map((row) => mapWritingExerciseRow(row as Record<string, unknown>));
+  }
+);
+
 export async function getWritingExercises(
   includeUnpublished = false
 ): Promise<WritingExercise[]> {
-  if (!isSupabaseConfigured()) {
-    const list = readStore().writing_exercises;
-    return includeUnpublished ? list : list.filter((w) => w.status !== "draft");
-  }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return DEFAULT_WRITING_EXERCISES;
-
-  let query = sb
-    .from("writing_exercises")
-    .select("*")
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-  if (!includeUnpublished) {
-    query = query.eq("status", "published");
-  }
-  const { data, error } = await query;
-  if (error || !data || data.length === 0) {
-    return includeUnpublished ? [] : DEFAULT_WRITING_EXERCISES;
-  }
-  return data.map((row) => mapWritingExerciseRow(row as Record<string, unknown>));
+  return getWritingExercisesCached(Boolean(includeUnpublished));
 }
+
+const getConversationTopicsCached = cache(
+  async (includeUnpublished: boolean): Promise<ConversationTopic[]> => {
+    if (!isSupabaseConfigured()) {
+      const list = readStore().conversation_topics;
+      return includeUnpublished ? list : list.filter((c) => c.status !== "draft");
+    }
+    await ensureSupabaseCatalogSeeded();
+    const sb = await getReadSupabase();
+    if (!sb) return DEFAULT_CONVERSATION_TOPICS;
+
+    let query = sb
+      .from("conversation_topics")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (!includeUnpublished) {
+      query = query.eq("status", "published");
+    }
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) {
+      return includeUnpublished ? [] : DEFAULT_CONVERSATION_TOPICS;
+    }
+    return data.map((row) => mapConversationRow(row as Record<string, unknown>));
+  }
+);
 
 export async function getConversationTopics(
   includeUnpublished = false
 ): Promise<ConversationTopic[]> {
-  if (!isSupabaseConfigured()) {
-    const list = readStore().conversation_topics;
-    return includeUnpublished ? list : list.filter((c) => c.status !== "draft");
-  }
-  await ensureSupabaseCatalogSeeded();
-  const sb = await getReadSupabase();
-  if (!sb) return DEFAULT_CONVERSATION_TOPICS;
-
-  let query = sb
-    .from("conversation_topics")
-    .select("*")
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-  if (!includeUnpublished) {
-    query = query.eq("status", "published");
-  }
-  const { data, error } = await query;
-  if (error || !data || data.length === 0) {
-    return includeUnpublished ? [] : DEFAULT_CONVERSATION_TOPICS;
-  }
-  return data.map((row) => mapConversationRow(row as Record<string, unknown>));
+  return getConversationTopicsCached(Boolean(includeUnpublished));
 }
 
 export async function getConversationTopicBySlug(

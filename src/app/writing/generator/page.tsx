@@ -43,7 +43,7 @@ export default function WritingGeneratorPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskType, topic, stance }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.status === 402 || data.limitReached) {
         setPaywallOpen(true);
         return;
@@ -158,9 +158,17 @@ export default function WritingGeneratorPage() {
                 variant="outline"
                 size="sm"
                 onClick={async () => {
-                  await navigator.clipboard.writeText(sample.sampleEssay);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
+                  try {
+                    await navigator.clipboard.writeText(sample.sampleEssay);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  } catch {
+                    setError(
+                      isEn
+                        ? "Could not access clipboard."
+                        : "Không thể truy cập clipboard. Vui lòng sao chép thủ công."
+                    );
+                  }
                 }}
               >
                 {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}

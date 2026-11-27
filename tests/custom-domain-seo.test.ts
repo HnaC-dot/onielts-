@@ -202,7 +202,7 @@ describe("Custom Domain Readiness & Technical SEO", () => {
       path.join(root, "src/app/sitemap.ts"),
       "utf8"
     );
-    expect(sitemapSrc).toContain("getIeltsTests(false)");
+    expect(sitemapSrc).toContain("getIeltsTestSummaries(false)");
     expect(sitemapSrc).toContain("getCourses(false)");
     expect(sitemapSrc).toContain("?lesson=");
     expect(sitemapSrc).toContain("getDictationLessons(false)");

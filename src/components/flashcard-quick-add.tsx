@@ -46,7 +46,7 @@ export function GlobalFlashcardModal() {
     try {
       const res = await fetch("/api/flashcards");
       if (!res.ok) return;
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       const loaded: FlashcardSetOption[] = data.sets ?? [];
       setSets(loaded);
       setSelectedSetId((prev) => prev || loaded[0]?.id || "__new__");
@@ -183,7 +183,7 @@ export function GlobalFlashcardModal() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const d = await res.json();
+        const d = await res.json().catch(() => ({}));
         setErrorMsg(d.error || "Lưu thất bại");
         return;
       }

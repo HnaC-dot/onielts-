@@ -2,14 +2,14 @@ import React from "react";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, BookOpen, Clock, Headphones, Mic, PenTool } from "lucide-react";
-import { getIeltsTests } from "@/lib/db";
+import { getIeltsTestSummaries } from "@/lib/db";
 import { computeTestCounts } from "@/lib/platform-stats";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export async function generateMetadata() {
-  const published = await getIeltsTests(false);
+  const published = await getIeltsTestSummaries(false);
   const c = computeTestCounts(published);
   return buildPublicPageMetadata({
     title: `Kho ${c.publishedTestCount} đề luyện thi IELTS chuẩn máy tính (4 kỹ năng)`,
@@ -34,7 +34,7 @@ export default async function TestsCatalogPage({
   const [locale, params, published] = await Promise.all([
     getLocale(),
     searchParams,
-    getIeltsTests(false),
+    getIeltsTestSummaries(false),
   ]);
   const isEn = locale === "en";
   const selectedSkill = params.skill ?? "all";

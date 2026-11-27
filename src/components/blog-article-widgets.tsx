@@ -144,7 +144,7 @@ export function BlogNewsletterBox({
           turnstileToken: turnstileToken || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setIsError(true);
         setTurnstileReset((n) => n + 1);

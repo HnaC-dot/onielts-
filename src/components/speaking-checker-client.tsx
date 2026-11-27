@@ -175,7 +175,7 @@ export function SpeakingCheckerClient({
           transcriptHint: overrideTranscript ?? (transcriptHint.trim() || undefined),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.status === 402 || data.limitReached) {
         if (data.usage) setUsage(data.usage);
         setPaywallOpen(true);

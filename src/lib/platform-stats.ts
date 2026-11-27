@@ -1,11 +1,12 @@
 import "server-only";
+import { cache } from "react";
 import { GENERAL_AI_TOOLS } from "./ai-tools-config";
 import {
   getBlogPosts,
   getConversationTopics,
   getCourses,
   getDictationLessons,
-  getIeltsTests,
+  getIeltsTestSummaries,
   getLearnVideos,
   getPronunciationSounds,
   getWritingExercises,
@@ -49,7 +50,10 @@ export function computeTestCounts(tests: IeltsTest[]) {
     else if (t.skill === "speaking") speakingTestCount += 1;
 
     if (t.skill === "reading" || t.skill === "listening") {
-      const qCount = t.sections.reduce((sum, s) => sum + s.questions.length, 0);
+      const qCount =
+        t.sections.length > 0
+          ? t.sections.reduce((sum, s) => sum + s.questions.length, 0)
+          : Math.max(0, Number(t.questionCount ?? 0));
       totalObjectiveQuestions += qCount;
       if (qCount > maxObjectiveQuestionsPerTest) {
         maxObjectiveQuestionsPerTest = qCount;
@@ -68,7 +72,7 @@ export function computeTestCounts(tests: IeltsTest[]) {
   };
 }
 
-export async function getPlatformCounts(): Promise<PlatformCounts> {
+export const getPlatformCounts = cache(async (): Promise<PlatformCounts> => {
   const [
     tests,
     courses,
@@ -79,7 +83,7 @@ export async function getPlatformCounts(): Promise<PlatformCounts> {
     conversations,
     writingExercises,
   ] = await Promise.all([
-    getIeltsTests(false),
+    getIeltsTestSummaries(false),
     getCourses(false),
     getPronunciationSounds(false),
     getLearnVideos(false),
@@ -105,4 +109,4 @@ export async function getPlatformCounts(): Promise<PlatformCounts> {
     conversationCount: conversations.length,
     writingExerciseCount: writingExercises.length,
   };
-}
+});

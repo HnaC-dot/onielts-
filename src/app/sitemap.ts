@@ -4,7 +4,7 @@ import {
   getConversationTopics,
   getCourses,
   getDictationLessons,
-  getIeltsTests,
+  getIeltsTestSummaries,
   getLearnVideos,
   getPronunciationSounds,
   getWritingExercises,
@@ -40,7 +40,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPages,
   ] = await Promise.all([
     getSiteSeoSettings(),
-    getIeltsTests(false).catch(() => []),
+    getIeltsTestSummaries(false).catch(() => []),
     getCourses(false).catch(() => []),
     getPronunciationSounds(false).catch(() => []),
     getDictationLessons(false).catch(() => []),

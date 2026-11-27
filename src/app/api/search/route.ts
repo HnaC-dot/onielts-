@@ -4,7 +4,7 @@ import {
   getConversationTopics,
   getCourses,
   getDictationLessons,
-  getIeltsTests,
+  getIeltsTestSummaries,
   getLearnVideos,
   getPronunciationSounds,
 } from "@/lib/db";
@@ -40,7 +40,7 @@ async function getSearchCatalog(): Promise<SearchCatalogEntry[]> {
 
   const [tests, courses, sounds, conversations, dictations, videos, posts] =
     await Promise.all([
-      getIeltsTests(false),
+      getIeltsTestSummaries(false),
       getCourses(),
       getPronunciationSounds(),
       getConversationTopics(false),

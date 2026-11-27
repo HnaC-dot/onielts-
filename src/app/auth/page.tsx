@@ -195,7 +195,7 @@ export default function AuthPage() {
           turnstileToken: turnstileToken || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErrorMsg(data.error || "Không thể gửi mã OTP");
         setTurnstileReset((n) => n + 1);
@@ -221,7 +221,7 @@ export default function AuthPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "verify_otp", email, code: otpCode }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErrorMsg(data.error || "Mã OTP không hợp lệ");
         return;
@@ -245,7 +245,7 @@ export default function AuthPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "demo_switch", userId }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErrorMsg(data.error || "Chế độ dùng thử không khả dụng.");
         return;

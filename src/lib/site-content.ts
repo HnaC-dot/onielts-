@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import {
   createSupabaseAdminClient,
   createSupabaseServerClient,
@@ -127,59 +128,63 @@ export function mapFaqRow(row: Record<string, unknown>): FaqItem {
   };
 }
 
-export async function getSiteGeneralSettings(): Promise<SiteGeneralSettings> {
-  if (!isSupabaseConfigured()) {
-    return {
-      ...DEFAULT_SITE_GENERAL_SETTINGS,
-      ...(readStore().site_settings?.general ?? {}),
-    };
-  }
-  try {
-    const sb = await getReadSb();
-    if (!sb) return DEFAULT_SITE_GENERAL_SETTINGS;
-    const { data, error } = await sb
-      .from("site_settings")
-      .select("value")
-      .eq("key", "general")
-      .maybeSingle();
-    if (error || !data?.value || typeof data.value !== "object") {
+export const getSiteGeneralSettings = cache(
+  async (): Promise<SiteGeneralSettings> => {
+    if (!isSupabaseConfigured()) {
+      return {
+        ...DEFAULT_SITE_GENERAL_SETTINGS,
+        ...(readStore().site_settings?.general ?? {}),
+      };
+    }
+    try {
+      const sb = await getReadSb();
+      if (!sb) return DEFAULT_SITE_GENERAL_SETTINGS;
+      const { data, error } = await sb
+        .from("site_settings")
+        .select("value")
+        .eq("key", "general")
+        .maybeSingle();
+      if (error || !data?.value || typeof data.value !== "object") {
+        return DEFAULT_SITE_GENERAL_SETTINGS;
+      }
+      return {
+        ...DEFAULT_SITE_GENERAL_SETTINGS,
+        ...(data.value as Partial<SiteGeneralSettings>),
+      };
+    } catch {
       return DEFAULT_SITE_GENERAL_SETTINGS;
     }
-    return {
-      ...DEFAULT_SITE_GENERAL_SETTINGS,
-      ...(data.value as Partial<SiteGeneralSettings>),
-    };
-  } catch {
-    return DEFAULT_SITE_GENERAL_SETTINGS;
   }
-}
+);
 
-export async function getReferralConfig(): Promise<ReferralConfigSettings> {
-  if (!isSupabaseConfigured()) {
-    return {
-      ...DEFAULT_REFERRAL_CONFIG,
-      ...(readStore().site_settings?.referral ?? {}),
-    };
-  }
-  try {
-    const sb = await getReadSb();
-    if (!sb) return DEFAULT_REFERRAL_CONFIG;
-    const { data, error } = await sb
-      .from("site_settings")
-      .select("value")
-      .eq("key", "referral")
-      .maybeSingle();
-    if (error || !data?.value || typeof data.value !== "object") {
+export const getReferralConfig = cache(
+  async (): Promise<ReferralConfigSettings> => {
+    if (!isSupabaseConfigured()) {
+      return {
+        ...DEFAULT_REFERRAL_CONFIG,
+        ...(readStore().site_settings?.referral ?? {}),
+      };
+    }
+    try {
+      const sb = await getReadSb();
+      if (!sb) return DEFAULT_REFERRAL_CONFIG;
+      const { data, error } = await sb
+        .from("site_settings")
+        .select("value")
+        .eq("key", "referral")
+        .maybeSingle();
+      if (error || !data?.value || typeof data.value !== "object") {
+        return DEFAULT_REFERRAL_CONFIG;
+      }
+      return {
+        ...DEFAULT_REFERRAL_CONFIG,
+        ...(data.value as Partial<ReferralConfigSettings>),
+      };
+    } catch {
       return DEFAULT_REFERRAL_CONFIG;
     }
-    return {
-      ...DEFAULT_REFERRAL_CONFIG,
-      ...(data.value as Partial<ReferralConfigSettings>),
-    };
-  } catch {
-    return DEFAULT_REFERRAL_CONFIG;
   }
-}
+);
 
 export async function getStaticPageBySlug(
   slug: string,
@@ -264,32 +269,34 @@ export function mapSeoRedirectRow(row: Record<string, unknown>): SeoRedirectItem
   };
 }
 
-export async function getSiteSeoSettings(): Promise<SiteSeoSettings> {
-  if (!isSupabaseConfigured()) {
-    return {
-      ...DEFAULT_SITE_SEO_SETTINGS,
-      ...(readStore().site_settings?.seo ?? {}),
-    };
-  }
-  try {
-    const sb = await getReadSb();
-    if (!sb) return DEFAULT_SITE_SEO_SETTINGS;
-    const { data, error } = await sb
-      .from("site_settings")
-      .select("value")
-      .eq("key", "seo")
-      .maybeSingle();
-    if (error || !data?.value || typeof data.value !== "object") {
+export const getSiteSeoSettings = cache(
+  async (): Promise<SiteSeoSettings> => {
+    if (!isSupabaseConfigured()) {
+      return {
+        ...DEFAULT_SITE_SEO_SETTINGS,
+        ...(readStore().site_settings?.seo ?? {}),
+      };
+    }
+    try {
+      const sb = await getReadSb();
+      if (!sb) return DEFAULT_SITE_SEO_SETTINGS;
+      const { data, error } = await sb
+        .from("site_settings")
+        .select("value")
+        .eq("key", "seo")
+        .maybeSingle();
+      if (error || !data?.value || typeof data.value !== "object") {
+        return DEFAULT_SITE_SEO_SETTINGS;
+      }
+      return {
+        ...DEFAULT_SITE_SEO_SETTINGS,
+        ...(data.value as Partial<SiteSeoSettings>),
+      };
+    } catch {
       return DEFAULT_SITE_SEO_SETTINGS;
     }
-    return {
-      ...DEFAULT_SITE_SEO_SETTINGS,
-      ...(data.value as Partial<SiteSeoSettings>),
-    };
-  } catch {
-    return DEFAULT_SITE_SEO_SETTINGS;
   }
-}
+);
 
 export async function listPublicStaticPages(): Promise<StaticPageItem[]> {
   if (!isSupabaseConfigured()) {

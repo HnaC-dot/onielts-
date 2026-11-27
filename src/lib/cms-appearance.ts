@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import {
@@ -151,13 +152,44 @@ async function buildHydratedFallback(): Promise<SiteAppearanceConfig> {
   return base;
 }
 
-export async function getPublishedAppearance(): Promise<SiteAppearanceConfig> {
-  const raw = await readSettingValue<Partial<SiteAppearanceConfig>>(KEY_PUBLISHED);
-  if (!raw) {
-    return buildHydratedFallback();
+export const getPublishedAppearance = cache(
+  async (): Promise<SiteAppearanceConfig> => {
+    const raw = await readSettingValue<Partial<SiteAppearanceConfig>>(KEY_PUBLISHED);
+    if (!raw) {
+      return buildHydratedFallback();
+    }
+    return mergeAppearanceWithDefaults(raw);
   }
-  return mergeAppearanceWithDefaults(raw);
-}
+);
+
+const getEffectiveAppearanceCached = cache(
+  async (
+    isAdmin: boolean
+  ): Promise<{
+    config: SiteAppearanceConfig;
+    isPreviewingDraft: boolean;
+  }> => {
+    if (isAdmin) {
+      try {
+        const cookieStore = await cookies();
+        if (cookieStore.get(APPEARANCE_PREVIEW_COOKIE)?.value === "1") {
+          const draftRaw =
+            await readSettingValue<Partial<SiteAppearanceConfig>>(KEY_DRAFT);
+          if (draftRaw) {
+            return {
+              config: mergeAppearanceWithDefaults(draftRaw),
+              isPreviewingDraft: true,
+            };
+          }
+        }
+      } catch {
+        // outside request scope (e.g. build/tests)
+      }
+    }
+    const published = await getPublishedAppearance();
+    return { config: published, isPreviewingDraft: false };
+  }
+);
 
 /**
  * Returns the draft config ONLY when an authenticated Admin has enabled preview mode
@@ -167,25 +199,7 @@ export async function getEffectiveAppearance(isAdmin: boolean): Promise<{
   config: SiteAppearanceConfig;
   isPreviewingDraft: boolean;
 }> {
-  if (isAdmin) {
-    try {
-      const cookieStore = await cookies();
-      if (cookieStore.get(APPEARANCE_PREVIEW_COOKIE)?.value === "1") {
-        const draftRaw =
-          await readSettingValue<Partial<SiteAppearanceConfig>>(KEY_DRAFT);
-        if (draftRaw) {
-          return {
-            config: mergeAppearanceWithDefaults(draftRaw),
-            isPreviewingDraft: true,
-          };
-        }
-      }
-    } catch {
-      // outside request scope (e.g. build/tests)
-    }
-  }
-  const published = await getPublishedAppearance();
-  return { config: published, isPreviewingDraft: false };
+  return getEffectiveAppearanceCached(Boolean(isAdmin));
 }
 
 export async function getAdminAppearanceBundle(): Promise<{

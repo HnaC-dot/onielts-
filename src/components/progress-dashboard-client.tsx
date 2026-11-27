@@ -275,14 +275,20 @@ export function ProgressDashboardClient({
         });
         const res = await fetch(`/api/progress/history?${params.toString()}`);
         if (res.ok) {
-          const data = (await res.json()) as ProgressHistoryPage;
-          setHistory(data);
+          const data = (await res.json().catch(() => null)) as ProgressHistoryPage | null;
+          if (data) setHistory(data);
         }
+      } catch {
+        setStatusMsg(
+          isEn
+            ? "Could not load learning history. Please try again."
+            : "Không thể tải lịch sử học tập. Vui lòng thử lại."
+        );
       } finally {
         setHistoryLoading(false);
       }
     },
-    []
+    [isEn]
   );
 
   const handleFilterChange = (nextSkill: HistorySkillFilter) => {
@@ -299,7 +305,7 @@ export function ProgressDashboardClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target_band: targetDraft }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setStatusMsg(data.error || "Không thể lưu mục tiêu Band.");
         return;
@@ -312,6 +318,12 @@ export function ProgressDashboardClient({
           : `Đã cập nhật mục tiêu Band ${Number(data.targetBand).toFixed(1)}.`
       );
       router.refresh();
+    } catch {
+      setStatusMsg(
+        isEn
+          ? "Network error while saving target Band."
+          : "Lỗi kết nối máy chủ khi lưu mục tiêu Band."
+      );
     } finally {
       setSavingTarget(false);
     }
@@ -325,7 +337,7 @@ export function ProgressDashboardClient({
       const res = await fetch(
         `/api/progress/attempt/${encodeURIComponent(id)}?kind=${encodeURIComponent(kind)}`
       );
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setReviewError(data.error || "Không thể tải chi tiết bài làm.");
         return;
@@ -358,12 +370,19 @@ export function ProgressDashboardClient({
         fetchHistoryPage(skillFilter, 1),
       ]);
       if (sumRes.ok) {
-        setSummary((await sumRes.json()) as ProgressSummaryPayload);
+        const nextSummary = (await sumRes.json().catch(() => null)) as ProgressSummaryPayload | null;
+        if (nextSummary) setSummary(nextSummary);
       }
       setStatusMsg(
         isEn ? "Learning history cleared." : "Đã xóa lịch sử học tập đã chọn."
       );
       router.refresh();
+    } catch {
+      setStatusMsg(
+        isEn
+          ? "Network error while clearing history."
+          : "Lỗi kết nối máy chủ khi xóa lịch sử."
+      );
     } finally {
       setClearing(false);
     }

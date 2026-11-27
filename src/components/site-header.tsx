@@ -118,11 +118,11 @@ export function SiteHeader({
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
         if (res.ok && active) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           setSearchResults(data.results ?? []);
         }
       } catch {
-        // ignore
+        // ignore transient search network errors
       }
     }, 150);
     return () => {
@@ -133,11 +133,15 @@ export function SiteHeader({
 
   const toggleLocale = async () => {
     const nextLocale = locale === "vi" ? "en" : "vi";
-    await fetch("/api/locale", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locale: nextLocale }),
-    });
+    try {
+      await fetch("/api/locale", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locale: nextLocale }),
+      });
+    } catch {
+      // still reload to reflect any cookie state
+    }
     window.location.reload();
   };
 
@@ -146,11 +150,15 @@ export function SiteHeader({
     if (supabase) {
       await supabase.auth.signOut().catch(() => {});
     }
-    await fetch("/api/auth/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "logout" }),
-    });
+    try {
+      await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "logout" }),
+      });
+    } catch {
+      // session cookie clear is best-effort if network drops
+    }
     setAvatarOpen(false);
     router.refresh();
   };

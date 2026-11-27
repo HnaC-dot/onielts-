@@ -5,19 +5,10 @@ import {
   isSupabaseConfigured,
 } from "@/lib/supabase/server";
 import { ensureProfileForAuthUser } from "@/lib/auth";
-
-function getSafeRedirectBase(request: Request, fallbackOrigin: string): string {
-  const forwardedHost = request.headers.get("x-forwarded-host")?.trim();
-  const isLocalEnv = process.env.NODE_ENV === "development";
-  if (
-    !isLocalEnv &&
-    forwardedHost &&
-    /^[a-z0-9.-]+(?::\d+)?$/i.test(forwardedHost)
-  ) {
-    return `https://${forwardedHost}`;
-  }
-  return fallbackOrigin;
-}
+import {
+  getSafeRedirectBase,
+  sanitizeCallbackNextPath,
+} from "@/lib/domain-redirect";
 
 function redirectWithNoStore(url: string): NextResponse {
   const res = NextResponse.redirect(url);
@@ -34,8 +25,7 @@ export async function GET(request: Request) {
   const providerError = searchParams.get("error");
   const providerErrorCode = searchParams.get("error_code");
   const providerErrorDesc = searchParams.get("error_description");
-  const next = searchParams.get("next") ?? "/";
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = sanitizeCallbackNextPath(searchParams.get("next"));
 
   if (providerError) {
     console.error("[auth.callback] provider returned error", {

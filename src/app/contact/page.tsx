@@ -38,7 +38,7 @@ export default function ContactPage() {
           turnstileToken: turnstileToken || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || "Có lỗi xảy ra");
         setTurnstileReset((n) => n + 1);

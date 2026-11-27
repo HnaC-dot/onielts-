@@ -23,10 +23,14 @@ export default function FeatureRequestsPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
-    const res = await fetch("/api/feature-requests");
-    if (res.ok) {
-      const d = await res.json();
-      setItems(d.items ?? []);
+    try {
+      const res = await fetch("/api/feature-requests");
+      if (res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setItems(d.items ?? []);
+      }
+    } catch {
+      // keep currently rendered list if reload fails transiently
     }
   };
 

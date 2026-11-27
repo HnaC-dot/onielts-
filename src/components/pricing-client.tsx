@@ -501,7 +501,7 @@ export function PricingClient({
                 </div>
 
                 {!checkout.sandboxMocked ? (
-                  <a href={checkout.checkoutUrl} target="_blank" rel="noreferrer" className="block">
+                  <a href={checkout.checkoutUrl} target="_blank" rel="noopener noreferrer" className="block">
                     <Button size="lg" className="w-full">
                       <ExternalLink className="h-4 w-4" />
                       {isEn ? "Open PayOS Payment Page" : "Mở trang thanh toán PayOS"}

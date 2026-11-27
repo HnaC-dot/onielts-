@@ -174,3 +174,73 @@ export function computeCanonicalDomainRedirect(params: {
 
   return `https://${targetParsed.host}${safePath}${safeSearch}`;
 }
+
+/**
+ * Sanitizes an OAuth / magic-link `next` redirect path so it can only target
+ * a relative same-origin path (blocks protocol-relative `//`, backslashes,
+ * external URLs, and ASCII control characters).
+ */
+export function sanitizeCallbackNextPath(raw: string | null | undefined): string {
+  if (!raw) return "/";
+  const trimmed = raw.trim();
+  if (
+    !trimmed.startsWith("/") ||
+    trimmed.startsWith("//") ||
+    trimmed.startsWith("/\\") ||
+    trimmed.includes("\\")
+  ) {
+    return "/";
+  }
+  for (let i = 0; i < trimmed.length; i += 1) {
+    const code = trimmed.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) {
+      return "/";
+    }
+  }
+  return trimmed;
+}
+
+/**
+ * Resolves the post-auth redirect origin while defending against Host Header
+ * Poisoning via untrusted `x-forwarded-host` values. Only allows forwarded
+ * hosts explicitly matching `fallbackOrigin`, `NEXT_PUBLIC_SITE_URL`, or
+ * `NEXT_PUBLIC_APP_URL`.
+ */
+export function getSafeRedirectBase(
+  request: Request,
+  fallbackOrigin: string,
+  env: Record<string, string | undefined> = process.env
+): string {
+  const forwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.trim()
+    .toLowerCase();
+  const isLocalEnv = env.NODE_ENV === "development";
+
+  const allowedHosts = new Set<string>();
+  try {
+    allowedHosts.add(new URL(fallbackOrigin).host.toLowerCase());
+  } catch {
+    // ignore malformed fallback origin
+  }
+  for (const envUrl of [
+    env.NEXT_PUBLIC_SITE_URL?.trim(),
+    env.NEXT_PUBLIC_APP_URL?.trim(),
+  ]) {
+    const parsed = parseHttpUrl(envUrl);
+    if (parsed) {
+      allowedHosts.add(parsed.host.toLowerCase());
+    }
+  }
+
+  if (
+    !isLocalEnv &&
+    forwardedHost &&
+    /^[a-z0-9.-]+(?::\d+)?$/i.test(forwardedHost) &&
+    allowedHosts.has(forwardedHost)
+  ) {
+    return `https://${forwardedHost}`;
+  }
+  return fallbackOrigin;
+}
+
