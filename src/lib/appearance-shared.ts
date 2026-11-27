@@ -585,6 +585,7 @@ export const DEFAULT_ADMIN_SIDEBAR_MENU: AdminMenuGroup[] = [
     isSystem: true,
     items: [
       { id: "adm-dashboard", labelVi: "Dashboard", labelEn: "Dashboard", href: "/admin", icon: "LayoutDashboard", visible: true, isSystem: true },
+      { id: "adm-analytics", labelVi: "Thống kê học tập", labelEn: "Learning Analytics", href: "/admin/analytics", icon: "Sparkles", visible: true, isSystem: true },
       { id: "adm-audit", labelVi: "Nhật ký hoạt động", labelEn: "Audit Logs", href: "/admin/audit", icon: "Activity", visible: true, isSystem: true },
       { id: "adm-legacy", labelVi: "Quản trị nhanh (6 Tab)", labelEn: "Quick Admin (6 Tabs)", href: "/admin/legacy", icon: "SlidersHorizontal", visible: true, isSystem: true },
     ],

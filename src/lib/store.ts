@@ -30,6 +30,7 @@ import type {
   SpeakingSubmission,
   StaticPageItem,
   TestAttempt,
+  TestAttemptAnswerRecord,
   TestimonialItem,
   UserProfile,
   WritingExercise,
@@ -78,6 +79,7 @@ export interface LocalStoreData {
   ai_usage_logs: AiUsageLog[];
   ielts_tests: IeltsTest[];
   test_attempts: TestAttempt[];
+  test_attempt_answers: TestAttemptAnswerRecord[];
   daily_exam_attempts: DailyExamAttempt[];
   writing_submissions: WritingSubmission[];
   speaking_submissions: SpeakingSubmission[];
@@ -110,7 +112,7 @@ export interface LocalStoreData {
 
 const STORE_DIR = path.join(process.cwd(), ".local-data");
 const STORE_PATH = path.join(STORE_DIR, "store.json");
-const CURRENT_STORE_VERSION = 7;
+const CURRENT_STORE_VERSION = 8;
 
 function buildInitialStore(): LocalStoreData {
   return {
@@ -124,6 +126,7 @@ function buildInitialStore(): LocalStoreData {
     ai_usage_logs: [],
     ielts_tests: structuredClone(FULL_SEED_TESTS),
     test_attempts: [],
+    test_attempt_answers: [],
     daily_exam_attempts: [],
     writing_submissions: [],
     speaking_submissions: [],
@@ -228,6 +231,9 @@ function ensureStoreFile(): LocalStoreData {
           }
           if (!Array.isArray(parsed.seo_redirects)) {
             parsed.seo_redirects = [];
+          }
+          if (!Array.isArray(parsed.test_attempt_answers)) {
+            parsed.test_attempt_answers = [];
           }
           if (!parsed.site_settings) {
             parsed.site_settings = {

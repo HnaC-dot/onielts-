@@ -135,11 +135,21 @@ export function DailyExamClient({
                     : `Kết quả: ${attempt.raw_score}/${attempt.max_score} câu (${Math.round((attempt.raw_score / Math.max(1, attempt.max_score)) * 100)}%) · Thời gian: ${formatDuration(attempt.duration_seconds)}`}
                 </p>
               </div>
-              <Link href="/leaderboard">
-                <Button className="bg-white text-emerald-900 hover:bg-emerald-50">
-                  {isEn ? "View Leaderboard" : "Xem bảng xếp hạng"}
-                </Button>
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href="/leaderboard">
+                  <Button className="bg-white text-emerald-900 hover:bg-emerald-50">
+                    {isEn ? "View Leaderboard" : "Xem bảng xếp hạng"}
+                  </Button>
+                </Link>
+                <Link href="/progress">
+                  <Button
+                    variant="outline"
+                    className="border-white/40 bg-transparent text-white hover:bg-white/15"
+                  >
+                    {isEn ? "My Progress →" : "Xem Tiến độ →"}
+                  </Button>
+                </Link>
+              </div>
             </div>
           ) : !isLoggedIn ? (
             <Link href="/auth">

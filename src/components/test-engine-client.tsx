@@ -485,6 +485,14 @@ export function TestEngineClient({
                   ? "Review bilingual explanations (VI + EN) for every question below."
                   : "Xem đáp án và giải thích chi tiết song ngữ VI + EN cho từng câu bên dưới."}
               </p>
+              <div className="mt-3">
+                <Link
+                  href="/progress"
+                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                >
+                  {isEn ? "View Learning Progress →" : "Xem Tiến độ học tập →"}
+                </Link>
+              </div>
             </div>
           </Card>
 

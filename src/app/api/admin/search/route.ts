@@ -28,6 +28,7 @@ const ADMIN_QUICK_LINKS: Array<{
   adminOnly?: boolean;
 }> = [
   { title: "Dashboard Tổng quan", keywords: "dashboard tong quan home", href: "/admin" },
+  { title: "Thống kê học tập (Đề hot & Câu hay sai)", keywords: "analytics thong ke hoc tap ty le sai de lam nhieu nhat progress", href: "/admin/analytics" },
   { title: "Quản lý Đề thi IELTS (Trình tạo 40 câu)", keywords: "de thi reading listening writing speaking tests", href: "/admin/tests" },
   { title: "Tạo đề thi IELTS mới", keywords: "tao de thi moi them de new test", href: "/admin/tests/new" },
   { title: "Lịch Đề thi mỗi ngày (UTC+7) & BXH", keywords: "daily exam de moi ngay lich bxh leaderboard", href: "/admin/daily-exam" },

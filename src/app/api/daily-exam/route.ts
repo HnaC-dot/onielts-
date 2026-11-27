@@ -103,6 +103,7 @@ export async function POST(req: Request) {
       rawScore: graded.rawScore,
       maxScore: graded.maxScore,
       bandScore: graded.bandScore ?? 0,
+      breakdownByType: graded.breakdownByType,
       durationSecondsLimit: effectiveDuration,
     });
 

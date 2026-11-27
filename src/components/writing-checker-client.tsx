@@ -441,23 +441,31 @@ export function WritingCheckerClient({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleTogglePrivacy(activeSubmission)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 cursor-pointer"
-              >
-                {activeSubmission.is_public ? (
-                  <>
-                    <Eye className="h-3.5 w-3.5 text-emerald-600" />
-                    {isEn ? "Public (Opt-in)" : "Đang công khai"}
-                  </>
-                ) : (
-                  <>
-                    <EyeOff className="h-3.5 w-3.5 text-slate-500" />
-                    {isEn ? "Private (Default)" : "Riêng tư (Mặc định)"}
-                  </>
-                )}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href="/progress"
+                  className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300"
+                >
+                  {isEn ? "My Progress →" : "Xem Tiến độ →"}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => handleTogglePrivacy(activeSubmission)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 cursor-pointer"
+                >
+                  {activeSubmission.is_public ? (
+                    <>
+                      <Eye className="h-3.5 w-3.5 text-emerald-600" />
+                      {isEn ? "Public (Opt-in)" : "Đang công khai"}
+                    </>
+                  ) : (
+                    <>
+                      <EyeOff className="h-3.5 w-3.5 text-slate-500" />
+                      {isEn ? "Private (Default)" : "Riêng tư (Mặc định)"}
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* 4 Criteria */}

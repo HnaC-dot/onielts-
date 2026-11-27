@@ -50,6 +50,7 @@ export async function POST(req: Request) {
       maxScore: graded.maxScore,
       bandScore: graded.bandScore ?? 0,
       breakdownByType: graded.breakdownByType,
+      details: graded.details,
       durationSeconds: parsed.data.durationSeconds,
       vnToday,
     });

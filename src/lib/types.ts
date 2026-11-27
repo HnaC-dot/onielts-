@@ -255,6 +255,20 @@ export interface TestAttempt {
   completed_at: string;
 }
 
+export interface TestAttemptAnswerRecord {
+  id: string;
+  attempt_id: string;
+  user_id: string;
+  test_id: string;
+  skill: IeltsSkill;
+  question_id: string;
+  question_number: number;
+  question_type: QuestionType;
+  user_answer: string;
+  is_correct: boolean;
+  created_at: string;
+}
+
 export interface DailyExamAttempt {
   id: string;
   exam_date: string;
@@ -267,6 +281,7 @@ export interface DailyExamAttempt {
   raw_score: number;
   max_score: number;
   band_score: number;
+  breakdown_by_type?: Record<string, { correct: number; total: number }>;
   duration_seconds: number;
   is_completed: boolean;
 }

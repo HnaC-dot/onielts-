@@ -24,6 +24,9 @@ import { FULL_SEED_TESTS } from "./seed-tests";
 import { computeExtendedPremiumExpiry } from "./payments/payos";
 import { computeNextSm2 } from "./srs";
 import { isBlogPostPubliclyVisible } from "./blog-shared";
+import { computeNextStreak } from "./progress-shared";
+import { getVietnamDateString } from "./utils";
+import type { QuestionGradeDetail } from "./test-grader";
 import {
   conversationTopicToDbRow,
   mapConversationRow,
@@ -844,11 +847,13 @@ export async function saveTestAttempt(input: {
   maxScore: number;
   bandScore: number;
   breakdownByType: Record<string, { correct: number; total: number }>;
+  details?: QuestionGradeDetail[];
   durationSeconds: number;
   vnToday: string;
 }): Promise<TestAttempt | null> {
   if (!isSupabaseConfigured()) {
     const uid = input.userId ?? "demo-free-001";
+    const nowIso = new Date().toISOString();
     return updateStore((draft) => {
       const record: TestAttempt = {
         id: `att-${Date.now()}`,
@@ -863,13 +868,40 @@ export async function saveTestAttempt(input: {
         band_score: input.bandScore,
         breakdown_by_type: input.breakdownByType,
         duration_seconds: input.durationSeconds,
-        completed_at: new Date().toISOString(),
+        completed_at: nowIso,
       };
       draft.test_attempts.unshift(record);
+      if (Array.isArray(input.details) && input.details.length > 0) {
+        if (!Array.isArray(draft.test_attempt_answers)) {
+          draft.test_attempt_answers = [];
+        }
+        for (const d of input.details) {
+          draft.test_attempt_answers.push({
+            id: `ans-${record.id}-${d.number}`,
+            attempt_id: record.id,
+            user_id: uid,
+            test_id: input.test.id,
+            skill: input.test.skill,
+            question_id: d.questionId,
+            question_number: d.number,
+            question_type: d.type,
+            user_answer: d.userAnswer,
+            is_correct: d.isCorrect,
+            created_at: nowIso,
+          });
+        }
+      }
       const profile = draft.profiles.find((p) => p.id === uid);
-      if (profile && profile.last_active_date !== input.vnToday) {
-        profile.streak_count += 1;
-        profile.last_active_date = input.vnToday;
+      if (profile) {
+        const next = computeNextStreak(
+          profile.last_active_date,
+          profile.streak_count,
+          input.vnToday
+        );
+        if (next.changed) {
+          profile.streak_count = next.streakCount;
+          profile.last_active_date = input.vnToday;
+        }
       }
       return record;
     });
@@ -909,6 +941,26 @@ export async function saveTestAttempt(input: {
     .single();
 
   if (error || !data) return null;
+
+  // Persist normalized per-question answers with question_type (best-effort if migration 0006 not applied yet)
+  if (Array.isArray(input.details) && input.details.length > 0) {
+    try {
+      const answerRows = input.details.map((d) => ({
+        attempt_id: String(data.id),
+        user_id: input.userId,
+        test_id: testUuid,
+        skill: input.test.skill,
+        question_id: d.questionId,
+        question_number: d.number,
+        question_type: d.type,
+        user_answer: (d.userAnswer ?? "").slice(0, 500),
+        is_correct: Boolean(d.isCorrect),
+      }));
+      await sb.from("test_attempt_answers").insert(answerRows);
+    } catch {
+      // ignore if table 0006 not yet migrated
+    }
+  }
 
   await bumpUserStreak(input.userId, input.vnToday);
 
@@ -1295,6 +1347,7 @@ export async function completeDailyExamAttempt(params: {
   rawScore: number;
   maxScore: number;
   bandScore: number;
+  breakdownByType?: Record<string, { correct: number; total: number }>;
   durationSecondsLimit: number;
 }): Promise<{ conflict: true } | { conflict: false; attempt: DailyExamAttempt }> {
   const now = new Date();
@@ -1319,6 +1372,7 @@ export async function completeDailyExamAttempt(params: {
           raw_score: 0,
           max_score: params.maxScore,
           band_score: 0,
+          breakdown_by_type: params.breakdownByType ?? {},
           duration_seconds: 60,
           is_completed: false,
         };
@@ -1337,14 +1391,22 @@ export async function completeDailyExamAttempt(params: {
       attempt.raw_score = params.rawScore;
       attempt.max_score = params.maxScore;
       attempt.band_score = params.bandScore;
+      attempt.breakdown_by_type = params.breakdownByType ?? {};
       attempt.duration_seconds = elapsedSec;
       attempt.submitted_at = now.toISOString();
       attempt.is_completed = true;
 
       const profile = draft.profiles.find((p) => p.id === params.userId);
-      if (profile && profile.last_active_date !== params.vnDate) {
-        profile.streak_count += 1;
-        profile.last_active_date = params.vnDate;
+      if (profile) {
+        const next = computeNextStreak(
+          profile.last_active_date,
+          profile.streak_count,
+          params.vnDate
+        );
+        if (next.changed) {
+          profile.streak_count = next.streakCount;
+          profile.last_active_date = params.vnDate;
+        }
       }
 
       return { conflict: false as const, attempt };
@@ -1418,6 +1480,21 @@ export async function completeDailyExamAttempt(params: {
     savedRow = data as Record<string, unknown>;
   }
 
+  // Best-effort update of migration 0006 columns (max_score, breakdown_by_type)
+  if (savedRow?.id) {
+    try {
+      await admin
+        .from("daily_exam_attempts")
+        .update({
+          max_score: params.maxScore,
+          breakdown_by_type: params.breakdownByType ?? {},
+        })
+        .eq("id", String(savedRow.id));
+    } catch {
+      // ignore if migration 0006 not applied yet
+    }
+  }
+
   await bumpUserStreak(params.userId, params.vnDate);
 
   return {
@@ -1434,6 +1511,7 @@ export async function completeDailyExamAttempt(params: {
       raw_score: Number(savedRow.raw_score),
       max_score: params.maxScore,
       band_score: Number(savedRow.band_score),
+      breakdown_by_type: params.breakdownByType ?? {},
       duration_seconds: Number(savedRow.duration_seconds),
       is_completed: true,
     },
@@ -1447,9 +1525,12 @@ export async function bumpUserStreak(userId: string, vnToday: string): Promise<v
   if (!isSupabaseConfigured()) {
     updateStore((store) => {
       const p = store.profiles.find((u) => u.id === userId);
-      if (p && p.last_active_date !== vnToday) {
-        p.streak_count += 1;
-        p.last_active_date = vnToday;
+      if (p) {
+        const next = computeNextStreak(p.last_active_date, p.streak_count, vnToday);
+        if (next.changed) {
+          p.streak_count = next.streakCount;
+          p.last_active_date = vnToday;
+        }
       }
     });
     return;
@@ -1462,14 +1543,21 @@ export async function bumpUserStreak(userId: string, vnToday: string): Promise<v
     .select("streak_count, last_active_date")
     .eq("id", userId)
     .maybeSingle();
-  if (profile && profile.last_active_date !== vnToday) {
-    await admin
-      .from("profiles")
-      .update({
-        streak_count: Number(profile.streak_count ?? 0) + 1,
-        last_active_date: vnToday,
-      })
-      .eq("id", userId);
+  if (profile) {
+    const next = computeNextStreak(
+      profile.last_active_date ? String(profile.last_active_date) : null,
+      Number(profile.streak_count ?? 0),
+      vnToday
+    );
+    if (next.changed) {
+      await admin
+        .from("profiles")
+        .update({
+          streak_count: next.streakCount,
+          last_active_date: vnToday,
+        })
+        .eq("id", userId);
+    }
   }
 }
 
@@ -2122,6 +2210,7 @@ export async function saveWritingSubmission(input: {
     .single();
 
   if (error || !data) return baseRecord;
+  await bumpUserStreak(input.userId, getVietnamDateString());
   return {
     id: String(data.id),
     user_id: String(data.user_id),
@@ -2272,6 +2361,7 @@ export async function saveSpeakingSubmission(input: {
     .single();
 
   if (error || !data) return baseRecord;
+  await bumpUserStreak(input.userId, getVietnamDateString());
   return {
     id: String(data.id),
     user_id: String(data.user_id),
@@ -2596,6 +2686,7 @@ export async function reviewFlashcardItem(
     .single();
 
   if (!updated) return null;
+  await bumpUserStreak(userId, getVietnamDateString());
   return {
     id: String(updated.id),
     set_id: String(updated.set_id),

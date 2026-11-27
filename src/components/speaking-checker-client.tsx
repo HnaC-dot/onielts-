@@ -398,6 +398,12 @@ export function SpeakingCheckerClient({
                   </p>
                 </div>
               </div>
+              <Link
+                href="/progress"
+                className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300"
+              >
+                {isEn ? "My Progress →" : "Xem Tiến độ →"}
+              </Link>
             </div>
 
             {/* 4 Criteria */}
