@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { verifySameOrigin } from "@/lib/admin-auth";
+import { readJsonBody } from "@/lib/request-json";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getBandConversionTables,
@@ -41,8 +42,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
-    const parsed = submitSchema.safeParse(body);
+    const jsonResult = await readJsonBody(req);
+    if (!jsonResult.ok) return jsonResult.response;
+    const parsed = submitSchema.safeParse(jsonResult.data);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Dữ liệu nộp bài không hợp lệ" },

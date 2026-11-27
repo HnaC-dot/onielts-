@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { verifySameOrigin } from "@/lib/admin-auth";
+import { readJsonBody } from "@/lib/request-json";
 import { getCurrentUser } from "@/lib/auth";
 import {
   completeDailyExamAttempt,
@@ -70,8 +71,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = await req.json();
-    const parsed = actionSchema.safeParse(body);
+    const jsonResult = await readJsonBody(req);
+    if (!jsonResult.ok) return jsonResult.response;
+    const parsed = actionSchema.safeParse(jsonResult.data);
     if (!parsed.success) {
       return NextResponse.json({ error: "Yêu cầu không hợp lệ" }, { status: 400 });
     }

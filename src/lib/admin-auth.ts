@@ -12,7 +12,7 @@ import {
   getDailyExamState,
   getDictationLessons,
   getFeatureRequests,
-  getIeltsTests,
+  getIeltsTestSummaries,
   getLearnVideos,
   getPronunciationSounds,
   listAiUsageLogs,
@@ -345,7 +345,7 @@ export async function getAdminDashboardSummary(options?: {
     dailyState,
     auditResult,
   ] = await Promise.all([
-    getIeltsTests(true),
+    getIeltsTestSummaries(true),
     getCourses(),
     getBlogPosts(true),
     getLearnVideos(),

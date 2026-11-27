@@ -5,7 +5,7 @@ import {
   getConversationTopics,
   getCourses,
   getDictationLessons,
-  getIeltsTests,
+  getIeltsTestSummaries,
   getLearnVideos,
   getPronunciationSounds,
   getWritingExercises,
@@ -85,7 +85,7 @@ export async function GET(req: Request) {
   if (q.length >= 2) {
     const [tests, posts, courses, conversations, exercises, sounds, dictations, videos, profiles] =
       await Promise.all([
-        getIeltsTests(true),
+        getIeltsTestSummaries(true),
         getBlogPosts(true),
         getCourses(true),
         getConversationTopics(true),

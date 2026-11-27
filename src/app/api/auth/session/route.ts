@@ -21,6 +21,7 @@ import {
   getRequestIp,
 } from "@/lib/rate-limit";
 import { readStore } from "@/lib/store";
+import { readJsonBody } from "@/lib/request-json";
 
 const authActionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -65,8 +66,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = await req.json();
-    const parsed = authActionSchema.safeParse(body);
+    const jsonResult = await readJsonBody(req);
+    if (!jsonResult.ok) return jsonResult.response;
+    const parsed = authActionSchema.safeParse(jsonResult.data);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Dữ liệu không hợp lệ", issues: parsed.error.flatten() },

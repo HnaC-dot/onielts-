@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { verifySameOrigin } from "@/lib/admin-auth";
+import { readJsonBody } from "@/lib/request-json";
 import { getCurrentUser } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { createFlashcardItem, getFlashcardsForUser } from "@/lib/db";
@@ -54,8 +55,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
-    const parsed = createCardSchema.safeParse(body);
+    const jsonResult = await readJsonBody(req);
+    if (!jsonResult.ok) return jsonResult.response;
+    const parsed = createCardSchema.safeParse(jsonResult.data);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Vui lòng nhập đầy đủ từ vựng và nghĩa tiếng Việt." },

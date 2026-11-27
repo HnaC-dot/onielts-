@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { verifySameOrigin } from "@/lib/admin-auth";
+import { readJsonBody } from "@/lib/request-json";
 import { getCurrentUser } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { toggleCourseLessonProgress } from "@/lib/db";
@@ -36,8 +37,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = await req.json();
-    const parsed = progressSchema.safeParse(body);
+    const jsonResult = await readJsonBody(req);
+    if (!jsonResult.ok) return jsonResult.response;
+    const parsed = progressSchema.safeParse(jsonResult.data);
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }

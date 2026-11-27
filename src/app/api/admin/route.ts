@@ -18,7 +18,7 @@ import {
   adminUpdateUser,
   getBandConversionTables,
   getBlogPosts,
-  getIeltsTests,
+  getIeltsTestSummaries,
   getPricingPlans,
   getPromoBanner,
   getPromoCodes,
@@ -123,7 +123,7 @@ export async function GET() {
     isAdmin ? getPromoCodes() : Promise.resolve([]),
     isAdmin ? listOrders() : Promise.resolve([]),
     isAdmin ? listAiUsageLogs(100) : Promise.resolve([]),
-    getIeltsTests(true),
+    getIeltsTestSummaries(true),
     getBlogPosts(true),
     getSampleTestimonials(),
   ]);
@@ -268,16 +268,16 @@ export async function POST(req: Request) {
 
     if (d.action === "toggle_test_publish") {
       if (d.is_published) {
-        const allTests = await getIeltsTests(true);
+        const allTests = await getIeltsTestSummaries(true);
         const target = allTests.find((t) => t.id === d.id);
         if (
           target &&
           (target.skill === "reading" || target.skill === "listening")
         ) {
-          const actualQ = target.sections.reduce(
-            (sum, s) => sum + s.questions.length,
-            0
-          );
+          const actualQ =
+            target.sections.length > 0
+              ? target.sections.reduce((sum, s) => sum + s.questions.length, 0)
+              : target.questionCount;
           if (actualQ < 40) {
             return NextResponse.json(
               {

@@ -40,6 +40,24 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/api/(auth|checkout|profile|progress|flashcards|admin)/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-store, max-age=0",
+          },
+        ],
+      },
+      {
+        source: "/api/profile",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-store, max-age=0",
+          },
+        ],
+      },
     ];
   },
   turbopack: {

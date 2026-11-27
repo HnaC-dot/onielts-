@@ -17,7 +17,7 @@ import {
   type InternalLinkCandidate,
   type NewsletterSubscriber,
 } from "./content-production-shared";
-import { getCourses, getIeltsTests } from "./db";
+import { getCourses, getIeltsTestSummaries } from "./db";
 import { readStore, updateStore } from "./store";
 import type { CmsTestFormInput } from "./test-cms-shared";
 import type { IeltsTest, SessionUser } from "./types";
@@ -443,7 +443,7 @@ export async function saveBlogQualityConfig(
 
 export async function getInternalLinkCatalog(): Promise<InternalLinkCandidate[]> {
   const [tests, courses] = await Promise.all([
-    getIeltsTests(false),
+    getIeltsTestSummaries(false),
     getCourses(false),
   ]);
 

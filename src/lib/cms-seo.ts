@@ -8,7 +8,7 @@ import { recordAuditLog } from "./admin-auth";
 import {
   getBlogPosts,
   getCourses,
-  getIeltsTests,
+  getIeltsTestSummaries,
   getLearnVideos,
   getPronunciationSounds,
   isValidUuid,
@@ -508,7 +508,7 @@ export async function deleteAdminSeoRedirect(
 export async function getSeoHealthAudit(): Promise<SeoHealthSummary> {
   const [tests, posts, courses, sounds, videos, pages, seoSettings] =
     await Promise.all([
-      getIeltsTests(false),
+      getIeltsTestSummaries(false),
       getBlogPosts(false),
       getCourses(false),
       getPronunciationSounds(false),

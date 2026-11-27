@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { verifySameOrigin } from "@/lib/admin-auth";
+import { readJsonBody } from "@/lib/request-json";
 import { findActivePromoCode } from "@/lib/db";
 import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
@@ -31,8 +32,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = await req.json();
-    const parsed = schema.safeParse(body);
+    const jsonResult = await readJsonBody(req);
+    if (!jsonResult.ok) return jsonResult.response;
+    const parsed = schema.safeParse(jsonResult.data);
     if (!parsed.success) {
       return NextResponse.json({ error: "Mã giảm giá không hợp lệ." }, { status: 400 });
     }

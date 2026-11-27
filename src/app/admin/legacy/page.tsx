@@ -6,7 +6,7 @@ import { isStaffRole } from "@/lib/admin-auth";
 import {
   getBandConversionTables,
   getBlogPosts,
-  getIeltsTests,
+  getIeltsTestSummaries,
   getPricingPlans,
   getPromoBanner,
   getPromoCodes,
@@ -56,7 +56,7 @@ export default async function AdminLegacyPage({
 
   const [aiLogs, tests, blogPosts, banner] = await Promise.all([
     listAiUsageLogs(100),
-    getIeltsTests(true),
+    getIeltsTestSummaries(true),
     getBlogPosts(true),
     getPromoBanner(),
   ]);
