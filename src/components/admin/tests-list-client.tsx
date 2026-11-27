@@ -259,6 +259,11 @@ export function TestsListClient({
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             Lọc
           </Button>
+          <Link href="/admin/tests/import">
+            <Button type="button" size="sm" variant="outline">
+              Nhập CSV/JSON
+            </Button>
+          </Link>
           <Link href="/admin/tests/new">
             <Button type="button" size="sm">
               <Plus className="h-4 w-4" /> Tạo đề thi mới

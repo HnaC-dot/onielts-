@@ -602,6 +602,8 @@ export const DEFAULT_ADMIN_SIDEBAR_MENU: AdminMenuGroup[] = [
       { id: "adm-band", labelVi: "Bảng quy đổi Band", labelEn: "Band Tables", href: "/admin/band-tables", icon: "Calculator", visible: true, adminOnly: true, isSystem: true },
       { id: "adm-media", labelVi: "Thư viện Media", labelEn: "Media Library", href: "/admin/media", icon: "Image", visible: true, isSystem: true },
       { id: "adm-blog", labelVi: "Blog & Mẹo thi", labelEn: "Blog & Tips", href: "/admin/blog", icon: "FileText", visible: true, isSystem: true },
+      { id: "adm-calendar", labelVi: "Lịch nội dung", labelEn: "Content Calendar", href: "/admin/calendar", icon: "CalendarDays", visible: true, isSystem: true },
+      { id: "adm-subscribers", labelVi: "Email đăng ký Blog", labelEn: "Blog Subscribers", href: "/admin/subscribers", icon: "Mail", visible: true, isSystem: true },
     ],
   },
   {
@@ -1052,6 +1054,8 @@ export function resolveAdminRouteBreadcrumb(
     const tail = cleanPath.slice(best.itemHref.length + 1);
     if (tail === "new") {
       subLabel = isEn ? "Create New" : "Tạo mới";
+    } else if (tail === "import") {
+      subLabel = isEn ? "Bulk Import" : "Nhập hàng loạt";
     } else if (tail) {
       subLabel = isEn ? "Edit" : "Chỉnh sửa";
     }

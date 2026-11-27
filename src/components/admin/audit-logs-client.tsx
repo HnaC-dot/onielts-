@@ -21,6 +21,8 @@ const ENTITY_FILTERS = [
   { value: "band_conversion", label: "Bảng quy đổi Band" },
   { value: "media_asset", label: "Thư viện Media" },
   { value: "blog_post", label: "Blog & Mẹo thi" },
+  { value: "content_calendar", label: "Lịch nội dung" },
+  { value: "newsletter_subscriber", label: "Email đăng ký Blog" },
   { value: "course", label: "Khóa học & Bài học" },
   { value: "conversation_topic", label: "Hội thoại AI" },
   { value: "writing_exercise", label: "Nâng cấp câu viết" },

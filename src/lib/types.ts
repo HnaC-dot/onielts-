@@ -493,6 +493,7 @@ export interface BlogPost {
   author_name: string;
   read_minutes: number;
   published_at: string;
+  updated_at?: string;
   is_published: boolean;
   status?: ContentPublishStatus;
   scheduled_at?: string | null;

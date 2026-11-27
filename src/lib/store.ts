@@ -66,6 +66,12 @@ import {
   type AppearanceVersionEntry,
   type SiteAppearanceConfig,
 } from "./appearance-shared";
+import {
+  DEFAULT_BLOG_QUALITY_CONFIG,
+  type BlogQualityConfig,
+  type ContentCalendarItem,
+  type NewsletterSubscriber,
+} from "./content-production-shared";
 import { FULL_SEED_TESTS } from "./seed-tests";
 
 export interface LocalStoreData {
@@ -100,10 +106,13 @@ export interface LocalStoreData {
   static_pages: StaticPageItem[];
   faqs: FaqItem[];
   seo_redirects: SeoRedirectItem[];
+  content_calendar_items: ContentCalendarItem[];
+  newsletter_subscribers: NewsletterSubscriber[];
   site_settings: {
     general: SiteGeneralSettings;
     referral: ReferralConfigSettings;
     seo: SiteSeoSettings;
+    blog_quality?: BlogQualityConfig;
     appearance_published?: SiteAppearanceConfig;
     appearance_draft?: SiteAppearanceConfig;
     appearance_history?: AppearanceVersionEntry[];
@@ -112,7 +121,7 @@ export interface LocalStoreData {
 
 const STORE_DIR = path.join(process.cwd(), ".local-data");
 const STORE_PATH = path.join(STORE_DIR, "store.json");
-const CURRENT_STORE_VERSION = 8;
+const CURRENT_STORE_VERSION = 9;
 
 function buildInitialStore(): LocalStoreData {
   return {
@@ -180,10 +189,13 @@ function buildInitialStore(): LocalStoreData {
     static_pages: structuredClone(DEFAULT_STATIC_PAGES),
     faqs: structuredClone(DEFAULT_FAQS),
     seo_redirects: [],
+    content_calendar_items: [],
+    newsletter_subscribers: [],
     site_settings: {
       general: structuredClone(DEFAULT_SITE_GENERAL_SETTINGS),
       referral: structuredClone(DEFAULT_REFERRAL_CONFIG),
       seo: structuredClone(DEFAULT_SITE_SEO_SETTINGS),
+      blog_quality: structuredClone(DEFAULT_BLOG_QUALITY_CONFIG),
       appearance_published: structuredClone(DEFAULT_APPEARANCE_CONFIG),
       appearance_draft: structuredClone(DEFAULT_APPEARANCE_CONFIG),
       appearance_history: [],
@@ -235,11 +247,18 @@ function ensureStoreFile(): LocalStoreData {
           if (!Array.isArray(parsed.test_attempt_answers)) {
             parsed.test_attempt_answers = [];
           }
+          if (!Array.isArray(parsed.content_calendar_items)) {
+            parsed.content_calendar_items = [];
+          }
+          if (!Array.isArray(parsed.newsletter_subscribers)) {
+            parsed.newsletter_subscribers = [];
+          }
           if (!parsed.site_settings) {
             parsed.site_settings = {
               general: structuredClone(DEFAULT_SITE_GENERAL_SETTINGS),
               referral: structuredClone(DEFAULT_REFERRAL_CONFIG),
               seo: structuredClone(DEFAULT_SITE_SEO_SETTINGS),
+              blog_quality: structuredClone(DEFAULT_BLOG_QUALITY_CONFIG),
               appearance_published: structuredClone(DEFAULT_APPEARANCE_CONFIG),
               appearance_draft: structuredClone(DEFAULT_APPEARANCE_CONFIG),
               appearance_history: [],
@@ -247,6 +266,9 @@ function ensureStoreFile(): LocalStoreData {
           } else {
             if (!parsed.site_settings.seo) {
               parsed.site_settings.seo = structuredClone(DEFAULT_SITE_SEO_SETTINGS);
+            }
+            if (!parsed.site_settings.blog_quality) {
+              parsed.site_settings.blog_quality = structuredClone(DEFAULT_BLOG_QUALITY_CONFIG);
             }
             if (!parsed.site_settings.appearance_published) {
               parsed.site_settings.appearance_published = structuredClone(DEFAULT_APPEARANCE_CONFIG);

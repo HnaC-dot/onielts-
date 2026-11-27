@@ -289,7 +289,7 @@ export function buildArticleJsonLd(post: BlogPost, baseUrl = getAppBaseUrl()) {
     description: post.seo_meta?.metaDescription || post.excerpt_vi,
     image: image ? [image] : undefined,
     datePublished: post.published_at,
-    dateModified: post.published_at,
+    dateModified: post.updated_at || post.published_at,
     author: {
       "@type": "Person",
       name: post.author_name || "Đội ngũ học thuật Ôn IELTS",

@@ -3,17 +3,33 @@ import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale } from "next-intl/server";
-import { Clock, Crown, Eye, Star } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  Clock,
+  Crown,
+  Eye,
+  ListTree,
+  RefreshCw,
+  Star,
+} from "lucide-react";
 import { getAuthState } from "@/lib/auth";
 import { isStaffRole } from "@/lib/admin-auth";
-import { getBlogPostBySlug } from "@/lib/db";
+import { getBlogPostBySlug, getBlogPosts } from "@/lib/db";
 import { isBlogPostPubliclyVisible } from "@/lib/blog-shared";
+import { extractTocAndInjectAnchors } from "@/lib/content-production-shared";
 import { renderBlogContentToSafeHtml } from "@/lib/sanitize";
 import {
   buildArticleJsonLd,
   buildBreadcrumbJsonLd,
+  getAppBaseUrl,
 } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
+import type { BlogPost } from "@/lib/types";
+import {
+  BlogNewsletterBox,
+  BlogShareButtons,
+} from "@/components/blog-article-widgets";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -38,6 +54,33 @@ export async function generateMetadata({
     authors: [post.author_name],
     keywords: post.tags ?? [],
   });
+}
+
+function selectRelatedPosts(current: BlogPost, allPublished: BlogPost[], limit = 3): BlogPost[] {
+  const currentTags = new Set(
+    (current.tags ?? []).map((t) => t.trim().toLowerCase())
+  );
+
+  return allPublished
+    .filter((p) => p.id !== current.id && p.slug !== current.slug)
+    .map((candidate) => {
+      let score = 0;
+      if (candidate.category === current.category) score += 4;
+      for (const tag of candidate.tags ?? []) {
+        if (currentTags.has(tag.trim().toLowerCase())) score += 2;
+      }
+      if (candidate.is_featured) score += 0.5;
+      return { post: candidate, score };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (
+        new Date(b.post.published_at).getTime() -
+        new Date(a.post.published_at).getTime()
+      );
+    })
+    .slice(0, limit)
+    .map((x) => x.post);
 }
 
 export default async function BlogDetailPage({
@@ -66,12 +109,31 @@ export default async function BlogDetailPage({
     }
   }
 
-  const post = await getBlogPostBySlug(slug, allowPreview);
+  const [post, allPublished] = await Promise.all([
+    getBlogPostBySlug(slug, allowPreview),
+    getBlogPosts(false),
+  ]);
   if (!post) notFound();
 
   const isUnpublishedPreview = allowPreview && !isBlogPostPubliclyVisible(post);
   const rawContent = isEn ? post.content_en : post.content_vi;
   const safeHtml = renderBlogContentToSafeHtml(rawContent);
+  const { htmlWithAnchors, items: tocItems } =
+    extractTocAndInjectAnchors(safeHtml);
+
+  const relatedPosts = selectRelatedPosts(post, allPublished, 3);
+  const articleTitle = isEn ? post.title_en : post.title_vi;
+  const canonicalShareUrl = `${getAppBaseUrl()}/blog/${post.slug}`;
+
+  const publishedDateLabel = new Date(post.published_at).toLocaleDateString(
+    isEn ? "en-GB" : "vi-VN",
+    { timeZone: "Asia/Ho_Chi_Minh" }
+  );
+  const updatedIso = post.updated_at || post.published_at;
+  const updatedDateLabel = new Date(updatedIso).toLocaleDateString(
+    isEn ? "en-GB" : "vi-VN",
+    { timeZone: "Asia/Ho_Chi_Minh" }
+  );
 
   const articleJsonLd = buildArticleJsonLd(post);
   const breadcrumbJsonLd = buildBreadcrumbJsonLd([
@@ -124,7 +186,7 @@ export default async function BlogDetailPage({
               alt={
                 post.seo_meta?.coverImageAlt ||
                 post.seo_meta?.ogImageAlt ||
-                (isEn ? post.title_en : post.title_vi)
+                articleTitle
               }
               className="h-full w-full object-cover"
             />
@@ -151,44 +213,139 @@ export default async function BlogDetailPage({
                 {post.read_minutes} {isEn ? "min read" : "phút đọc"}
               </span>
               <span className="text-xs text-slate-500">· {post.author_name}</span>
-              <span className="text-xs text-slate-400">
-                ·{" "}
-                {new Date(post.published_at).toLocaleDateString("vi-VN", {
-                  timeZone: "Asia/Ho_Chi_Minh",
-                })}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="h-3.5 w-3.5" />
+                {isEn ? "Published:" : "Đăng ngày:"} {publishedDateLabel}
+              </span>
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-400">
+                <RefreshCw className="h-3.5 w-3.5" />
+                {isEn ? "Updated:" : "Cập nhật:"} {updatedDateLabel}
               </span>
             </div>
 
             <h1 className="text-3xl font-bold leading-tight text-slate-900 dark:text-white">
-              {isEn ? post.title_en : post.title_vi}
+              {articleTitle}
             </h1>
             <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
               {isEn ? post.excerpt_en : post.excerpt_vi}
             </p>
+
+            <div className="pt-1">
+              <BlogShareButtons
+                url={canonicalShareUrl}
+                title={articleTitle}
+                isEn={isEn}
+              />
+            </div>
           </div>
 
-          {/* XSS-Sanitized Rich Text Body */}
+          {tocItems.length >= 2 && (
+            <nav
+              aria-label={isEn ? "Table of contents" : "Mục lục bài viết"}
+              className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900/60"
+            >
+              <div className="mb-2.5 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                <ListTree className="h-4 w-4 text-emerald-600" />
+                {isEn ? "Table of Contents" : "Mục lục bài viết"}
+              </div>
+              <ol className="space-y-1.5 text-xs">
+                {tocItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className={item.level === 3 ? "pl-4" : "font-semibold"}
+                  >
+                    <a
+                      href={`#${item.id}`}
+                      className="text-slate-700 transition hover:text-emerald-700 hover:underline dark:text-slate-300 dark:hover:text-emerald-400"
+                    >
+                      {item.text}
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          )}
+
           <div
-            className="cms-richtext border-t border-slate-100 pt-6 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300"
-            dangerouslySetInnerHTML={{ __html: safeHtml }}
+            className="cms-richtext border-t border-slate-100 pt-6 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 [&_h2]:scroll-mt-24 [&_h3]:scroll-mt-24"
+            dangerouslySetInnerHTML={{ __html: htmlWithAnchors }}
           />
 
-          {/* Tags */}
-          {post.tags && post.tags.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-5 dark:border-slate-800">
-              <span className="text-xs font-semibold text-slate-500">Tags:</span>
-              {post.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-5 dark:border-slate-800">
+            {post.tags && post.tags.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-slate-500">Tags:</span>
+                {post.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div />
+            )}
+            <BlogShareButtons
+              url={canonicalShareUrl}
+              title={articleTitle}
+              isEn={isEn}
+            />
+          </div>
         </div>
       </Card>
+
+      <BlogNewsletterBox sourceSlug={post.slug} isEn={isEn} />
+
+      {relatedPosts.length > 0 && (
+        <section className="space-y-4 pt-2" aria-labelledby="related-posts-heading">
+          <div className="flex items-center justify-between">
+            <h2
+              id="related-posts-heading"
+              className="text-lg font-bold text-slate-900 dark:text-white"
+            >
+              {isEn ? "Related IELTS Articles" : "Bài viết liên quan"}
+            </h2>
+            <Link
+              href="/blog"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+            >
+              {isEn ? "All articles" : "Xem tất cả"}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {relatedPosts.map((rel) => (
+              <Link key={rel.id} href={`/blog/${rel.slug}`}>
+                <Card className="flex h-full flex-col justify-between p-4 transition hover:border-emerald-400 hover:shadow-sm">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge variant="secondary">{rel.category}</Badge>
+                      <span className="text-[11px] text-slate-400">
+                        {rel.read_minutes} {isEn ? "min" : "phút"}
+                      </span>
+                    </div>
+                    <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-900 dark:text-white">
+                      {isEn ? rel.title_en : rel.title_vi}
+                    </h3>
+                    <p className="line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
+                      {isEn ? rel.excerpt_en : rel.excerpt_vi}
+                    </p>
+                  </div>
+                  <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    {isEn ? "Read guide" : "Đọc tiếp"}
+                    <ArrowRight className="h-3 w-3" />
+                  </span>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </article>
   );
 }

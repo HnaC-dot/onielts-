@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -22,11 +22,24 @@ import {
   blogPostFormSchema,
   resolveBlogStatus,
 } from "@/lib/blog-shared";
+import {
+  DEFAULT_BLOG_QUALITY_CONFIG,
+  evaluateBlogQualityGate,
+  type BlogArticleTemplate,
+  type BlogQualityConfig,
+  type InternalLinkCandidate,
+} from "@/lib/content-production-shared";
+import { escapeHtml } from "@/lib/sanitize";
 import { slugifyVi } from "@/lib/seo";
 import { RichTextEditor } from "./rich-text-editor";
 import { SeoPanel } from "./seo-panel";
 import { MediaPickerModal } from "./media-picker-modal";
 import { ConfirmDialog } from "./confirm-dialog";
+import {
+  BlogQualityGatePanel,
+  BlogTemplatePicker,
+  InternalLinkSuggestionsPanel,
+} from "./blog-production-panels";
 import { useAdminToast } from "./toast-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,20 +48,21 @@ import { Badge } from "@/components/ui/badge";
 interface BlogEditorClientProps {
   initialPost?: BlogPost | null;
   defaultAuthor?: string;
+  initialQualityConfig?: BlogQualityConfig;
+  linkCatalog?: InternalLinkCandidate[];
+  canEditQualityConfig?: boolean;
 }
 
 function toVietnamLocalInputValue(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  // Format in Asia/Ho_Chi_Minh (UTC+7) as YYYY-MM-DDTHH:mm
   const shifted = new Date(d.getTime() + 7 * 60 * 60 * 1000);
   return shifted.toISOString().slice(0, 16);
 }
 
 function vietnamLocalInputToIso(localVal: string): string | null {
   if (!localVal.trim()) return null;
-  // Treat datetime-local value as UTC+7
   const parsed = new Date(`${localVal}:00+07:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
@@ -56,6 +70,9 @@ function vietnamLocalInputToIso(localVal: string): string | null {
 export function BlogEditorClient({
   initialPost,
   defaultAuthor = "Đội ngũ học thuật Ôn IELTS",
+  initialQualityConfig = DEFAULT_BLOG_QUALITY_CONFIG,
+  linkCatalog = [],
+  canEditQualityConfig = false,
 }: BlogEditorClientProps) {
   const router = useRouter();
   const toast = useAdminToast();
@@ -95,6 +112,11 @@ export function BlogEditorClient({
   );
   const [seoMeta, setSeoMeta] = useState<SeoMeta>(initialPost?.seo_meta ?? {});
 
+  const [qualityConfig, setQualityConfig] =
+    useState<BlogQualityConfig>(initialQualityConfig);
+  const [pendingPublishStatus, setPendingPublishStatus] =
+    useState<ContentPublishStatus | null>(null);
+
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -104,6 +126,30 @@ export function BlogEditorClient({
   const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
   const [restorableDraft, setRestorableDraft] = useState<Record<string, unknown> | null>(
     null
+  );
+
+  const parsedTags = useMemo(
+    () =>
+      tagsText
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    [tagsText]
+  );
+
+  const qualityReport = useMemo(
+    () =>
+      evaluateBlogQualityGate(
+        {
+          title: titleVi,
+          excerpt: excerptVi,
+          contentHtml: contentVi,
+          coverImageUrl,
+          seoMeta,
+        },
+        qualityConfig
+      ),
+    [titleVi, excerptVi, contentVi, coverImageUrl, seoMeta, qualityConfig]
   );
 
   // Check for previously auto-saved local draft on mount
@@ -225,7 +271,67 @@ export function BlogEditorClient({
     toast.info("Đã khôi phục bản nháp tự lưu gần nhất.");
   };
 
-  const handleSave = async (overrideStatus?: ContentPublishStatus) => {
+  const handleApplyTemplate = (template: BlogArticleTemplate) => {
+    if (
+      contentVi.trim().length > 40 &&
+      !window.confirm(
+        `Áp dụng mẫu "${template.nameVi}" sẽ thay thế nội dung hiện tại trong khung soạn thảo. Bạn có muốn tiếp tục?`
+      )
+    ) {
+      return;
+    }
+    setContentVi(template.contentHtml);
+    if (!titleVi.trim()) {
+      setTitleVi(template.suggestedTitle);
+      if (!slugTouched) setSlug(slugifyVi(template.suggestedTitle));
+    }
+    if (!excerptVi.trim()) {
+      setExcerptVi(template.suggestedExcerpt);
+    }
+    if (!tagsText.trim()) {
+      setTagsText(template.defaultTags.join(", "));
+    }
+    if (!seoMeta.primaryKeyword?.trim()) {
+      setSeoMeta((prev) => ({
+        ...prev,
+        primaryKeyword: template.suggestedPrimaryKeyword,
+      }));
+    }
+    setCategory(template.defaultCategory);
+    markDirty();
+    toast.success(
+      `Đã chèn mẫu "${template.nameVi}" kèm khung tiêu đề, FAQ và Box Bài tập luyện thêm.`
+    );
+  };
+
+  const handleInsertInternalLink = (item: InternalLinkCandidate) => {
+    const snippet = `<p>👉 Luyện tập liên quan: <a href="${escapeHtml(item.href)}">${escapeHtml(item.title)}</a></p>`;
+    setContentVi((prev) => (prev.trim() ? `${prev}\n${snippet}` : snippet));
+    markDirty();
+    toast.success(`Đã chèn link nội bộ tới "${item.title}".`);
+  };
+
+  const handleSaveQualityConfig = async (nextConfig: BlogQualityConfig) => {
+    const res = await fetch("/api/admin/content/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(nextConfig),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error || "Không thể lưu tiêu chuẩn xuất bản.");
+      return;
+    }
+    setQualityConfig(data.qualityConfig);
+    toast.success(
+      `Đã cập nhật tiêu chuẩn: tối thiểu ${data.qualityConfig.minWordCount} từ & ${data.qualityConfig.minInternalLinks} link nội bộ.`
+    );
+  };
+
+  const handleSave = async (
+    overrideStatus?: ContentPublishStatus,
+    skipQualityCheck = false
+  ) => {
     setValidationError("");
     const effectiveStatus = overrideStatus ?? status;
     const tags = tagsText
@@ -271,6 +377,16 @@ export function BlogEditorClient({
       return;
     }
 
+    if (
+      !skipQualityCheck &&
+      (effectiveStatus === "published" || effectiveStatus === "scheduled") &&
+      !qualityReport.passed
+    ) {
+      setPendingPublishStatus(effectiveStatus);
+      return;
+    }
+
+    setPendingPublishStatus(null);
     setSaving(true);
     try {
       const endpoint = isEdit
@@ -474,6 +590,8 @@ export function BlogEditorClient({
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Main Column */}
         <div className="lg:col-span-8 space-y-5">
+          <BlogTemplatePicker onApplyTemplate={handleApplyTemplate} />
+
           <Card className="p-5 space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -552,6 +670,15 @@ export function BlogEditorClient({
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
                 Nội dung bài viết (Rich Text) *
               </label>
+              {qualityReport.hasZeroInternalLinks && qualityReport.wordCount >= 10 && (
+                <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                  <span>
+                    Cảnh báo: Bài viết hiện chưa có link nội bộ nào! Dùng hộp{" "}
+                    <strong>Gợi ý Link nội bộ tự động</strong> ở cột phải để chèn nhanh.
+                  </span>
+                </div>
+              )}
               <RichTextEditor
                 value={contentVi}
                 onChange={(html) => {
@@ -842,6 +969,26 @@ export function BlogEditorClient({
             </div>
           </Card>
 
+          {/* Pre-Publish Quality Gate */}
+          <BlogQualityGatePanel
+            report={qualityReport}
+            config={qualityConfig}
+            canEditConfig={canEditQualityConfig}
+            onSaveConfig={handleSaveQualityConfig}
+          />
+
+          {/* Auto Internal Link Suggestions */}
+          <InternalLinkSuggestionsPanel
+            title={titleVi}
+            category={category}
+            tags={parsedTags}
+            primaryKeyword={seoMeta.primaryKeyword}
+            contentHtml={contentVi}
+            catalog={linkCatalog}
+            hasZeroInternalLinks={qualityReport.hasZeroInternalLinks}
+            onInsertLink={handleInsertInternalLink}
+          />
+
           {/* Danger Zone (Edit mode) */}
           {isEdit && initialPost && (
             <Card className="border-red-200 p-5 space-y-3 dark:border-red-900/60">
@@ -864,6 +1011,60 @@ export function BlogEditorClient({
           )}
         </div>
       </div>
+
+      {/* Pre-Publish Quality Gate Modal */}
+      {pendingPublishStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-5 shadow-xl dark:border-amber-900 dark:bg-slate-900 space-y-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                <AlertTriangle className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Bài viết chưa đạt đủ tiêu chuẩn chất lượng ({qualityReport.score}/{qualityReport.maxScore})
+                </h3>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  Các tiêu chí dưới đây chưa hoàn tất trước khi{" "}
+                  {pendingPublishStatus === "scheduled" ? "lên lịch đăng" : "xuất bản công khai"}:
+                </p>
+              </div>
+            </div>
+
+            <ul className="space-y-1.5 rounded-xl bg-amber-50/70 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              {qualityReport.checks
+                .filter((c) => !c.passed)
+                .map((c) => (
+                  <li key={c.id}>
+                    <strong>• {c.label}:</strong> {c.detail}
+                  </li>
+                ))}
+            </ul>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const target = pendingPublishStatus;
+                  setPendingPublishStatus(null);
+                  void handleSave(target, true);
+                }}
+              >
+                Vẫn {pendingPublishStatus === "scheduled" ? "lên lịch" : "xuất bản"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setPendingPublishStatus(null)}
+              >
+                Quay lại hoàn thiện
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <MediaPickerModal
         open={coverPickerOpen}

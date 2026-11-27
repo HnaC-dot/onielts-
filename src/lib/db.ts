@@ -2916,6 +2916,9 @@ function mapDbBlogPost(p: Record<string, unknown>): BlogPost {
     author_name: String(p.author_name ?? "Đội ngũ học thuật Ôn IELTS"),
     read_minutes: Number(p.read_minutes ?? 5),
     published_at: String(p.published_at ?? p.created_at ?? new Date().toISOString()),
+    updated_at: p.updated_at
+      ? String(p.updated_at)
+      : String(p.published_at ?? p.created_at ?? new Date().toISOString()),
     is_published: Boolean(p.is_published),
     status,
     scheduled_at: p.scheduled_at ? String(p.scheduled_at) : null,

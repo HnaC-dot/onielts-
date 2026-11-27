@@ -36,6 +36,9 @@ function mapBlogRow(p: Record<string, unknown>): BlogPost {
     author_name: String(p.author_name ?? "Đội ngũ học thuật Ôn IELTS"),
     read_minutes: Number(p.read_minutes ?? 5),
     published_at: String(p.published_at ?? p.created_at ?? new Date().toISOString()),
+    updated_at: p.updated_at
+      ? String(p.updated_at)
+      : String(p.published_at ?? p.created_at ?? new Date().toISOString()),
     is_published: Boolean(p.is_published),
     status,
     scheduled_at: p.scheduled_at ? String(p.scheduled_at) : null,
@@ -351,7 +354,12 @@ export async function updateCmsBlogPost(
     if (clash) {
       return { ok: false, status: 409, error: `Slug "${payload.slug}" đã tồn tại.` };
     }
-    const updated: BlogPost = { ...existing, ...payload, id };
+    const updated: BlogPost = {
+      ...existing,
+      ...payload,
+      updated_at: new Date().toISOString(),
+      id,
+    };
     updateStore((store) => {
       const idx = store.blog_posts.findIndex((p) => p.id === id);
       if (idx !== -1) store.blog_posts[idx] = updated;
@@ -392,12 +400,23 @@ export async function updateCmsBlogPost(
     }
   }
 
-  const { data, error } = await admin
+  let { data, error } = await admin
     .from("blog_posts")
-    .update(payload)
+    .update({ ...payload, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select("*")
     .single();
+
+  if (error && /updated_at/i.test(error.message ?? "")) {
+    const retry = await admin
+      .from("blog_posts")
+      .update(payload)
+      .eq("id", id)
+      .select("*")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error || !data) {
     return {

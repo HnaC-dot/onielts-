@@ -6,6 +6,7 @@ import { ArrowRight, Clock, Crown, Star } from "lucide-react";
 import { getBlogPosts } from "@/lib/db";
 import { buildBreadcrumbJsonLd } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
+import { BlogNewsletterBox } from "@/components/blog-article-widgets";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -167,6 +168,8 @@ export default async function BlogIndexPage({
           ))}
         </div>
       )}
+
+      <BlogNewsletterBox isEn={isEn} />
     </div>
   );
 }

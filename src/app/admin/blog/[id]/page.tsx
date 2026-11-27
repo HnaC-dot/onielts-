@@ -1,6 +1,11 @@
 import React from "react";
 import { notFound } from "next/navigation";
+import { getAuthState } from "@/lib/auth";
 import { getAdminBlogPostById } from "@/lib/cms-blog";
+import {
+  getBlogQualityConfig,
+  getInternalLinkCatalog,
+} from "@/lib/cms-content-production";
 import { BlogEditorClient } from "@/components/admin/blog-editor-client";
 
 export const metadata = {
@@ -14,8 +19,20 @@ export default async function AdminBlogEditPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const post = await getAdminBlogPostById(id);
+  const [post, authState, qualityConfig, linkCatalog] = await Promise.all([
+    getAdminBlogPostById(id),
+    getAuthState(),
+    getBlogQualityConfig(),
+    getInternalLinkCatalog(),
+  ]);
   if (!post) notFound();
 
-  return <BlogEditorClient initialPost={post} />;
+  return (
+    <BlogEditorClient
+      initialPost={post}
+      initialQualityConfig={qualityConfig}
+      linkCatalog={linkCatalog}
+      canEditQualityConfig={authState.user?.role === "admin"}
+    />
+  );
 }
