@@ -1039,10 +1039,13 @@ export function AppearanceCmsClient({
           onChange={(nextMenus) => setConfig({ ...config, menus: nextMenus })}
           onRestoreNames={() => {
             setConfig((prev) => restoreDefaultMenuNames(prev));
-            toast.success("Đã khôi phục tên mặc định cho tất cả nhóm và mục hệ thống (giữ nguyên thứ tự).");
+            toast.success("Đã khôi phục tên mặc định cho các nhóm và mục mặc định hiện có (giữ nguyên thứ tự).");
           }}
           onResetAllMenus={() =>
-            setConfirmReset({ scope: "menus", label: "Toàn bộ cấu trúc 3 Menu" })
+            setConfirmReset({
+              scope: "menus",
+              label: "Toàn bộ menu mặc định (Sidebar Admin, Header & Footer)",
+            })
           }
         />
       )}

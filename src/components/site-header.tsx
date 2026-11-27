@@ -76,8 +76,9 @@ export function SiteHeader({
 
   const headerRef = useRef<HTMLDivElement>(null);
 
-  const visibleNavItems = (headerMenu.length > 0 ? headerMenu : DEFAULT_PUBLIC_HEADER_MENU)
-    .filter((item) => item.visible && isSafeNavHref(item.href));
+  const visibleNavItems = headerMenu.filter(
+    (item) => item.visible && isSafeNavHref(item.href)
+  );
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));

@@ -869,9 +869,24 @@ export function sanitizePlainText(input: string, maxLen = 400): string {
 export function isSafeNavHref(raw?: string | null): boolean {
   const trimmed = (raw ?? "").trim();
   if (!trimmed) return true;
-  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return true;
-  if (/^https?:\/\//i.test(trimmed)) return true;
-  if (/^mailto:[^\s]+$/i.test(trimmed)) return true;
+  if (/[\u0000-\u001F\u007F]/.test(trimmed)) return false;
+  if (trimmed.startsWith("/")) {
+    // Reject protocol-relative //evil.com, backslash tricks /\, and whitespace
+    if (trimmed.startsWith("//") || trimmed.startsWith("/\\") || /\s/.test(trimmed)) {
+      return false;
+    }
+    return true;
+  }
+  if (/^https:\/\//i.test(trimmed)) {
+    if (/\s/.test(trimmed)) return false;
+    try {
+      const parsed = new URL(trimmed);
+      return parsed.protocol === "https:" && Boolean(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }
+  if (/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(trimmed)) return true;
   if (/^tel:[+\d\s().-]+$/i.test(trimmed)) return true;
   return false;
 }
@@ -1070,14 +1085,50 @@ export function resolveAdminRouteBreadcrumb(
 }
 
 // =============================================================================
-// SYSTEM MENU INTEGRITY GUARD (NEVER DELETE SYSTEM ITEMS / NEVER CHANGE SYSTEM URLS)
+// MENU NORMALIZATION & SELF-LOCKOUT PROTECTION (adm-appearance + adminOnly)
 // =============================================================================
+export const PROTECTED_ADMIN_MENU_ITEM_ID = "adm-appearance";
+
+const LOCKED_ADMIN_ONLY_ROUTE_PREFIXES = [
+  "/admin/appearance",
+  "/admin/users",
+  "/admin/pricing",
+  "/admin/settings",
+  "/admin/seo",
+  "/admin/band-tables",
+] as const;
+
+function isLockedAdminOnlyRoute(href: string): boolean {
+  const clean = href.trim().split(/[?#]/)[0].replace(/\/+$/, "").toLowerCase();
+  return LOCKED_ADMIN_ONLY_ROUTE_PREFIXES.some(
+    (prefix) => clean === prefix || clean.startsWith(`${prefix}/`)
+  );
+}
+
+const VALID_ICON_SET = new Set<string>(AVAILABLE_MENU_ICONS);
+
+function sanitizeMenuIcon(icon: string | undefined, fallback = "Link2"): string {
+  const trimmed = (icon ?? "").trim();
+  return VALID_ICON_SET.has(trimmed) ? trimmed : fallback;
+}
+
+function sanitizeSafeHrefOrFallback(
+  rawHref: string | undefined,
+  fallback: string
+): string {
+  const trimmed = (rawHref ?? "").trim();
+  if (trimmed && isSafeNavHref(trimmed)) {
+    return trimmed;
+  }
+  return fallback;
+}
+
 export function enforceSystemMenuIntegrity(
   config: SiteAppearanceConfig
 ): SiteAppearanceConfig {
   const next = structuredClone(config);
 
-  // 1. Admin Sidebar: preserve all system items & lock their URLs + adminOnly flags
+  // Build default lookup for adminOnly security flags & fallback metadata
   const defaultAdminItems = new Map<
     string,
     { groupId: string; item: AdminMenuItem }
@@ -1088,110 +1139,136 @@ export function enforceSystemMenuIntegrity(
     }
   }
 
-  const seenAdminIds = new Set<string>();
+  // 1. Admin Sidebar:
+  // - Do NOT re-attach deleted system items (except adm-appearance).
+  // - Allow editing URL and icon (validated via isSafeNavHref & icon allowlist).
+  // - ALWAYS lock adminOnly=true on sensitive admin items/routes.
   next.menus.adminSidebar = next.menus.adminSidebar.map((grp) => ({
     ...grp,
     labelVi: sanitizePlainText(grp.labelVi, 40) || "Nhóm",
     labelEn: sanitizePlainText(grp.labelEn || grp.labelVi, 40) || "Group",
     items: grp.items.map((it) => {
       const sys = defaultAdminItems.get(it.id);
-      seenAdminIds.add(it.id);
-      if (sys) {
-        return {
-          ...it,
-          labelVi: sanitizePlainText(it.labelVi, 40) || sys.item.labelVi,
-          labelEn: sanitizePlainText(it.labelEn || it.labelVi, 40) || sys.item.labelEn,
-          // Renaming NEVER changes system URLs or adminOnly security flag!
-          href: sys.item.href,
-          adminOnly: sys.item.adminOnly,
-          isSystem: true,
-        };
-      }
+      const isProtectedSelf = it.id === PROTECTED_ADMIN_MENU_ITEM_ID;
+      const safeHref = isProtectedSelf
+        ? "/admin/appearance"
+        : sanitizeSafeHrefOrFallback(it.href, sys?.item.href ?? "/admin");
+      const lockedAdminOnly =
+        isProtectedSelf ||
+        Boolean(sys?.item.adminOnly) ||
+        isLockedAdminOnlyRoute(safeHref);
+
+      const safeChildren = (it.children ?? []).map((c) => ({
+        ...c,
+        labelVi: sanitizePlainText(c.labelVi, 40) || "Mục con",
+        labelEn: sanitizePlainText(c.labelEn || c.labelVi, 40) || "Sub-item",
+        href: sanitizeSafeHrefOrFallback(c.href, safeHref),
+        icon: c.icon ? sanitizeMenuIcon(c.icon, "Link2") : undefined,
+      }));
+
       return {
         ...it,
-        labelVi: sanitizePlainText(it.labelVi, 40),
-        labelEn: sanitizePlainText(it.labelEn || it.labelVi, 40),
-        isSystem: false,
+        labelVi:
+          sanitizePlainText(it.labelVi, 40) || sys?.item.labelVi || "Mục menu",
+        labelEn:
+          sanitizePlainText(it.labelEn || it.labelVi, 40) ||
+          sys?.item.labelEn ||
+          "Menu Item",
+        href: safeHref,
+        icon: sanitizeMenuIcon(it.icon, sys?.item.icon ?? "Link2"),
+        visible: isProtectedSelf ? true : Boolean(it.visible),
+        adminOnly: lockedAdminOnly ? true : Boolean(it.adminOnly),
+        isSystem: Boolean(sys),
+        children: safeChildren,
       };
     }),
   }));
 
-  // Re-attach any missing system admin item (as hidden) if payload tried to delete it
-  for (const [id, { groupId, item }] of defaultAdminItems.entries()) {
-    if (seenAdminIds.has(id)) continue;
-    let targetGroup = next.menus.adminSidebar.find((g) => g.id === groupId);
-    if (!targetGroup) {
-      const defGroup = DEFAULT_ADMIN_SIDEBAR_MENU.find((g) => g.id === groupId)!;
-      targetGroup = { ...structuredClone(defGroup), items: [] };
-      next.menus.adminSidebar.push(targetGroup);
-    }
-    targetGroup.items.push({ ...structuredClone(item), visible: false });
-  }
-
-  // Always keep /admin/appearance accessible so Admin can never lock themselves out!
+  // Mandatory self-lockout guard: ONLY adm-appearance (and its containing group)
+  // must always exist and stay visible so Admin can never lock themselves out.
+  let hasAppearanceItem = false;
   for (const g of next.menus.adminSidebar) {
     for (const it of g.items) {
-      if (it.id === "adm-appearance") {
+      if (it.id === PROTECTED_ADMIN_MENU_ITEM_ID) {
+        hasAppearanceItem = true;
         it.visible = true;
+        it.adminOnly = true;
+        it.href = "/admin/appearance";
         g.visible = true;
       }
     }
   }
 
-  // 2. Public Header: preserve system items & lock their URLs
+  if (!hasAppearanceItem) {
+    const defAppearance = defaultAdminItems.get(PROTECTED_ADMIN_MENU_ITEM_ID)!;
+    let targetGroup = next.menus.adminSidebar.find(
+      (g) => g.id === defAppearance.groupId
+    );
+    if (!targetGroup) {
+      const defSysGroup = DEFAULT_ADMIN_SIDEBAR_MENU.find(
+        (g) => g.id === defAppearance.groupId
+      )!;
+      targetGroup = {
+        ...structuredClone(defSysGroup),
+        visible: true,
+        items: [],
+      };
+      next.menus.adminSidebar.push(targetGroup);
+    } else {
+      targetGroup.visible = true;
+    }
+    targetGroup.items.unshift({
+      ...structuredClone(defAppearance.item),
+      visible: true,
+      adminOnly: true,
+    });
+  }
+
+  // 2. Public Header:
+  // - Do NOT re-attach deleted system items or sub-items.
+  // - Allow editing URL and icon (validated via isSafeNavHref).
   const defaultHeaderMap = new Map(
     DEFAULT_PUBLIC_HEADER_MENU.map((m) => [m.id, m])
   );
-  const seenHeaderIds = new Set<string>();
   next.menus.publicHeader = next.menus.publicHeader.map((it) => {
-    seenHeaderIds.add(it.id);
     const sys = defaultHeaderMap.get(it.id);
     const sysChildMap = new Map((sys?.children ?? []).map((c) => [c.id, c]));
+    const safeHref = sanitizeSafeHrefOrFallback(it.href, sys?.href ?? "/");
+
     const incomingChildren = (it.children ?? []).map((c) => {
       const sc = sysChildMap.get(c.id);
-      if (sc) {
-        return {
-          ...c,
-          labelVi: sanitizePlainText(c.labelVi, 40) || sc.labelVi,
-          labelEn: sanitizePlainText(c.labelEn || c.labelVi, 40) || sc.labelEn,
-          href: sc.href,
-          isSystem: true,
-        };
-      }
       return {
         ...c,
-        labelVi: sanitizePlainText(c.labelVi, 40),
-        labelEn: sanitizePlainText(c.labelEn || c.labelVi, 40),
-        isSystem: false,
+        labelVi: sanitizePlainText(c.labelVi, 40) || sc?.labelVi || "Mục con",
+        labelEn:
+          sanitizePlainText(c.labelEn || c.labelVi, 40) ||
+          sc?.labelEn ||
+          "Sub-item",
+        descVi: sanitizePlainText(c.descVi ?? "", 180),
+        descEn: sanitizePlainText(c.descEn ?? "", 180),
+        href: sanitizeSafeHrefOrFallback(c.href, sc?.href ?? safeHref),
+        icon: c.icon ? sanitizeMenuIcon(c.icon, sc?.icon ?? "Sparkles") : sc?.icon,
+        isSystem: Boolean(sc),
       };
     });
 
-    if (sys) {
-      return {
-        ...it,
-        labelVi: sanitizePlainText(it.labelVi, 40) || sys.labelVi,
-        labelEn: sanitizePlainText(it.labelEn || it.labelVi, 40) || sys.labelEn,
-        href: sys.href,
-        isSystem: true,
-        children: incomingChildren,
-      };
-    }
     return {
       ...it,
-      labelVi: sanitizePlainText(it.labelVi, 40),
-      labelEn: sanitizePlainText(it.labelEn || it.labelVi, 40),
-      isSystem: false,
+      labelVi: sanitizePlainText(it.labelVi, 40) || sys?.labelVi || "Menu",
+      labelEn:
+        sanitizePlainText(it.labelEn || it.labelVi, 40) ||
+        sys?.labelEn ||
+        "Menu",
+      href: safeHref,
+      icon: sanitizeMenuIcon(it.icon, sys?.icon ?? "BookOpen"),
+      isSystem: Boolean(sys),
       children: incomingChildren,
     };
   });
 
-  for (const [id, defItem] of defaultHeaderMap.entries()) {
-    if (!seenHeaderIds.has(id)) {
-      next.menus.publicHeader.push({ ...structuredClone(defItem), visible: false });
-    }
-  }
-
-  // 3. Public Footer Columns: preserve system links URLs when present
+  // 3. Public Footer Columns:
+  // - Do NOT re-attach deleted columns or links.
+  // - Allow editing URL (validated via isSafeNavHref).
   const defaultFooterLinks = new Map<string, FooterLinkItem>();
   for (const col of DEFAULT_PUBLIC_FOOTER_COLUMNS) {
     for (const l of col.links) defaultFooterLinks.set(l.id, l);
@@ -1202,20 +1279,15 @@ export function enforceSystemMenuIntegrity(
     labelEn: sanitizePlainText(col.labelEn || col.labelVi, 40) || "Links",
     links: col.links.map((l) => {
       const sys = defaultFooterLinks.get(l.id);
-      if (sys) {
-        return {
-          ...l,
-          labelVi: sanitizePlainText(l.labelVi, 40) || sys.labelVi,
-          labelEn: sanitizePlainText(l.labelEn || l.labelVi, 40) || sys.labelEn,
-          href: sys.href,
-          isSystem: true,
-        };
-      }
       return {
         ...l,
-        labelVi: sanitizePlainText(l.labelVi, 40),
-        labelEn: sanitizePlainText(l.labelEn || l.labelVi, 40),
-        isSystem: false,
+        labelVi: sanitizePlainText(l.labelVi, 40) || sys?.labelVi || "Liên kết",
+        labelEn:
+          sanitizePlainText(l.labelEn || l.labelVi, 40) ||
+          sys?.labelEn ||
+          "Link",
+        href: sanitizeSafeHrefOrFallback(l.href, sys?.href ?? "/"),
+        isSystem: Boolean(sys),
       };
     }),
   }));
@@ -1229,6 +1301,80 @@ export function enforceSystemMenuIntegrity(
   }
 
   return next;
+}
+
+/**
+ * Restores missing default items for a specific Admin Sidebar group
+ * (preserving custom items and avoiding duplicates if an item was moved to another group).
+ */
+export function restoreDefaultAdminGroupItems(
+  adminSidebar: AdminMenuGroup[],
+  groupId: string
+): AdminMenuGroup[] {
+  const defGroup = DEFAULT_ADMIN_SIDEBAR_MENU.find((g) => g.id === groupId);
+  if (!defGroup) return adminSidebar;
+
+  const existingIdsAcrossAllGroups = new Set<string>();
+  for (const g of adminSidebar) {
+    for (const it of g.items) existingIdsAcrossAllGroups.add(it.id);
+  }
+
+  return adminSidebar.map((g) => {
+    if (g.id !== groupId) return g;
+    const missingDefaults = defGroup.items
+      .filter((defIt) => !existingIdsAcrossAllGroups.has(defIt.id))
+      .map((defIt) => structuredClone(defIt));
+    return {
+      ...g,
+      items: [...g.items, ...missingDefaults],
+    };
+  });
+}
+
+/**
+ * Restores missing default sub-items for a specific default Public Header menu item.
+ */
+export function restoreDefaultHeaderSubItems(
+  publicHeader: PublicHeaderMenuItem[],
+  itemId: string
+): PublicHeaderMenuItem[] {
+  const defItem = DEFAULT_PUBLIC_HEADER_MENU.find((m) => m.id === itemId);
+  if (!defItem || !defItem.children?.length) return publicHeader;
+
+  return publicHeader.map((it) => {
+    if (it.id !== itemId) return it;
+    const existingIds = new Set((it.children ?? []).map((c) => c.id));
+    const missing = defItem.children!
+      .filter((dc) => !existingIds.has(dc.id))
+      .map((dc) => structuredClone(dc));
+    return {
+      ...it,
+      children: [...(it.children ?? []), ...missing],
+    };
+  });
+}
+
+/**
+ * Restores missing default links for a specific default Public Footer column.
+ */
+export function restoreDefaultFooterColumnLinks(
+  publicFooter: FooterColumnConfig[],
+  colId: string
+): FooterColumnConfig[] {
+  const defCol = DEFAULT_PUBLIC_FOOTER_COLUMNS.find((c) => c.id === colId);
+  if (!defCol) return publicFooter;
+
+  return publicFooter.map((col) => {
+    if (col.id !== colId) return col;
+    const existingIds = new Set(col.links.map((l) => l.id));
+    const missing = defCol.links
+      .filter((dl) => !existingIds.has(dl.id))
+      .map((dl) => structuredClone(dl));
+    return {
+      ...col,
+      links: [...col.links, ...missing],
+    };
+  });
 }
 
 /**
@@ -1311,7 +1457,10 @@ const safeHrefSchema = z
   .string()
   .trim()
   .max(400)
-  .refine((v) => isSafeNavHref(v), "Đường dẫn không hợp lệ (chỉ chấp nhận /..., https://, mailto:, tel:).");
+  .refine(
+    (v) => isSafeNavHref(v),
+    "Đường dẫn không hợp lệ (chỉ chấp nhận đường dẫn nội bộ /... hoặc https:// hợp lệ; chặn javascript: và data:)."
+  );
 
 const menuLabelSchema = z
   .string()
@@ -1461,8 +1610,8 @@ export const siteAppearanceSchema = z.object({
   }),
   menus: z.object({
     adminSidebar: z.array(adminMenuGroupSchema).min(1).max(12),
-    publicHeader: z.array(publicHeaderMenuItemSchema).min(1).max(16),
-    publicFooter: z.array(footerColumnSchema).min(1).max(6),
+    publicHeader: z.array(publicHeaderMenuItemSchema).min(0).max(16),
+    publicFooter: z.array(footerColumnSchema).min(0).max(6),
   }),
   footer: z.object({
     descriptionVi: z.string().trim().max(320).default("").transform((v) => sanitizePlainText(v, 320)),
@@ -1606,16 +1755,12 @@ export function mergeAppearanceWithDefaults(
         partial.menus.adminSidebar.length > 0
           ? partial.menus.adminSidebar
           : structuredClone(DEFAULT_ADMIN_SIDEBAR_MENU),
-      publicHeader:
-        Array.isArray(partial.menus?.publicHeader) &&
-        partial.menus.publicHeader.length > 0
-          ? partial.menus.publicHeader
-          : structuredClone(DEFAULT_PUBLIC_HEADER_MENU),
-      publicFooter:
-        Array.isArray(partial.menus?.publicFooter) &&
-        partial.menus.publicFooter.length > 0
-          ? partial.menus.publicFooter
-          : structuredClone(DEFAULT_PUBLIC_FOOTER_COLUMNS),
+      publicHeader: Array.isArray(partial.menus?.publicHeader)
+        ? partial.menus.publicHeader
+        : structuredClone(DEFAULT_PUBLIC_HEADER_MENU),
+      publicFooter: Array.isArray(partial.menus?.publicFooter)
+        ? partial.menus.publicFooter
+        : structuredClone(DEFAULT_PUBLIC_FOOTER_COLUMNS),
     },
     footer: {
       ...DEFAULT_APPEARANCE_CONFIG.footer,
