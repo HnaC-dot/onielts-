@@ -149,6 +149,7 @@ Never auto-grant admin in application code. To promote an account to `admin`:
 - [ ] Google OAuth Client ID/Secret saved in Supabase and `https://<domain>/auth/callback**` added to Supabase **Redirect URLs**.
 - [ ] Upstash Redis (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) configured for distributed production rate limiting.
 - [ ] Redeploy triggered after any env var change.
+- [ ] Verify `GET https://<domain>/api/health` returns HTTP `200` (`"ok": true`, `"database": "ok"`).
 - [ ] Verify `GET https://<domain>/api/health/auth` returns:
   ```json
   {

@@ -7,7 +7,7 @@ import { getAuthState } from "@/lib/auth";
 import { isStaffRole } from "@/lib/admin-auth";
 import { getIeltsTestBySlug } from "@/lib/db";
 import { sanitizeTestForClient } from "@/lib/test-grader";
-import { buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildBreadcrumbJsonLd, serializeJsonLd } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { TestEngineClient } from "@/components/test-engine-client";
 import { Card } from "@/components/ui/card";
@@ -80,7 +80,7 @@ export default async function TestDetailPage({
       <>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
         />
         {isDraftPreview && (
           <div className="mx-auto max-w-[1440px] px-4 pt-4 sm:px-6">
@@ -105,7 +105,7 @@ export default async function TestDetailPage({
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 space-y-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
       {isDraftPreview && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200">

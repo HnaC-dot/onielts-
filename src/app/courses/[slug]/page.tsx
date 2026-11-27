@@ -9,6 +9,7 @@ import { getCourseBySlug, getUserCourseProgress } from "@/lib/db";
 import {
   buildBreadcrumbJsonLd,
   buildCourseJsonLd,
+  serializeJsonLd,
 } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { CoursePlayerClient } from "@/components/course-player-client";
@@ -67,11 +68,11 @@ export default async function CourseDetailPage({
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(courseJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(courseJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
 
       {!course.is_published && isPreview && (

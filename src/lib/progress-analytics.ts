@@ -24,7 +24,6 @@ import {
   type ProgressSummaryPayload,
   type QuestionTypeStatItem,
   type RecommendedPracticeItem,
-  type SkillBandPoint,
 } from "./progress-shared";
 import type {
   IeltsSkill,

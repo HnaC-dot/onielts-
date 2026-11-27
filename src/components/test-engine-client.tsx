@@ -71,6 +71,7 @@ export function TestEngineClient({
   const [notesText, setNotesText] = useState("");
   const [fontSize, setFontSize] = useState<"sm" | "base" | "lg">("base");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [graded, setGraded] = useState<GradedTestResult | null>(null);
   const [showScript, setShowScript] = useState(false);
 
@@ -84,11 +85,6 @@ export function TestEngineClient({
   const [isPlayingTts, setIsPlayingTts] = useState(false);
   const [audioRate, setAudioRate] = useState(1.0);
   const [activeAudioParagraph, setActiveAudioParagraph] = useState(0);
-  const startedAtRef = useRef<number>(0);
-
-  useEffect(() => {
-    startedAtRef.current = Date.now();
-  }, []);
 
   const currentSection = test.sections[activeSectionIdx] ?? test.sections[0];
 
@@ -202,16 +198,22 @@ export function TestEngineClient({
     if (submitting || graded) return;
     stopAllAudio();
     setSubmitting(true);
+    setSubmitError("");
     try {
       if (mode === "daily" && onDailySubmit) {
         const res = await onDailySubmit(answers);
-        if (res) setGraded(res);
+        if (res) {
+          setGraded(res);
+        } else {
+          setSubmitError(
+            isEn
+              ? "Could not submit your Daily Exam. Please try clicking Submit again."
+              : "Không thể nộp bài Đề thi mỗi ngày. Vui lòng thử bấm Nộp bài lại."
+          );
+        }
         return;
       }
-      const durationSeconds = Math.max(
-        1,
-        Math.round((Date.now() - startedAtRef.current) / 1000)
-      );
+      const durationSeconds = Math.max(1, totalSeconds - secondsLeft);
       const res = await fetch("/api/tests/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -221,10 +223,23 @@ export function TestEngineClient({
           durationSeconds,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setGraded(data.graded);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.graded) {
+        setSubmitError(
+          data?.error ||
+            (isEn
+              ? "Submission failed. Your answers are still preserved — please click Submit again."
+              : "Chấm bài thất bại tạm thời. Đáp án của bạn vẫn được giữ nguyên — hãy bấm Nộp bài lại.")
+        );
+        return;
       }
+      setGraded(data.graded);
+    } catch {
+      setSubmitError(
+        isEn
+          ? "Network error while submitting your test. Your answers are still safe — please retry."
+          : "Lỗi kết nối khi nộp bài. Đáp án của bạn vẫn còn nguyên — hãy kiểm tra mạng và bấm Nộp bài lại."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -264,6 +279,14 @@ export function TestEngineClient({
 
   return (
     <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 space-y-5">
+      {submitError && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300"
+        >
+          {submitError}
+        </div>
+      )}
       {/* Computer-Delivered Top Exam Bar */}
       <div className="sticky top-16 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">
         <div className="min-w-0">

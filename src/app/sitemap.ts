@@ -40,15 +40,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPages,
   ] = await Promise.all([
     getSiteSeoSettings(),
-    getIeltsTests(false),
-    getCourses(false),
-    getPronunciationSounds(false),
-    getDictationLessons(false),
-    getLearnVideos(false),
-    getBlogPosts(false),
-    getConversationTopics(false),
-    getWritingExercises(false),
-    listPublicStaticPages(),
+    getIeltsTests(false).catch(() => []),
+    getCourses(false).catch(() => []),
+    getPronunciationSounds(false).catch(() => []),
+    getDictationLessons(false).catch(() => []),
+    getLearnVideos(false).catch(() => []),
+    getBlogPosts(false).catch(() => []),
+    getConversationTopics(false).catch(() => []),
+    getWritingExercises(false).catch(() => []),
+    listPublicStaticPages().catch(() => []),
   ]);
 
   const staticPageMap = new Map(staticPages.map((p) => [`/${p.slug}`, p]));
@@ -219,13 +219,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  // Published blog posts
+  // Published blog posts (prefer real updated_at timestamp when available)
   if (seo.sitemapIncludeBlog) {
     for (const post of posts) {
       if (post.seo_meta?.robotsIndex === false) continue;
       entries.push({
         url: `${baseUrl}/blog/${post.slug}`,
-        lastModified: safeDate(post.published_at, now),
+        lastModified: safeDate(post.updated_at || post.published_at, now),
         changeFrequency: "weekly",
         priority: 0.8,
       });

@@ -7,7 +7,7 @@ import { Headphones } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { isStaffRole } from "@/lib/admin-auth";
 import { getPronunciationSoundBySlug } from "@/lib/db";
-import { buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildBreadcrumbJsonLd, serializeJsonLd } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { PronunciationPracticeClient } from "@/components/pronunciation-practice-client";
 import { Card } from "@/components/ui/card";
@@ -62,7 +62,7 @@ export default async function PronunciationDetailPage({
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 space-y-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
 
       {sound.is_published === false && isPreview && (

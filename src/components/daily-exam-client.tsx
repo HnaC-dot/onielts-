@@ -49,14 +49,20 @@ export function DailyExamClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "start" }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || "Không thể bắt đầu đề thi hôm nay.");
+        setError(data?.error || "Không thể bắt đầu đề thi hôm nay.");
         return;
       }
       setAttempt(data.attempt);
       setRemainingSeconds(data.remainingSeconds ?? durationSeconds);
       setStarted(true);
+    } catch {
+      setError(
+        isEn
+          ? "Network error while starting today's exam. Please try again."
+          : "Lỗi kết nối máy chủ khi bắt đầu đề thi. Vui lòng thử lại."
+      );
     } finally {
       setStarting(false);
     }
@@ -65,18 +71,27 @@ export function DailyExamClient({
   const handleDailySubmit = async (
     answers: Record<string, string>
   ): Promise<GradedTestResult | null> => {
-    const res = await fetch("/api/daily-exam", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "submit", answers }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Không thể nộp bài.");
+    try {
+      const res = await fetch("/api/daily-exam", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "submit", answers }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "Không thể nộp bài.");
+        return null;
+      }
+      setAttempt(data.attempt);
+      return data.graded as GradedTestResult;
+    } catch {
+      setError(
+        isEn
+          ? "Network error while submitting. Please click Submit again."
+          : "Lỗi kết nối khi nộp bài. Vui lòng bấm Nộp bài lại."
+      );
       return null;
     }
-    setAttempt(data.attempt);
-    return data.graded as GradedTestResult;
   };
 
   if (started && attempt && !attempt.is_completed) {

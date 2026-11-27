@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { CheckCircle2, HeartHandshake, ShieldCheck, Sparkles } from "lucide-react";
 import { getStaticPageBySlug } from "@/lib/site-content";
-import { buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildBreadcrumbJsonLd, serializeJsonLd } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { renderBlogContentToSafeHtml } from "@/lib/sanitize";
 import { Card } from "@/components/ui/card";
@@ -53,7 +53,7 @@ export default async function AboutPage() {
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 space-y-10">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
 
       <div className="max-w-3xl space-y-4">

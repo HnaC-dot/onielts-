@@ -7,6 +7,7 @@ import {
   clearUserLearningHistory,
   getUserProgressSummary,
 } from "@/lib/progress-analytics";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +23,24 @@ const clearHistorySchema = z.object({
   scope: z.enum(["all", "tests", "writing", "speaking", "daily"]).default("all"),
 });
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json(
       { error: "Vui lòng đăng nhập để xem tiến độ học tập." },
       { status: 401 }
+    );
+  }
+
+  const rate = await checkRateLimit(
+    `progress-get:${getRequestClientKey(req, user.id)}`,
+    30,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: `Vui lòng thử lại sau ${rate.retryAfterSec} giây.` },
+      { status: 429 }
     );
   }
 
@@ -47,6 +60,18 @@ export async function PATCH(req: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Vui lòng đăng nhập." }, { status: 401 });
+  }
+
+  const rate = await checkRateLimit(
+    `progress-patch:${getRequestClientKey(req, user.id)}`,
+    15,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: `Bạn thao tác quá nhanh. Vui lòng thử lại sau ${rate.retryAfterSec} giây.` },
+      { status: 429 }
+    );
   }
 
   const body = await req.json().catch(() => null);
@@ -86,6 +111,18 @@ export async function DELETE(req: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Vui lòng đăng nhập." }, { status: 401 });
+  }
+
+  const rate = await checkRateLimit(
+    `progress-del:${getRequestClientKey(req, user.id)}`,
+    5,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: `Vui lòng thử lại sau ${rate.retryAfterSec} giây.` },
+      { status: 429 }
+    );
   }
 
   const body = await req.json().catch(() => ({}));

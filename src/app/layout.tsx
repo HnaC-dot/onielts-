@@ -22,7 +22,7 @@ import {
 } from "@/lib/appearance-shared";
 import { isValidSocialProfileUrl } from "@/lib/system-cms-shared";
 import { GA4_ID_REGEX, GSC_TOKEN_REGEX } from "@/lib/seo-cms-shared";
-import { getAppBaseUrl } from "@/lib/seo";
+import { getAppBaseUrl, serializeJsonLd } from "@/lib/seo";
 import "./globals.css";
 
 const beVietnamPro = Be_Vietnam_Pro({
@@ -159,7 +159,7 @@ export default async function RootLayout({
       <body className="min-h-screen flex flex-col bg-background text-foreground antialiased">
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
         />
         {ga4Id && (
           <>

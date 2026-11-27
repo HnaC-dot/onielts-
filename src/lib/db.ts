@@ -105,93 +105,131 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
   if (!seedPromise) {
     seedPromise = (async () => {
       try {
-        // 1. Band conversion tables
-        const { count: bandCount } = await admin
-          .from("band_conversion_tables")
-          .select("id", { count: "exact", head: true });
-        if (!bandCount || bandCount === 0) {
-          await admin.from("band_conversion_tables").insert(
-            DEFAULT_BAND_CONVERSIONS.map((r) => ({
-              skill: r.skill,
-              min_raw: r.min_raw,
-              max_raw: r.max_raw,
-              band_score: r.band_score,
-            }))
+        // Fast parallel probe across all catalog tables (avoids 11 sequential cold-start round-trips
+        // and avoids pulling megabytes of full ielts_tests.test_data JSONB on every instance boot).
+        const [
+          bandRes,
+          planRes,
+          bannerRes,
+          codeRes,
+          testsMetaRes,
+          courseRes,
+          blogRes,
+          dictRes,
+          ipaRes,
+          vidRes,
+          convRes,
+          weRes,
+        ] = await Promise.all([
+          admin.from("band_conversion_tables").select("id", { count: "exact", head: true }),
+          admin.from("pricing_plans").select("id", { count: "exact", head: true }),
+          admin.from("promo_banners").select("id", { count: "exact", head: true }),
+          admin.from("promo_codes").select("id", { count: "exact", head: true }),
+          admin.from("ielts_tests").select("id, slug, skill, is_published, question_count:test_data->>questionCount"),
+          admin.from("courses").select("id", { count: "exact", head: true }),
+          admin.from("blog_posts").select("id", { count: "exact", head: true }),
+          admin.from("dictation_lessons").select("id", { count: "exact", head: true }),
+          admin.from("pronunciation_sounds").select("id", { count: "exact", head: true }),
+          admin.from("learn_videos").select("id", { count: "exact", head: true }),
+          admin.from("conversation_topics").select("id", { count: "exact", head: true }),
+          admin.from("writing_exercises").select("id", { count: "exact", head: true }),
+        ]);
+
+        const seedTasks: Promise<unknown>[] = [];
+
+        if (!bandRes.count || bandRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("band_conversion_tables").insert(
+                DEFAULT_BAND_CONVERSIONS.map((r) => ({
+                  skill: r.skill,
+                  min_raw: r.min_raw,
+                  max_raw: r.max_raw,
+                  band_score: r.band_score,
+                }))
+              )
+            )
           );
         }
 
-        // 2. Pricing plans
-        const { count: planCount } = await admin
-          .from("pricing_plans")
-          .select("id", { count: "exact", head: true });
-        if (!planCount || planCount === 0) {
-          await admin.from("pricing_plans").upsert(
-            DEFAULT_PRICING_PLANS.map((p) => ({
-              slug: p.slug,
-              name_vi: p.name_vi,
-              name_en: p.name_en,
-              duration_months: p.duration_months,
-              price_vnd: p.price_vnd,
-              original_price_vnd: p.original_price_vnd,
-              is_popular: p.is_popular,
-              features_vi: p.features_vi,
-              features_en: p.features_en,
-              is_active: p.is_active,
-              sort_order: p.sort_order,
-            })),
-            { onConflict: "slug", ignoreDuplicates: true }
+        if (!planRes.count || planRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("pricing_plans").upsert(
+                DEFAULT_PRICING_PLANS.map((p) => ({
+                  slug: p.slug,
+                  name_vi: p.name_vi,
+                  name_en: p.name_en,
+                  duration_months: p.duration_months,
+                  price_vnd: p.price_vnd,
+                  original_price_vnd: p.original_price_vnd,
+                  is_popular: p.is_popular,
+                  features_vi: p.features_vi,
+                  features_en: p.features_en,
+                  is_active: p.is_active,
+                  sort_order: p.sort_order,
+                })),
+                { onConflict: "slug", ignoreDuplicates: true }
+              )
+            )
           );
         }
 
-        // 3. Promo banner & codes
-        const { count: bannerCount } = await admin
-          .from("promo_banners")
-          .select("id", { count: "exact", head: true });
-        if (!bannerCount || bannerCount === 0) {
-          await admin.from("promo_banners").upsert(
-            [
-              {
-                key: DEFAULT_PROMO_BANNER.key,
-                title_vi: DEFAULT_PROMO_BANNER.title_vi,
-                title_en: DEFAULT_PROMO_BANNER.title_en,
-                badge_vi: DEFAULT_PROMO_BANNER.badge_vi,
-                badge_en: DEFAULT_PROMO_BANNER.badge_en,
-                ends_at: DEFAULT_PROMO_BANNER.ends_at,
-                cta_vi: DEFAULT_PROMO_BANNER.cta_vi,
-                cta_en: DEFAULT_PROMO_BANNER.cta_en,
-                is_active: DEFAULT_PROMO_BANNER.is_active,
-              },
-            ],
-            { onConflict: "key", ignoreDuplicates: true }
+        if (!bannerRes.count || bannerRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("promo_banners").upsert(
+                [
+                  {
+                    key: DEFAULT_PROMO_BANNER.key,
+                    title_vi: DEFAULT_PROMO_BANNER.title_vi,
+                    title_en: DEFAULT_PROMO_BANNER.title_en,
+                    badge_vi: DEFAULT_PROMO_BANNER.badge_vi,
+                    badge_en: DEFAULT_PROMO_BANNER.badge_en,
+                    ends_at: DEFAULT_PROMO_BANNER.ends_at,
+                    cta_vi: DEFAULT_PROMO_BANNER.cta_vi,
+                    cta_en: DEFAULT_PROMO_BANNER.cta_en,
+                    is_active: DEFAULT_PROMO_BANNER.is_active,
+                  },
+                ],
+                { onConflict: "key", ignoreDuplicates: true }
+              )
+            )
           );
         }
 
-        const { count: codeCount } = await admin
-          .from("promo_codes")
-          .select("id", { count: "exact", head: true });
-        if (!codeCount || codeCount === 0) {
-          await admin.from("promo_codes").upsert(
-            DEFAULT_PROMO_CODES.map((c) => ({
-              code: c.code,
-              discount_percent: c.discount_percent,
-              max_discount_vnd: c.max_discount_vnd ?? null,
-              max_uses: c.max_uses ?? null,
-              current_uses: 0,
-              expires_at: c.expires_at ?? null,
-              is_active: c.is_active,
-            })),
-            { onConflict: "code", ignoreDuplicates: true }
+        if (!codeRes.count || codeRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("promo_codes").upsert(
+                DEFAULT_PROMO_CODES.map((c) => ({
+                  code: c.code,
+                  discount_percent: c.discount_percent,
+                  max_discount_vnd: c.max_discount_vnd ?? null,
+                  max_uses: c.max_uses ?? null,
+                  current_uses: 0,
+                  expires_at: c.expires_at ?? null,
+                  is_active: c.is_active,
+                })),
+                { onConflict: "code", ignoreDuplicates: true }
+              )
+            )
           );
         }
 
         // 4. IELTS Tests — upsert missing slugs AND upgrade old <40-question seeded Reading/Listening rows
-        const { data: existingTests } = await admin
-          .from("ielts_tests")
-          .select("id, slug, skill, test_data");
+        const existingTests = (testsMetaRes.data ?? []) as Array<{
+          id: string;
+          slug: string;
+          skill: string;
+          is_published?: boolean;
+          question_count?: string | number | null;
+        }>;
         const existingBySlug = new Map(
-          (existingTests ?? []).map((r) => [String(r.slug), r])
+          existingTests.map((r) => [String(r.slug), r])
         );
 
+        const missingTests: Record<string, unknown>[] = [];
         for (const t of FULL_SEED_TESTS) {
           const testDataPayload = {
             questionCount: t.questionCount,
@@ -201,7 +239,7 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
           };
           const existing = existingBySlug.get(t.slug);
           if (!existing) {
-            await admin.from("ielts_tests").insert({
+            missingTests.push({
               slug: t.slug,
               skill: t.skill,
               module: t.module,
@@ -218,164 +256,189 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
             });
           } else if (
             (t.skill === "reading" || t.skill === "listening") &&
-            Number((existing.test_data as { questionCount?: number } | null)?.questionCount ?? 0) <
-              t.questionCount
+            Number(existing.question_count ?? 0) < t.questionCount
           ) {
-            await admin
-              .from("ielts_tests")
-              .update({
-                title_vi: t.title_vi,
-                title_en: t.title_en,
-                description_vi: t.description_vi,
-                description_en: t.description_en,
-                audio_url: t.sections[0]?.audioUrl ?? null,
-                test_data: testDataPayload,
-              })
-              .eq("id", existing.id);
+            seedTasks.push(
+              Promise.resolve(
+                admin
+                  .from("ielts_tests")
+                  .update({
+                    title_vi: t.title_vi,
+                    title_en: t.title_en,
+                    description_vi: t.description_vi,
+                    description_en: t.description_en,
+                    audio_url: t.sections[0]?.audioUrl ?? null,
+                    test_data: testDataPayload,
+                  })
+                  .eq("id", existing.id)
+              )
+            );
           }
         }
-
-        // Auto-hide legacy incomplete demo test "custom-reading-demo-04" from public listing
-        await admin
-          .from("ielts_tests")
-          .update({ is_published: false })
-          .eq("slug", "custom-reading-demo-04")
-          .eq("is_published", true);
-
-        // 5. Courses
-        const { count: courseCount } = await admin
-          .from("courses")
-          .select("id", { count: "exact", head: true });
-        if (!courseCount || courseCount === 0) {
-          await admin.from("courses").upsert(
-            DEFAULT_COURSES.map((c, idx) => ({
-              slug: c.slug,
-              title_vi: c.title_vi,
-              title_en: c.title_en,
-              description_vi: c.description_vi,
-              description_en: c.description_en,
-              level: c.level,
-              target_band: c.target_band,
-              lessons: c.lessons,
-              is_published: c.is_published,
-              sort_order: idx + 1,
-            })),
-            { onConflict: "slug", ignoreDuplicates: true }
+        if (missingTests.length > 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin
+                .from("ielts_tests")
+                .upsert(missingTests, { onConflict: "slug", ignoreDuplicates: true })
+            )
           );
         }
 
-        // 6. Blog posts
-        const { count: blogCount } = await admin
-          .from("blog_posts")
-          .select("id", { count: "exact", head: true });
-        if (!blogCount || blogCount === 0) {
-          await admin.from("blog_posts").upsert(
-            DEFAULT_BLOG_POSTS.map((p) => ({
-              slug: p.slug,
-              title_vi: p.title_vi,
-              title_en: p.title_en,
-              excerpt_vi: p.excerpt_vi,
-              excerpt_en: p.excerpt_en,
-              content_vi: p.content_vi,
-              content_en: p.content_en,
-              category: p.category,
-              author_name: p.author_name,
-              read_minutes: p.read_minutes,
-              is_published: p.is_published,
-              published_at: p.published_at,
-            })),
-            { onConflict: "slug", ignoreDuplicates: true }
+        // Auto-hide legacy incomplete demo test "custom-reading-demo-04" only if still published
+        const legacyDemo = existingBySlug.get("custom-reading-demo-04");
+        if (legacyDemo?.is_published) {
+          seedTasks.push(
+            Promise.resolve(
+              admin
+                .from("ielts_tests")
+                .update({ is_published: false })
+                .eq("id", legacyDemo.id)
+            )
           );
         }
 
-        // 7. Dictation, Pronunciation, Videos
-        const { count: dictCount } = await admin
-          .from("dictation_lessons")
-          .select("id", { count: "exact", head: true });
-        if (!dictCount || dictCount === 0) {
-          await admin.from("dictation_lessons").upsert(
-            DEFAULT_DICTATION_LESSONS.map((d) => ({
-              slug: d.slug,
-              title_vi: d.title_vi,
-              title_en: d.title_en,
-              category: d.category,
-              difficulty: d.difficulty,
-              accent: d.accent,
-              sentences: d.sentences,
-              is_published: true,
-            })),
-            { onConflict: "slug", ignoreDuplicates: true }
+        if (!courseRes.count || courseRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("courses").upsert(
+                DEFAULT_COURSES.map((c, idx) => ({
+                  slug: c.slug,
+                  title_vi: c.title_vi,
+                  title_en: c.title_en,
+                  description_vi: c.description_vi,
+                  description_en: c.description_en,
+                  level: c.level,
+                  target_band: c.target_band,
+                  lessons: c.lessons,
+                  is_published: c.is_published,
+                  sort_order: idx + 1,
+                })),
+                { onConflict: "slug", ignoreDuplicates: true }
+              )
+            )
           );
         }
 
-        const { count: ipaCount } = await admin
-          .from("pronunciation_sounds")
-          .select("id", { count: "exact", head: true });
-        if (!ipaCount || ipaCount === 0) {
-          await admin.from("pronunciation_sounds").upsert(
-            DEFAULT_IPA_SOUNDS.map((s, idx) => ({
-              slug: s.slug,
-              symbol: s.symbol,
-              category: s.category,
-              title_vi: s.title_vi,
-              title_en: s.title_en,
-              tip_vi: s.vietnameseTip_vi,
-              tip_en: s.tip_en,
-              examples: {
-                mouthPosition_vi: s.mouthPosition_vi,
-                practiceSentence: s.practiceSentence,
-                words: s.examples,
-              },
-              sort_order: idx + 1,
-            })),
-            { onConflict: "slug", ignoreDuplicates: true }
+        if (!blogRes.count || blogRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("blog_posts").upsert(
+                DEFAULT_BLOG_POSTS.map((p) => ({
+                  slug: p.slug,
+                  title_vi: p.title_vi,
+                  title_en: p.title_en,
+                  excerpt_vi: p.excerpt_vi,
+                  excerpt_en: p.excerpt_en,
+                  content_vi: p.content_vi,
+                  content_en: p.content_en,
+                  category: p.category,
+                  author_name: p.author_name,
+                  read_minutes: p.read_minutes,
+                  is_published: p.is_published,
+                  published_at: p.published_at,
+                })),
+                { onConflict: "slug", ignoreDuplicates: true }
+              )
+            )
           );
         }
 
-        const { count: vidCount } = await admin
-          .from("learn_videos")
-          .select("id", { count: "exact", head: true });
-        if (!vidCount || vidCount === 0) {
-          await admin.from("learn_videos").upsert(
-            DEFAULT_LEARN_VIDEOS.map((v) => ({
-              slug: v.slug,
-              youtube_id: v.youtube_id,
-              title_vi: v.title_vi,
-              title_en: v.title_en,
-              description_vi: v.description_vi,
-              description_en: v.description_en,
-              level: v.level,
-              duration_label: v.duration_label,
-              transcript: v.transcript,
-              is_published: true,
-            })),
-            { onConflict: "slug", ignoreDuplicates: true }
+        if (!dictRes.count || dictRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("dictation_lessons").upsert(
+                DEFAULT_DICTATION_LESSONS.map((d) => ({
+                  slug: d.slug,
+                  title_vi: d.title_vi,
+                  title_en: d.title_en,
+                  category: d.category,
+                  difficulty: d.difficulty,
+                  accent: d.accent,
+                  sentences: d.sentences,
+                  is_published: true,
+                })),
+                { onConflict: "slug", ignoreDuplicates: true }
+              )
+            )
           );
         }
 
-        // 8. Conversation Topics & Writing Exercises (CMS GĐ4 tables)
-        const { count: convCount, error: convCountErr } = await admin
-          .from("conversation_topics")
-          .select("id", { count: "exact", head: true });
-        if (!convCountErr && (!convCount || convCount === 0)) {
-          await admin.from("conversation_topics").upsert(
-            DEFAULT_CONVERSATION_TOPICS.map((c, idx) =>
-              conversationTopicToDbRow(c, idx + 1)
-            ),
-            { onConflict: "slug", ignoreDuplicates: true }
+        if (!ipaRes.count || ipaRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("pronunciation_sounds").upsert(
+                DEFAULT_IPA_SOUNDS.map((s, idx) => ({
+                  slug: s.slug,
+                  symbol: s.symbol,
+                  category: s.category,
+                  title_vi: s.title_vi,
+                  title_en: s.title_en,
+                  tip_vi: s.vietnameseTip_vi,
+                  tip_en: s.tip_en,
+                  examples: {
+                    mouthPosition_vi: s.mouthPosition_vi,
+                    practiceSentence: s.practiceSentence,
+                    words: s.examples,
+                  },
+                  sort_order: idx + 1,
+                })),
+                { onConflict: "slug", ignoreDuplicates: true }
+              )
+            )
           );
         }
 
-        const { count: weCount, error: weCountErr } = await admin
-          .from("writing_exercises")
-          .select("id", { count: "exact", head: true });
-        if (!weCountErr && (!weCount || weCount === 0)) {
-          await admin.from("writing_exercises").upsert(
-            DEFAULT_WRITING_EXERCISES.map((w, idx) =>
-              writingExerciseToDbRow(w, idx + 1)
-            ),
-            { onConflict: "slug", ignoreDuplicates: true }
+        if (!vidRes.count || vidRes.count === 0) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("learn_videos").upsert(
+                DEFAULT_LEARN_VIDEOS.map((v) => ({
+                  slug: v.slug,
+                  youtube_id: v.youtube_id,
+                  title_vi: v.title_vi,
+                  title_en: v.title_en,
+                  description_vi: v.description_vi,
+                  description_en: v.description_en,
+                  level: v.level,
+                  duration_label: v.duration_label,
+                  transcript: v.transcript,
+                  is_published: true,
+                })),
+                { onConflict: "slug", ignoreDuplicates: true }
+              )
+            )
           );
+        }
+
+        if (!convRes.error && (!convRes.count || convRes.count === 0)) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("conversation_topics").upsert(
+                DEFAULT_CONVERSATION_TOPICS.map((c, idx) =>
+                  conversationTopicToDbRow(c, idx + 1)
+                ),
+                { onConflict: "slug", ignoreDuplicates: true }
+              )
+            )
+          );
+        }
+
+        if (!weRes.error && (!weRes.count || weRes.count === 0)) {
+          seedTasks.push(
+            Promise.resolve(
+              admin.from("writing_exercises").upsert(
+                DEFAULT_WRITING_EXERCISES.map((w, idx) =>
+                  writingExerciseToDbRow(w, idx + 1)
+                ),
+                { onConflict: "slug", ignoreDuplicates: true }
+              )
+            )
+          );
+        }
+
+        if (seedTasks.length > 0) {
+          await Promise.all(seedTasks);
         }
       } catch (err) {
         console.error("[ensureSupabaseCatalogSeeded] error:", err);

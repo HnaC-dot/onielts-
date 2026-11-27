@@ -107,23 +107,32 @@ export function PricingClient({
     setPromoErr("");
     setPromoMsg("");
     if (!promoInput.trim()) return;
-    const res = await fetch("/api/promo/validate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: promoInput.trim() }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
+    try {
+      const res = await fetch("/api/promo/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: promoInput.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAppliedPromo(null);
+        setPromoErr(data?.error || "Mã không hợp lệ");
+        return;
+      }
+      setAppliedPromo(data.promo);
+      setPromoMsg(
+        isEn
+          ? `Code ${data.promo.code} applied (-${data.promo.discount_percent}%)!`
+          : `Đã áp dụng mã ${data.promo.code} — giảm thêm ${data.promo.discount_percent}%!`
+      );
+    } catch {
       setAppliedPromo(null);
-      setPromoErr(data.error || "Mã không hợp lệ");
-      return;
+      setPromoErr(
+        isEn
+          ? "Network error while checking promo code."
+          : "Lỗi kết nối máy chủ khi kiểm tra mã giảm giá."
+      );
     }
-    setAppliedPromo(data.promo);
-    setPromoMsg(
-      isEn
-        ? `Code ${data.promo.code} applied (-${data.promo.discount_percent}%)!`
-        : `Đã áp dụng mã ${data.promo.code} — giảm thêm ${data.promo.discount_percent}%!`
-    );
   };
 
   const handleStartCheckout = async (plan: PricingPlan) => {
@@ -143,9 +152,9 @@ export function PricingClient({
           provider: "payos",
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setCheckoutErr(data.error || "Không thể khởi tạo thanh toán.");
+        setCheckoutErr(data?.error || "Không thể khởi tạo thanh toán.");
         return;
       }
       setActivatedExpiry(null);
@@ -159,6 +168,12 @@ export function PricingClient({
         qrCode: data.checkout.qrCode,
         sandboxMocked: data.checkout.sandboxMocked,
       });
+    } catch {
+      setCheckoutErr(
+        isEn
+          ? "Network error while creating checkout link. Please try again."
+          : "Lỗi kết nối máy chủ khi tạo link thanh toán. Vui lòng thử lại."
+      );
     } finally {
       setCreatingSlug(null);
     }
@@ -174,13 +189,17 @@ export function PricingClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderCode: checkout.orderCode }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setCheckoutErr(data.message || data.error || "Xác nhận thất bại.");
+        setCheckoutErr(data?.message || data?.error || "Xác nhận thất bại.");
         return;
       }
       setActivatedExpiry(data.premiumExpiresAt || "activated");
       router.refresh();
+    } catch {
+      setCheckoutErr(
+        isEn ? "Server connection error." : "Lỗi kết nối máy chủ."
+      );
     } finally {
       setSimulating(false);
     }

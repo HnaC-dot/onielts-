@@ -32,6 +32,7 @@ export function CoursePlayerClient({
   const [completedIds, setCompletedIds] = useState<string[]>(initialCompletedIds);
   const [quizChoice, setQuizChoice] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
+  const [statusNotice, setStatusNotice] = useState("");
 
   const activeLesson =
     course.lessons.find((l) => l.id === activeLessonId) ?? course.lessons[0];
@@ -51,6 +52,7 @@ export function CoursePlayerClient({
 
   const toggleComplete = async () => {
     setSaving(true);
+    setStatusNotice("");
     const nextCompleted = !isCompleted;
     try {
       const res = await fetch("/api/courses/progress", {
@@ -62,10 +64,37 @@ export function CoursePlayerClient({
           completed: nextCompleted,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setCompletedIds(data.progress.completed_lesson_ids ?? []);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatusNotice(
+          data?.error ||
+            (isEn
+              ? "Could not save lesson progress. Please try again."
+              : "Không thể lưu tiến độ bài học. Vui lòng thử lại.")
+        );
+        return;
       }
+      if (data?.progress && Array.isArray(data.progress.completed_lesson_ids)) {
+        setCompletedIds(data.progress.completed_lesson_ids);
+      } else {
+        // Guest session (persisted: false): update UI state cleanly without crashing
+        setCompletedIds((prev) =>
+          nextCompleted
+            ? Array.from(new Set([...prev, activeLesson.id]))
+            : prev.filter((id) => id !== activeLesson.id)
+        );
+        setStatusNotice(
+          isEn
+            ? "Progress updated locally — sign in to sync across devices."
+            : "Đã đánh dấu tạm trên phiên hiện tại — đăng nhập để lưu tiến độ lâu dài."
+        );
+      }
+    } catch {
+      setStatusNotice(
+        isEn
+          ? "Network error while saving progress."
+          : "Lỗi kết nối máy chủ khi lưu tiến độ."
+      );
     } finally {
       setSaving(false);
     }
@@ -89,6 +118,11 @@ export function CoursePlayerClient({
             style={{ width: `${progressPct}%` }}
           />
         </div>
+        {statusNotice && (
+          <p className="mt-2.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+            {statusNotice}
+          </p>
+        )}
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-12">

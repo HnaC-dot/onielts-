@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { verifySameOrigin } from "@/lib/admin-auth";
 import { getCurrentUser } from "@/lib/auth";
 import { findOrderByCodeForUser, fulfillPaidOrderIdempotent } from "@/lib/db";
 import { isPayosSandboxAllowed } from "@/lib/payments/payos";
@@ -13,6 +14,10 @@ const schema = z.object({
  * Strictly blocked (403) in production and whenever live PayOS keys exist.
  */
 export async function POST(req: Request) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json({ error: "Nguồn yêu cầu không hợp lệ." }, { status: 403 });
+  }
+
   if (!isPayosSandboxAllowed()) {
     return NextResponse.json(
       { error: "Chế độ mô phỏng thanh toán bị khóa ở môi trường Production." },

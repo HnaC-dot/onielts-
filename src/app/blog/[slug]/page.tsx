@@ -23,6 +23,7 @@ import {
   buildArticleJsonLd,
   buildBreadcrumbJsonLd,
   getAppBaseUrl,
+  serializeJsonLd,
 } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import type { BlogPost } from "@/lib/types";
@@ -146,11 +147,11 @@ export default async function BlogDetailPage({
     <article className="mx-auto max-w-3xl px-4 py-12 sm:px-6 space-y-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(articleJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
 
       {isUnpublishedPreview && (

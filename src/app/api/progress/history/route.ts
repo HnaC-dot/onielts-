@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getUserProgressHistory } from "@/lib/progress-analytics";
 import type { HistorySkillFilter } from "@/lib/progress-shared";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,18 @@ export async function GET(req: Request) {
     return NextResponse.json(
       { error: "Vui lòng đăng nhập để xem lịch sử làm bài." },
       { status: 401 }
+    );
+  }
+
+  const rate = await checkRateLimit(
+    `progress-history:${getRequestClientKey(req, user.id)}`,
+    40,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: `Vui lòng thử lại sau ${rate.retryAfterSec} giây.` },
+      { status: 429 }
     );
   }
 

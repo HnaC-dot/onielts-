@@ -8,6 +8,7 @@ import { getLearnVideoBySlug } from "@/lib/db";
 import {
   buildBreadcrumbJsonLd,
   buildVideoObjectJsonLd,
+  serializeJsonLd,
 } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { VideoPlayerClient } from "@/components/video-player-client";
@@ -63,11 +64,11 @@ export default async function VideoDetailPage({
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 space-y-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(videoJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
 
       {video.is_published === false && isPreview && (

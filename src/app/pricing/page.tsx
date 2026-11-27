@@ -3,7 +3,7 @@ import { getLocale } from "next-intl/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getPricingPlans, getPromoBanner } from "@/lib/db";
 import { getPublicFaqs, getServerNowMs } from "@/lib/site-content";
-import { buildFaqPageJsonLd } from "@/lib/seo";
+import { buildFaqPageJsonLd, serializeJsonLd } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { PricingClient } from "@/components/pricing-client";
 import { Card } from "@/components/ui/card";
@@ -50,7 +50,7 @@ export default async function PricingPage() {
       {faqJsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqJsonLd) }}
         />
       )}
 

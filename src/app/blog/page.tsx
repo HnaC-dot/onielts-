@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { ArrowRight, Clock, Crown, Star } from "lucide-react";
 import { getBlogPosts } from "@/lib/db";
-import { buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildBreadcrumbJsonLd, serializeJsonLd } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { BlogNewsletterBox } from "@/components/blog-article-widgets";
 import { Card } from "@/components/ui/card";
@@ -58,7 +58,7 @@ export default async function BlogIndexPage({
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 space-y-8">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
 
       <div className="space-y-4">

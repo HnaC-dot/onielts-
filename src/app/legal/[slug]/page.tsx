@@ -5,6 +5,7 @@ import { getPublicFaqs, getStaticPageBySlug } from "@/lib/site-content";
 import {
   buildBreadcrumbJsonLd,
   buildFaqPageJsonLd,
+  serializeJsonLd,
 } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
 import { renderBlogContentToSafeHtml } from "@/lib/sanitize";
@@ -67,12 +68,12 @@ export default async function LegalPage({
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 space-y-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
       {faqJsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqJsonLd) }}
         />
       )}
 

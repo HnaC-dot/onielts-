@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getUserAttemptReview } from "@/lib/progress-analytics";
+import { checkRateLimit, getRequestClientKey } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,18 @@ export async function GET(
     return NextResponse.json(
       { error: "Vui lòng đăng nhập để xem lại bài làm." },
       { status: 401 }
+    );
+  }
+
+  const rate = await checkRateLimit(
+    `progress-review:${getRequestClientKey(req, user.id)}`,
+    40,
+    60_000
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: `Vui lòng thử lại sau ${rate.retryAfterSec} giây.` },
+      { status: 429 }
     );
   }
 
