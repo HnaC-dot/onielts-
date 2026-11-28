@@ -15,9 +15,12 @@ import {
   Copy,
   Crown,
   ExternalLink,
+  Eye,
   FileAudio,
   FileJson,
   Image as ImageIcon,
+  Layers,
+  List,
   ListOrdered,
   Plus,
   RotateCcw,
@@ -28,6 +31,7 @@ import {
 import type {
   IeltsSkill,
   IeltsTest,
+  QuestionGroup,
   QuestionType,
   SeoMeta,
   TestQuestion,
@@ -35,17 +39,21 @@ import type {
 } from "@/lib/types";
 import {
   cmsTestFormSchema,
+  createQuestionGroupSkeleton,
   formatAcceptedAnswersInput,
   OPTION_TYPES_SET,
   parseAcceptedAnswersInput,
   QUESTION_TYPE_CATALOG,
   renumberTestSections,
+  syncSectionGroupsWithQuestions,
   validateTestForPublish,
 } from "@/lib/test-cms-shared";
 import { slugifyVi } from "@/lib/seo";
 import { SeoPanel } from "./seo-panel";
 import { MediaPickerModal } from "./media-picker-modal";
 import { ConfirmDialog } from "./confirm-dialog";
+import { QuestionGroupEditor } from "./question-group-editor";
+import { TestLivePreviewModal } from "./test-live-preview-modal";
 import { useAdminToast } from "./toast-provider";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -104,37 +112,89 @@ function makeDefaultSections(skill: IeltsSkill): TestSection[] {
 }
 
 function buildStandard40Skeleton(skill: "reading" | "listening"): TestSection[] {
-  const dist = skill === "reading" ? [13, 13, 14] : [10, 10, 10, 10];
+  const plan: Array<{ title: string; specs: Array<{ type: QuestionType; count: number }> }> =
+    skill === "reading"
+      ? [
+          {
+            title: "Passage 1",
+            specs: [
+              { type: "tfng", count: 5 },
+              { type: "summary_completion", count: 4 },
+              { type: "mcq", count: 4 },
+            ],
+          },
+          {
+            title: "Passage 2",
+            specs: [
+              { type: "matching_headings", count: 5 },
+              { type: "note_completion", count: 4 },
+              { type: "tfng", count: 4 },
+            ],
+          },
+          {
+            title: "Passage 3",
+            specs: [
+              { type: "ynng", count: 5 },
+              { type: "matching_features", count: 5 },
+              { type: "summary_completion", count: 4 },
+            ],
+          },
+        ]
+      : [
+          {
+            title: "Part 1",
+            specs: [{ type: "note_completion", count: 10 }],
+          },
+          {
+            title: "Part 2",
+            specs: [
+              { type: "mcq", count: 5 },
+              { type: "map_labelling", count: 5 },
+            ],
+          },
+          {
+            title: "Part 3",
+            specs: [
+              { type: "mcq", count: 6 },
+              { type: "mcq_multi", count: 2 },
+              { type: "mcq_multi", count: 2 },
+            ],
+          },
+          {
+            title: "Part 4",
+            specs: [{ type: "note_completion", count: 10 }],
+          },
+        ];
+
   let qNum = 1;
-  return dist.map((count, sIdx) => {
+  return plan.map((part, sIdx) => {
+    const startNum = qNum;
+    const groups: QuestionGroup[] = [];
     const questions: TestQuestion[] = [];
-    for (let i = 0; i < count; i++) {
-      const defaultType: QuestionType =
-        skill === "listening"
-          ? sIdx === 0 || sIdx === 3
-            ? "note_completion"
-            : "mcq"
-          : i < 5
-          ? "tfng"
-          : i < 9
-          ? "summary_completion"
-          : "mcq";
-      questions.push(makeEmptyQuestion(qNum, defaultType));
-      qNum += 1;
+
+    for (const spec of part.specs) {
+      const created = createQuestionGroupSkeleton(
+        spec.type,
+        qNum,
+        spec.count,
+        nextClientId
+      );
+      groups.push(created.group);
+      questions.push(...created.questions);
+      qNum += spec.count;
     }
+
     return {
       id: nextClientId(`skel-${skill}-s${sIdx + 1}`),
-      title:
-        skill === "reading"
-          ? `Passage ${sIdx + 1}`
-          : `Part ${sIdx + 1}`,
+      title: part.title,
       instruction:
         skill === "reading"
-          ? `Questions ${qNum - count}–${qNum - 1}`
-          : `Listen carefully and answer Questions ${qNum - count}–${qNum - 1}.`,
+          ? `Questions ${startNum}–${qNum - 1}`
+          : `Listen carefully and answer Questions ${startNum}–${qNum - 1}.`,
       passage: skill === "reading" ? "" : undefined,
       audioUrl: skill === "listening" ? "" : undefined,
       audioScript: skill === "listening" ? "" : undefined,
+      groups,
       questions,
     };
   });
@@ -211,6 +271,14 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
   );
 
   // Modals & UI helpers
+  const [questionEditorMode, setQuestionEditorMode] = useState<"group" | "flat">(() => {
+    if (!initialTest) return "group";
+    const hasExplicitGroups = initialTest.sections?.some(
+      (s) => Array.isArray(s.groups) && s.groups.length > 0
+    );
+    return hasExplicitGroups ? "group" : "flat";
+  });
+  const [livePreviewOpen, setLivePreviewOpen] = useState(false);
   const [audioPickerOpen, setAudioPickerOpen] = useState(false);
   const [diagramPickerOpen, setDiagramPickerOpen] = useState(false);
   const [jsonModalOpen, setJsonModalOpen] = useState(false);
@@ -229,6 +297,56 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
   const isObjective = skill === "reading" || skill === "listening";
   const safeSecIdx = Math.min(activeSecIdx, Math.max(0, sections.length - 1));
   const currentSec = sections[safeSecIdx] ?? null;
+
+  const nextQuestionNumber = useMemo(() => {
+    let maxNum = 0;
+    for (const sec of sections) {
+      for (const q of sec.questions) {
+        if (q.number > maxNum) maxNum = q.number;
+      }
+    }
+    return maxNum + 1;
+  }, [sections]);
+
+  const livePreviewDraftTest = useMemo<IeltsTest>(
+    () => ({
+      id: initialTest?.id ?? "admin-live-preview",
+      slug: slug || slugifyVi(titleVi) || "admin-live-preview",
+      skill,
+      module: mod,
+      title_vi: titleVi || "Bản xem trước Đề thi IELTS",
+      title_en: titleEn || titleVi || "IELTS Test Live Preview",
+      description_vi: descriptionVi,
+      description_en: descriptionEn || descriptionVi,
+      duration_minutes: durationMinutes,
+      difficulty,
+      questionCount: sections.reduce((sum, s) => sum + s.questions.length, 0),
+      is_published: isPublished,
+      is_daily_eligible: isDailyEligible,
+      is_premium: isPremium,
+      seo_meta: seoMeta,
+      sections,
+      created_at: initialTest?.created_at ?? "2026-01-01T00:00:00.000Z",
+    }),
+    [
+      initialTest?.id,
+      initialTest?.created_at,
+      slug,
+      titleVi,
+      titleEn,
+      skill,
+      mod,
+      descriptionVi,
+      descriptionEn,
+      durationMinutes,
+      difficulty,
+      sections,
+      isPublished,
+      isDailyEligible,
+      isPremium,
+      seoMeta,
+    ]
+  );
 
   // Live pre-publish audit report
   const validationReport = useMemo(
@@ -490,6 +608,7 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
       ...q,
       id: nextClientId(`q-copy-${totalExisting + 1}`),
       number: totalExisting + 1,
+      groupId: undefined,
       options: q.options ? [...q.options] : undefined,
       correctAnswers: [...q.correctAnswers],
     };
@@ -499,9 +618,21 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
 
   const removeQuestion = (qId: string) => {
     if (!currentSec) return;
-    updateCurrentSection({
-      questions: currentSec.questions.filter((q) => q.id !== qId),
+    const remaining = currentSec.questions.filter((q) => q.id !== qId);
+    const synced = syncSectionGroupsWithQuestions({
+      ...currentSec,
+      questions: remaining,
     });
+    updateCurrentSection({
+      questions: synced.questions,
+      ...(currentSec.groups ? { groups: synced.groups } : {}),
+    });
+  };
+
+  const handleRenumberAll = () => {
+    setSections((prev) => renumberTestSections(prev));
+    markDirty();
+    toast.info("Đã tự đánh số lại câu hỏi 1 → N và đồng bộ ô trống {{n}}!");
   };
 
   const handleImportJson = () => {
@@ -732,6 +863,17 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
           >
             <FileJson className="h-3.5 w-3.5" /> Nhập JSON
           </Button>
+          {isObjective && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setLivePreviewOpen(true)}
+              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+            >
+              <Eye className="h-3.5 w-3.5" /> Xem trước trực tiếp
+            </Button>
+          )}
           {isEdit && initialTest && (
             <a
               href={
@@ -743,7 +885,7 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
               rel="noopener noreferrer"
             >
               <Button type="button" size="sm" variant="outline">
-                <ExternalLink className="h-3.5 w-3.5" /> Xem trước
+                <ExternalLink className="h-3.5 w-3.5" /> Mở tab đề
               </Button>
             </a>
           )}
@@ -839,7 +981,7 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
                 <>
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                   Đạt chuẩn kiểm tra tự động trước khi xuất bản
-                  {isObjective ? ` (${validationReport.questionCount}/40 câu, không trùng/thiếu, đủ đáp án)` : ""}
+                  {isObjective ? ` (${validationReport.questionCount}/40 câu, không trùng/thiếu, khớp {{n}}, đủ đáp án)` : ""}
                 </>
               ) : (
                 <>
@@ -871,11 +1013,7 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  setSections((prev) => renumberTestSections(prev));
-                  markDirty();
-                  toast.info("Đã tự đánh số lại câu hỏi từ 1 → N tuần tự!");
-                }}
+                onClick={handleRenumberAll}
               >
                 <ListOrdered className="h-3.5 w-3.5" /> Tự đánh số 1 → N
               </Button>
@@ -887,11 +1025,12 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
                     const skel = buildStandard40Skeleton(skill as "reading" | "listening");
                     setSections(skel);
                     setActiveSecIdx(0);
+                    setQuestionEditorMode("group");
                     markDirty();
                     toast.success(
                       skill === "reading"
-                        ? "Đã tạo khung 3 Passage chuẩn 40 câu (13 + 13 + 14)!"
-                        : "Đã tạo khung 4 Part chuẩn 40 câu (10 + 10 + 10 + 10)!"
+                        ? "Đã tạo khung 3 Passage chuẩn 40 câu theo Nhóm CBT (13 + 13 + 14)!"
+                        : "Đã tạo khung 4 Part chuẩn 40 câu theo Nhóm CBT (10 + 10 + 10 + 10)!"
                     );
                   }}
                 >
@@ -1373,63 +1512,115 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
                 </div>
               </div>
 
-              {/* Questions Toolbar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Câu hỏi trong {currentSec.title} ({currentSec.questions.length} câu)
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const allExpanded = currentSec.questions.every(
-                        (q) => expandedQIds[q.id]
-                      );
-                      const next: Record<string, boolean> = { ...expandedQIds };
-                      for (const q of currentSec.questions) {
-                        next[q.id] = !allExpanded;
-                      }
-                      setExpandedQIds(next);
-                    }}
-                    className="text-[11px] font-semibold text-emerald-700 hover:underline dark:text-emerald-400 cursor-pointer"
-                  >
-                    Mở rộng / Thu gọn tất cả
-                  </button>
-                </div>
+              {/* Questions Toolbar & Editor Mode Switcher (GĐ6) */}
+              <div className="space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Câu hỏi trong {currentSec.title} ({currentSec.questions.length} câu
+                      {currentSec.groups && currentSec.groups.length > 0
+                        ? ` · ${currentSec.groups.length} nhóm`
+                        : ""}
+                      )
+                    </h3>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={newQType}
-                    onChange={(e) => setNewQType(e.target.value as QuestionType)}
-                    aria-label="Loại câu hỏi muốn thêm"
-                    className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950"
-                  >
-                    {QUESTION_TYPE_CATALOG.map((qt) => (
-                      <option key={qt.value} value={qt.value}>
-                        {qt.labelVi}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => addQuestionsToCurrent(1)}
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Thêm 1 câu
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => addQuestionsToCurrent(5)}
-                  >
-                    +5 câu
-                  </Button>
+                    <div
+                      role="tablist"
+                      aria-label="Chế độ soạn thảo câu hỏi"
+                      className="inline-flex rounded-xl border border-slate-200 bg-slate-100/80 p-0.5 text-[11px] font-bold dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={questionEditorMode === "group"}
+                        onClick={() => setQuestionEditorMode("group")}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition cursor-pointer ${
+                          questionEditorMode === "group"
+                            ? "bg-emerald-600 text-white shadow-xs"
+                            : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                        }`}
+                      >
+                        <Layers className="h-3.5 w-3.5" />
+                        Soạn theo Nhóm (CBT)
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={questionEditorMode === "flat"}
+                        onClick={() => setQuestionEditorMode("flat")}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition cursor-pointer ${
+                          questionEditorMode === "flat"
+                            ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
+                            : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                        }`}
+                      >
+                        <List className="h-3.5 w-3.5" />
+                        Danh sách từng câu (Cổ điển)
+                      </button>
+                    </div>
+                  </div>
+
+                  {questionEditorMode === "flat" && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allExpanded = currentSec.questions.every(
+                            (q) => expandedQIds[q.id]
+                          );
+                          const next: Record<string, boolean> = { ...expandedQIds };
+                          for (const q of currentSec.questions) {
+                            next[q.id] = !allExpanded;
+                          }
+                          setExpandedQIds(next);
+                        }}
+                        className="text-[11px] font-semibold text-emerald-700 hover:underline dark:text-emerald-400 cursor-pointer"
+                      >
+                        Mở rộng / Thu gọn tất cả
+                      </button>
+                      <select
+                        value={newQType}
+                        onChange={(e) => setNewQType(e.target.value as QuestionType)}
+                        aria-label="Loại câu hỏi muốn thêm"
+                        className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950"
+                      >
+                        {QUESTION_TYPE_CATALOG.map((qt) => (
+                          <option key={qt.value} value={qt.value}>
+                            {qt.labelVi}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => addQuestionsToCurrent(1)}
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Thêm 1 câu
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => addQuestionsToCurrent(5)}
+                      >
+                        +5 câu
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Question Cards List */}
-              {currentSec.questions.length === 0 ? (
+              {/* Group-Based CBT Editor (GĐ6) vs Classic Flat Question Cards */}
+              {questionEditorMode === "group" ? (
+                <QuestionGroupEditor
+                  section={currentSec}
+                  skill={skill as "reading" | "listening"}
+                  nextQuestionNumber={nextQuestionNumber}
+                  onUpdateSection={updateCurrentSection}
+                  onRenumberAll={handleRenumberAll}
+                  makeId={nextClientId}
+                />
+              ) : currentSec.questions.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-800">
                   Chưa có câu hỏi nào trong phần này. Chọn dạng câu hỏi và bấm <strong>&quot;Thêm 1 câu&quot;</strong> hoặc <strong>&quot;+5 câu&quot;</strong> ở góc phải!
                 </div>
@@ -1917,6 +2108,15 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
         onCancel={() => setDeleteOpen(false)}
         onConfirm={handleDelete}
       />
+
+      {isObjective && (
+        <TestLivePreviewModal
+          open={livePreviewOpen}
+          onClose={() => setLivePreviewOpen(false)}
+          draftTest={livePreviewDraftTest}
+          initialSectionIdx={safeSecIdx}
+        />
+      )}
     </div>
   );
 }

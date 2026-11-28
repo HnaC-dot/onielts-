@@ -97,6 +97,12 @@ interface TestEngineClientProps {
   initialGroupId?: string;
   isAuthenticated?: boolean;
   onDailySubmit?: (answers: Record<string, string>) => Promise<GradedTestResult | null>;
+  /**
+   * Optional Admin Live Preview submit callback. When provided, runs completely in-memory:
+   * skips localStorage & /api/tests/draft persistence, skips beforeunload prompts,
+   * and calls this callback on Submit instead of POST /api/tests/submit.
+   */
+  onPreviewSubmit?: (answers: Record<string, string>) => Promise<GradedTestResult | null>;
 }
 
 function readLocalDraft(storageKey: string): ExamDraftPayload | null {
@@ -169,11 +175,13 @@ export function TestEngineClient({
   initialGroupId,
   isAuthenticated = false,
   onDailySubmit,
+  onPreviewSubmit,
 }: TestEngineClientProps) {
   const locale = useLocale();
   const isEn = locale === "en";
 
   const isDaily = mode === "daily";
+  const isPreview = Boolean(onPreviewSubmit);
   const totalSeconds = initialSecondsLeft ?? test.duration_minutes * 60;
 
   // Normalized sections & catalog of all QuestionGroups across sections
@@ -514,10 +522,10 @@ export function TestEngineClient({
     return () => clearInterval(id);
   }, [graded, isCountdown, isTimerPaused]);
 
-  // Restore draft on mount and whenever modeKey changes (non-daily modes)
+  // Restore draft on mount and whenever modeKey changes (non-daily, non-preview modes)
   useEffect(() => {
-    if (isDaily) {
-      hydratedModeKeyRef.current = "daily";
+    if (isDaily || isPreview) {
+      hydratedModeKeyRef.current = isPreview ? "preview" : "daily";
       return;
     }
 
@@ -611,6 +619,7 @@ export function TestEngineClient({
     };
   }, [
     isDaily,
+    isPreview,
     draftStorageKey,
     isAuthenticated,
     test.slug,
@@ -649,7 +658,7 @@ export function TestEngineClient({
 
   // Debounced localStorage auto-save (400ms)
   useEffect(() => {
-    if (isDaily || graded) return;
+    if (isDaily || isPreview || graded) return;
     if (hydratedModeKeyRef.current !== modeKey) return;
 
     const payload = buildCurrentDraftPayload();
@@ -661,11 +670,11 @@ export function TestEngineClient({
     }, 400);
 
     return () => window.clearTimeout(timer);
-  }, [isDaily, graded, modeKey, draftStorageKey, buildCurrentDraftPayload]);
+  }, [isDaily, isPreview, graded, modeKey, draftStorageKey, buildCurrentDraftPayload]);
 
   // Debounced server auto-save (2500ms) for authenticated learners
   useEffect(() => {
-    if (isDaily || graded || !isAuthenticated) return;
+    if (isDaily || isPreview || graded || !isAuthenticated) return;
     if (hydratedModeKeyRef.current !== modeKey) return;
     if (!serverDraftTableReadyRef.current) return;
 
@@ -727,10 +736,11 @@ export function TestEngineClient({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isDaily, graded, isAuthenticated, modeKey, buildCurrentDraftPayload]);
+  }, [isDaily, isPreview, graded, isAuthenticated, modeKey, buildCurrentDraftPayload]);
 
   // Warn before closing tab / refreshing when unsubmitted answers, highlights, or notes exist
   const hasUnsavedWork =
+    !isPreview &&
     !graded &&
     (totalAnsweredCount > 0 ||
       notesText.trim().length > 0 ||
@@ -841,7 +851,7 @@ export function TestEngineClient({
   };
 
   const flushCurrentLocalDraft = () => {
-    if (isDaily || graded || hydratedModeKeyRef.current !== modeKey) return;
+    if (isDaily || isPreview || graded || hydratedModeKeyRef.current !== modeKey) return;
     const payload = buildCurrentDraftPayload();
     if (hasMeaningfulDraftContent(payload)) {
       writeLocalDraft(draftStorageKey, payload);
@@ -892,7 +902,7 @@ export function TestEngineClient({
   };
 
   const clearPersistedDraft = useCallback(() => {
-    if (isDaily) return;
+    if (isDaily || isPreview) return;
     removeLocalDraft(draftStorageKey);
     lastServerPayloadHashRef.current = "";
     if (isAuthenticated && serverDraftTableReadyRef.current) {
@@ -901,7 +911,7 @@ export function TestEngineClient({
         () => {}
       );
     }
-  }, [isDaily, draftStorageKey, isAuthenticated, test.slug, modeKey]);
+  }, [isDaily, isPreview, draftStorageKey, isAuthenticated, test.slug, modeKey]);
 
   const handleResetSession = () => {
     stopAllAudio();
@@ -1079,6 +1089,20 @@ export function TestEngineClient({
     setSubmitting(true);
     setSubmitError("");
     try {
+      if (onPreviewSubmit) {
+        const res = await onPreviewSubmit(answers);
+        if (res) {
+          setGraded(res);
+          setMobilePane("questions");
+        } else {
+          setSubmitError(
+            isEn
+              ? "Could not grade preview test."
+              : "Không thể chấm điểm bản xem trước."
+          );
+        }
+        return;
+      }
       if (isDaily && onDailySubmit) {
         const res = await onDailySubmit(answers);
         if (res) {
@@ -1212,7 +1236,7 @@ export function TestEngineClient({
       {/* Computer-Delivered Top Exam Bar */}
       <div
         className={`${
-          focusMode ? "shrink-0" : "sticky top-16 z-30"
+          focusMode ? "shrink-0" : isPreview ? "sticky top-2 z-30" : "sticky top-16 z-30"
         } flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-slate-200 bg-white/95 px-4 py-2.5 shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95`}
       >
         <div className="min-w-0 flex-1">
