@@ -2,6 +2,7 @@ import type {
   IeltsTest,
   QuestionGroup,
   QuestionGroupOption,
+  QuestionGroupSharedContent,
   QuestionPassageRange,
   QuestionType,
   QuestionWordLimit,
@@ -145,6 +146,10 @@ export function parseWordLimitFromText(text?: string): QuestionWordLimit | undef
       allowNumber,
       numberMode: allowNumber ? "word_or_number" : "word_only",
     };
+  }
+
+  if (/\(\s*(?:ONE\s+)?NUMBER\s*\)/.test(upper)) {
+    return { maxWords: 0, allowNumber: true, numberMode: "number_only" };
   }
 
   return undefined;
@@ -583,3 +588,246 @@ export function getPassageParagraphsForGroup(
   }
   return { paragraphs: matched, isFiltered: true, totalParagraphs: all.length };
 }
+
+const LEGACY_PROMPT_PREFIX_REGEX =
+  /^(?:Complete the summary|Summary Completion|Note Completion|Table Completion|Sentence Completion|Flow-?chart(?:\s+Completion)?|Short Answer|Form Completion|Lecture Notes|Diagram(?:\s+Stage\s*\d+)?|Map Labelling|Floor Plan Direction)\s*(?:\([^)]*\))?\s*[:\-—]\s*/i;
+
+/**
+ * Removes redundant legacy type/word-limit prefixes from a flat question prompt
+ * when rendering inside a grouped IELTS QuestionGroup card (read-time only).
+ */
+export function stripLegacyPromptPrefix(prompt: string): string {
+  const cleaned = prompt.replace(LEGACY_PROMPT_PREFIX_REGEX, "").trim();
+  return cleaned || prompt.trim();
+}
+
+/**
+ * Converts a legacy prompt containing `___` blanks into a `{{questionNumber}}` template
+ * so the inline completion renderer can place the `<input>` directly inside the text.
+ */
+export function promptToBlankTemplate(prompt: string, questionNumber: number): string {
+  const cleaned = stripLegacyPromptPrefix(prompt);
+  if (new RegExp(`\\{\\{\\s*${questionNumber}\\s*\\}\\}`).test(cleaned)) {
+    return cleaned;
+  }
+  if (/_{2,}/.test(cleaned)) {
+    return cleaned.replace(/_{2,}/, `{{${questionNumber}}}`);
+  }
+  return `${cleaned} {{${questionNumber}}}`;
+}
+
+const NUMERIC_TOKEN_REGEX = /^[$£€¥+-]?\d[\d,./:%-]*(?:st|nd|rd|th)?$/i;
+const NUMBER_WORD_TOKEN_REGEX =
+  /^(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|and|half|quarter|percent)(?:-(?:one|two|three|four|five|six|seven|eight|nine|first|second|third|fourth|fifth))?$/i;
+
+export interface WordLimitWarningResult {
+  wordCount: number;
+  exceeded: boolean;
+  message?: string;
+}
+
+/**
+ * Evaluates a learner's completion answer against an IELTS word/number limit
+ * and returns a non-blocking soft warning if the limit appears exceeded.
+ */
+export function checkWordLimitSoftWarning(
+  answer: string,
+  wordLimit: QuestionWordLimit | undefined,
+  isEn = false
+): WordLimitWarningResult {
+  const trimmed = answer.trim();
+  if (!trimmed) return { wordCount: 0, exceeded: false };
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  const wordCount = tokens.length;
+
+  if (!wordLimit) {
+    return { wordCount, exceeded: false };
+  }
+
+  if (wordLimit.numberMode === "number_only" || wordLimit.maxWords === 0) {
+    const allLookNumeric = tokens.every(
+      (tok) =>
+        NUMERIC_TOKEN_REGEX.test(tok.replace(/[.,!?]+$/, "")) ||
+        NUMBER_WORD_TOKEN_REGEX.test(tok.replace(/[.,!?]+$/, ""))
+    );
+    if (!allLookNumeric) {
+      return {
+        wordCount,
+        exceeded: true,
+        message: isEn
+          ? "Expected a number only for this blank"
+          : "Ô này yêu cầu điền con số",
+      };
+    }
+    return { wordCount, exceeded: false };
+  }
+
+  const maxWords = wordLimit.maxWords ?? 1;
+  if (wordLimit.allowNumber) {
+    const nonNumericCount = tokens.filter(
+      (tok) => !NUMERIC_TOKEN_REGEX.test(tok.replace(/[.,!?]+$/, ""))
+    ).length;
+    const exceeded = nonNumericCount > maxWords || wordCount > maxWords + 2;
+    if (exceeded) {
+      return {
+        wordCount,
+        exceeded: true,
+        message: isEn
+          ? `Exceeds limit (max ${maxWords} ${maxWords === 1 ? "word" : "words"} + a number)`
+          : `Vượt giới hạn (tối đa ${maxWords} từ và/hoặc 1 con số)`,
+      };
+    }
+    return { wordCount, exceeded: false };
+  }
+
+  if (wordCount > maxWords) {
+    return {
+      wordCount,
+      exceeded: true,
+      message: isEn
+        ? `Exceeds limit (max ${maxWords} ${maxWords === 1 ? "word" : "words"})`
+        : `Vượt giới hạn tối đa ${maxWords} từ`,
+    };
+  }
+
+  return { wordCount, exceeded: false };
+}
+
+/**
+ * Resolves structured display content for completion groups:
+ * - Uses explicit `group.sharedContent` verbatim when authored.
+ * - Synthesizes clean table / flowchart / notes / summary / sentence layouts at read time
+ *   from legacy flat prompts without mutating stored DB data.
+ */
+export function resolveGroupDisplayContent(
+  group: QuestionGroup,
+  questions: TestQuestion[],
+  isEn = false
+): QuestionGroupSharedContent | null {
+  if (group.sharedContent) {
+    return group.sharedContent;
+  }
+  if (questions.length === 0) return null;
+
+  if (group.type === "table_completion") {
+    const rawRows = questions.map((q) => {
+      const tpl = promptToBlankTemplate(q.prompt, q.number);
+      const cells = tpl
+        .split(/\s*\|\s*/)
+        .map((c) => c.trim())
+        .filter(Boolean);
+      return cells.length >= 2 ? cells : [`Q${q.number}`, tpl];
+    });
+    const colCount = Math.max(2, ...rawRows.map((r) => r.length));
+    const paddedRows = rawRows.map((r) => {
+      const copy = [...r];
+      while (copy.length < colCount) copy.push("");
+      return copy;
+    });
+    const headers =
+      colCount === 2
+        ? [isEn ? "Topic" : "Hạng mục", isEn ? "Details" : "Thông tin chi tiết"]
+        : colCount === 3
+        ? [
+            isEn ? "Topic" : "Hạng mục",
+            isEn ? "Key Information" : "Thông tin chính",
+            isEn ? "Notes" : "Ghi chú",
+          ]
+        : Array.from({ length: colCount }, (_, i) =>
+            isEn ? `Column ${i + 1}` : `Cột ${i + 1}`
+          );
+    return {
+      kind: "table",
+      table: {
+        title: group.title,
+        headers,
+        rows: paddedRows,
+      },
+    };
+  }
+
+  if (group.type === "flowchart_completion") {
+    const steps: string[] = [];
+    for (const q of questions) {
+      const tpl = promptToBlankTemplate(q.prompt, q.number);
+      const parts = tpl
+        .split(/\s*(?:→|->)\s*/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (parts.length > 1) {
+        steps.push(...parts);
+      } else {
+        steps.push(tpl);
+      }
+    }
+    return {
+      kind: "flowchart",
+      flowchart: {
+        title: group.title,
+        steps,
+      },
+    };
+  }
+
+  if (group.type === "note_completion") {
+    return {
+      kind: "notes",
+      notes: {
+        title: group.title,
+        sections: [
+          {
+            bullets: questions.map((q) => promptToBlankTemplate(q.prompt, q.number)),
+          },
+        ],
+      },
+    };
+  }
+
+  if (group.type === "summary_completion") {
+    return {
+      kind: "summary",
+      text: questions.map((q) => promptToBlankTemplate(q.prompt, q.number)).join(" "),
+    };
+  }
+
+  if (group.type === "sentence_completion") {
+    return {
+      kind: "plain",
+      text: questions.map((q) => promptToBlankTemplate(q.prompt, q.number)).join("\n"),
+    };
+  }
+
+  return null;
+}
+
+export interface OptionDisplayParts {
+  letter: string;
+  label: string;
+  value: string;
+}
+
+/**
+ * Splits a choice string (e.g. "B. Electric buses" or "TRUE") into a badge letter,
+ * clean text label, and original submission value for consistent server grading.
+ */
+export function getOptionDisplayParts(
+  raw: string,
+  fallbackIndex: number
+): OptionDisplayParts {
+  const trimmed = raw.trim();
+  const prefixed = trimmed.match(/^([A-Z])[.):-]\s+(.+)$/);
+  if (prefixed) {
+    return {
+      letter: prefixed[1],
+      label: prefixed[2].trim(),
+      value: raw,
+    };
+  }
+  const letter = String.fromCharCode(65 + (fallbackIndex % 26));
+  return {
+    letter,
+    label: trimmed,
+    value: raw,
+  };
+}
+

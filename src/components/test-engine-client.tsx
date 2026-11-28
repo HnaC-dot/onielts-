@@ -4,12 +4,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
   FileText,
-  Flag,
   Headphones,
   Highlighter,
   Loader2,
@@ -18,12 +16,13 @@ import {
   RotateCcw,
   StickyNote,
   Volume2,
-  XCircle,
 } from "lucide-react";
 import type { IeltsTest, QuestionType } from "@/lib/types";
 import type { GradedTestResult } from "@/lib/test-grader";
+import { normalizeSectionToGroups } from "@/lib/test-groups";
 import { formatDuration } from "@/lib/utils";
 import { TestDiagramSvg } from "./test-diagram-svg";
+import { QuestionGroupRenderer } from "./exam/question-group-renderer";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -753,8 +752,11 @@ export function TestEngineClient({
               </div>
             )}
 
-            {/* HEADING BANK (for Matching Headings) */}
-            {currentSection.headingBank && (
+            {/* HEADING BANK (only shown on left if not already embedded in a matching_headings group) */}
+            {currentSection.headingBank &&
+              !normalizeSectionToGroups(currentSection).some(
+                (g) => g.type === "matching_headings"
+              ) && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
                 <p className="text-xs font-bold uppercase text-slate-600 dark:text-slate-400">
                   List of Headings
@@ -813,162 +815,38 @@ export function TestEngineClient({
             )}
           </Card>
 
-          {/* RIGHT PANE: INTERACTIVE QUESTIONS */}
-          <div className="lg:col-span-6 lg:max-h-[75vh] lg:overflow-y-auto space-y-4 pr-1">
-            {currentSection.questions.map((q) => {
-              const detail = graded?.details.find((d) => d.questionId === q.id);
-              const val = answers[q.id] ?? "";
-              return (
-                <Card
-                  key={q.id}
-                  id={`question-card-${q.id}`}
-                  className={`p-5 transition ${
-                    detail
-                      ? detail.isCorrect
-                        ? "border-emerald-300 bg-emerald-50/30 dark:border-emerald-800 dark:bg-emerald-950/20"
-                        : "border-red-300 bg-red-50/30 dark:border-red-900 dark:bg-red-950/20"
-                      : ""
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-xs font-bold text-white">
-                        {q.number}
-                      </span>
-                      <Badge variant="secondary">{QUESTION_TYPE_LABELS[q.type]}</Badge>
-                    </div>
-                    {!graded && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFlagged((prev) => ({ ...prev, [q.id]: !prev[q.id] }))
-                        }
-                        title="Đánh dấu xem lại"
-                        className={`rounded-lg p-1.5 cursor-pointer ${
-                          flagged[q.id]
-                            ? "bg-amber-100 text-amber-700"
-                            : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        }`}
-                      >
-                        <Flag className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  <p className="mt-3 text-sm font-medium text-slate-900 dark:text-white">
-                    {q.prompt}
-                  </p>
-
-                  {/* Answer input tailored to question type */}
-                  <div className="mt-3.5">
-                    {q.options && q.options.length > 0 ? (
-                      <div className="grid gap-2">
-                        {q.options.map((opt) => {
-                          const isMulti = q.type === "mcq_multi";
-                          const selectedList = isMulti
-                            ? val
-                                .split(",")
-                                .map((s) => s.trim())
-                                .filter(Boolean)
-                            : [];
-                          const selected = isMulti
-                            ? selectedList.includes(opt)
-                            : val === opt;
-
-                          return (
-                            <button
-                              key={opt}
-                              type="button"
-                              disabled={Boolean(graded)}
-                              onClick={() => {
-                                if (isMulti) {
-                                  const next = selected
-                                    ? selectedList.filter((item) => item !== opt)
-                                    : [...selectedList, opt];
-                                  setAnswers((prev) => ({
-                                    ...prev,
-                                    [q.id]: next.join(", "),
-                                  }));
-                                } else {
-                                  setAnswers((prev) => ({ ...prev, [q.id]: opt }));
-                                }
-                              }}
-                              className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-left text-xs font-medium transition cursor-pointer ${
-                                selected
-                                  ? "border-emerald-600 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                              }`}
-                            >
-                              {isMulti && (
-                                <span
-                                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
-                                    selected
-                                      ? "border-emerald-600 bg-emerald-600 text-white"
-                                      : "border-slate-300 dark:border-slate-600"
-                                  }`}
-                                >
-                                  {selected ? "✓" : ""}
-                                </span>
-                              )}
-                              <span>{opt}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <input
-                        type="text"
-                        disabled={Boolean(graded)}
-                        value={val}
-                        onChange={(e) =>
-                          setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
-                        }
-                        placeholder={isEn ? "Type your answer..." : "Nhập câu trả lời..."}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                      />
-                    )}
-                  </div>
-
-                  {/* Bilingual Explanation after submission */}
-                  {detail && (
-                    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3.5 text-xs space-y-1.5 dark:border-slate-800 dark:bg-slate-950">
-                      <div className="flex items-center gap-2 font-bold">
-                        {detail.isCorrect ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                            <CheckCircle2 className="h-4 w-4" />
-                            {isEn ? "Correct" : "Chính xác"}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
-                            <XCircle className="h-4 w-4" />
-                            {isEn ? "Incorrect" : "Chưa đúng"} · Đáp án:{" "}
-                            <strong className="text-emerald-700 dark:text-emerald-400">
-                              {detail.acceptedAnswers.join(" / ")}
-                            </strong>
-                          </span>
-                        )}
-                      </div>
-                      {detail.sectionRef && (
-                        <p className="text-emerald-800 dark:text-emerald-300">
-                          <strong>{isEn ? "Evidence:" : "Đoạn chứa đáp án:"}</strong>{" "}
-                          {detail.sectionRef}
-                        </p>
-                      )}
-                      {detail.explanation_vi && (
-                        <p className="text-slate-700 dark:text-slate-300">
-                          <strong>Giải thích (VI):</strong> {detail.explanation_vi}
-                        </p>
-                      )}
-                      {detail.explanation_en && (
-                        <p className="text-slate-500 dark:text-slate-400">
-                          <strong>Explanation (EN):</strong> {detail.explanation_en}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
+          {/* RIGHT PANE: INTERACTIVE QUESTION GROUPS (CBT IELTS BY TYPE) */}
+          <div className="lg:col-span-6 lg:max-h-[75vh] lg:overflow-y-auto space-y-5 pr-1">
+            {(() => {
+              const groups = normalizeSectionToGroups(currentSection);
+              const qById = new Map(currentSection.questions.map((q) => [q.id, q]));
+              return groups.map((group) => {
+                const groupQuestions = group.questionIds
+                  .map((id) => qById.get(id))
+                  .filter((q): q is NonNullable<typeof q> => Boolean(q));
+                if (groupQuestions.length === 0) return null;
+                return (
+                  <QuestionGroupRenderer
+                    key={group.id}
+                    group={group}
+                    questions={groupQuestions}
+                    answers={answers}
+                    flagged={flagged}
+                    graded={graded}
+                    isEn={isEn}
+                    onAnswerChange={(qId, value) =>
+                      setAnswers((prev) => ({ ...prev, [qId]: value }))
+                    }
+                    onAnswersPatch={(patch) =>
+                      setAnswers((prev) => ({ ...prev, ...patch }))
+                    }
+                    onToggleFlag={(qId) =>
+                      setFlagged((prev) => ({ ...prev, [qId]: !prev[qId] }))
+                    }
+                  />
+                );
+              });
+            })()}
           </div>
         </div>
       )}
