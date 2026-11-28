@@ -25,8 +25,13 @@ Open `http://localhost:3000`.
 | `npm test` | Run Vitest unit & security test suite |
 | `npm run test:rls` | Run static RLS verification + live Postgres RLS tests (when `SUPABASE_DB_URL` is set) |
 | `npm run test:rls:docker` | Spin up an ephemeral `postgres:16-alpine` container, apply all migrations, and run live RLS integration tests |
-| `npm run seed` | Idempotently validate (Zod) and seed all 54 original IELTS tests + catalog tables into Supabase (`--dry-run` supported) |
+| `npm run seed` | Safely seed missing catalog rows into Supabase (`ignoreDuplicates: true` — preserves admin-edited tests; `--dry-run` supported) |
 | `python3 scripts/generate-listening-audio.py` | Reproducibly synthesize multi-speaker neural English MP3s for all 40 Listening parts (`--force` to rebuild) |
+
+> **Cảnh báo an toàn dữ liệu (`npm run seed` & Migrations):**
+> - `scripts/seed-supabase.ts` luôn dùng `ignoreDuplicates: true` cho `ielts_tests` và toàn bộ bảng catalog để **không ghi đè đề thi đã chỉnh sửa trong Admin CMS**. Không bao giờ xóa cờ `ignoreDuplicates: true` hoặc chạy lệnh `DELETE`/`TRUNCATE` trên bảng `ielts_tests` ở Production.
+> - Trước khi chạy migration mới hoặc nâng cấp lớn: **sao lưu Supabase** (Snapshot / `pg_dump`), **thử migration trên Supabase branch / Vercel Preview trước**, và **đánh Git tag** mốc an toàn (VD `git tag pre-upgrade`).
+> - Tuyệt đối không sửa các file migration cũ (`0001`–`0009`); chỉ thêm file migration mới dạng cộng thêm (additive).
 
 ---
 

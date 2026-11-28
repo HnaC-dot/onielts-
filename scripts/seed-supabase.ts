@@ -201,7 +201,7 @@ async function main() {
   );
   if (promoErr) throw new Error(`promo_codes upsert failed: ${promoErr.message}`);
 
-  // IELTS Tests (idempotent upsert by slug; preserves existing UUID primary keys)
+  // IELTS Tests (insert-only by slug via ignoreDuplicates: true; NEVER overwrites tests edited in Admin CMS)
   const testRows = FULL_SEED_TESTS.map((t) => ({
     slug: t.slug,
     skill: t.skill,
@@ -225,9 +225,11 @@ async function main() {
 
   const { error: testsErr } = await admin
     .from("ielts_tests")
-    .upsert(testRows, { onConflict: "slug" });
+    .upsert(testRows, { onConflict: "slug", ignoreDuplicates: true });
   if (testsErr) throw new Error(`ielts_tests upsert failed: ${testsErr.message}`);
-  console.log(`[seed] Upserted ${testRows.length} IELTS tests cleanly by slug.`);
+  console.log(
+    `[seed] Seeded missing IELTS tests by slug (${testRows.length} catalog entries checked; existing admin-edited rows preserved).`
+  );
 
   // Courses, Blog posts, Dictation, IPA Pronunciation, Learn Videos (idempotent by slug)
   const { error: coursesErr } = await admin.from("courses").upsert(

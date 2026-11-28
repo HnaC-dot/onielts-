@@ -1,5 +1,6 @@
 import type { BandConversionRow, IeltsTest, QuestionType } from "./types";
 import { convertRawToBand } from "./band-calculator";
+import { normalizeSectionToGroups } from "./test-groups";
 
 export interface QuestionGradeDetail {
   questionId: string;
@@ -79,24 +80,30 @@ export function isAnswerCorrect(
 /**
  * Strips all answer keys, bilingual explanations, and passage evidence references
  * before serializing a test into a client component (prevents answer leakage via DevTools/SSR HTML).
+ * Also converts legacy sections into normalized `QuestionGroup[]` at read time without mutating DB data.
  */
 export function sanitizeTestForClient(test: IeltsTest): IeltsTest {
   return {
     ...test,
-    sections: test.sections.map((section) => ({
-      ...section,
-      questions: section.questions.map((q) => ({
-        id: q.id,
-        number: q.number,
-        type: q.type,
-        prompt: q.prompt,
-        options: q.options,
-        correctAnswers: [],
-        explanation_vi: "",
-        explanation_en: "",
-        sectionRef: undefined,
-      })),
-    })),
+    sections: test.sections.map((section) => {
+      const groups = normalizeSectionToGroups(section);
+      return {
+        ...section,
+        groups,
+        questions: section.questions.map((q) => ({
+          id: q.id,
+          number: q.number,
+          type: q.type,
+          prompt: q.prompt,
+          options: q.options,
+          correctAnswers: [],
+          explanation_vi: "",
+          explanation_en: "",
+          sectionRef: undefined,
+          groupId: q.groupId,
+        })),
+      };
+    }),
   };
 }
 

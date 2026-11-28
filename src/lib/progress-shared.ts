@@ -10,6 +10,8 @@ export const QUESTION_TYPE_LABELS: Record<
   mcq_multi: { vi: "Trắc nghiệm (nhiều đáp án)", en: "Multiple Choice (Multi)", short: "MCQ Multi" },
   matching_headings: { vi: "Nối tiêu đề (Matching Headings)", en: "Matching Headings", short: "Headings" },
   matching_info: { vi: "Nối thông tin (Matching Info)", en: "Matching Information", short: "Matching Info" },
+  matching_features: { vi: "Nối đặc điểm / nhân vật (Matching Features)", en: "Matching Features", short: "Features" },
+  matching_sentence_endings: { vi: "Nối vế câu (Matching Sentence Endings)", en: "Matching Sentence Endings", short: "Endings" },
   sentence_completion: { vi: "Điền vào câu", en: "Sentence Completion", short: "Sentence" },
   summary_completion: { vi: "Điền đoạn tóm tắt", en: "Summary Completion", short: "Summary" },
   table_completion: { vi: "Điền bảng biểu", en: "Table Completion", short: "Table" },

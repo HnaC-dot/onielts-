@@ -35,6 +35,8 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   ynng: "Yes / No / Not Given",
   matching_headings: "Matching Headings",
   matching_info: "Matching Information",
+  matching_features: "Matching Features",
+  matching_sentence_endings: "Matching Sentence Endings",
   sentence_completion: "Sentence Completion",
   summary_completion: "Summary Completion",
   table_completion: "Table Completion",
