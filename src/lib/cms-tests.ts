@@ -14,6 +14,12 @@ import { slugifyVi } from "./seo";
 import { sanitizeRichHtml } from "./sanitize";
 import { invalidateSeoRedirectCache } from "./seo-redirects-edge";
 import { readStore, updateStore } from "./store";
+import {
+  SEED_TEST_SLUGS,
+  addDeletedSeedTestSlugs,
+  isSeedTestSlug,
+} from "./seed-test-tombstones";
+import { sortIeltsTestsForCatalog } from "./test-ordering";
 import type { IeltsTest, SeoMeta, SessionUser, TestSection } from "./types";
 
 function mapAdminTestRow(row: Record<string, unknown>): IeltsTest {
@@ -66,6 +72,8 @@ export async function listAdminTests(options?: {
   module?: "" | "academic" | "general";
   published?: "" | "true" | "false";
   premium?: "" | "true" | "false";
+  /** "sample" = built-in sample tests (FULL_SEED_TESTS slugs), "own" = everything else. */
+  source?: "" | "sample" | "own";
   page?: number;
   pageSize?: number;
 }): Promise<{
@@ -73,6 +81,10 @@ export async function listAdminTests(options?: {
   total: number;
   page: number;
   pageSize: number;
+  /** IDs (within `items`) that are built-in sample tests. */
+  sampleIds: string[];
+  /** Total built-in sample tests currently in the database (ignores filters). */
+  sampleTotal: number;
 }> {
   const page = Math.max(1, options?.page ?? 1);
   const pageSize = Math.min(50, Math.max(5, options?.pageSize ?? 15));
@@ -81,6 +93,7 @@ export async function listAdminTests(options?: {
   const mod = options?.module ?? "";
   const published = options?.published ?? "";
   const premium = options?.premium ?? "";
+  const source = options?.source ?? "";
 
   let all: IeltsTest[] = [];
   if (!isSupabaseConfigured()) {
@@ -104,6 +117,8 @@ export async function listAdminTests(options?: {
     if (published === "false" && t.is_published) return false;
     if (premium === "true" && !t.is_premium) return false;
     if (premium === "false" && t.is_premium) return false;
+    if (source === "sample" && !isSeedTestSlug(t.slug)) return false;
+    if (source === "own" && isSeedTestSlug(t.slug)) return false;
     if (q) {
       const hay = `${t.title_vi} ${t.title_en} ${t.slug} ${t.skill} ${t.module} ${t.description_vi}`.toLowerCase();
       if (!hay.includes(q)) return false;
@@ -111,13 +126,112 @@ export async function listAdminTests(options?: {
     return true;
   });
 
+  // Cambridge 21 → 10 (Test 1 → 4) first; every other test keeps newest-first order.
+  const ordered = sortIeltsTestsForCatalog(filtered);
   const start = (page - 1) * pageSize;
+  const items = ordered.slice(start, start + pageSize);
   return {
-    items: filtered.slice(start, start + pageSize),
-    total: filtered.length,
+    items,
+    total: ordered.length,
     page,
     pageSize,
+    sampleIds: items.filter((t) => isSeedTestSlug(t.slug)).map((t) => t.id),
+    sampleTotal: all.filter((t) => isSeedTestSlug(t.slug)).length,
   };
+}
+
+/**
+ * Bulk-manage the built-in sample tests ("đề mẫu") in one click.
+ * - `unpublish`: hide them from learners (safe, keeps learners' attempt history).
+ * - `delete`: tombstone every sample slug FIRST (so the auto-seeder never re-inserts them),
+ *   then delete the rows. NOTE: FK `ON DELETE CASCADE` also removes attempts/daily-exam rows
+ *   that point to these sample tests — the admin UI warns about this before confirming.
+ * Tests whose slug is not a sample slug are never touched.
+ */
+export async function bulkManageSampleTests(
+  action: "unpublish" | "delete",
+  actor: Pick<SessionUser, "id" | "email" | "role">
+): Promise<{ ok: true; affected: number } | { ok: false; status: number; error: string }> {
+  const sampleSlugs = [...SEED_TEST_SLUGS];
+
+  if (!isSupabaseConfigured()) {
+    let affected = 0;
+    let affectedSlugs: string[] = [];
+    if (action === "delete") {
+      const tomb = await addDeletedSeedTestSlugs(sampleSlugs, actor.id);
+      if (!tomb.ok) return { ok: false, status: 500, error: tomb.error };
+    }
+    updateStore((store) => {
+      const targets = store.ielts_tests.filter((t) => isSeedTestSlug(t.slug));
+      affected = targets.length;
+      affectedSlugs = targets.map((t) => t.slug);
+      if (action === "delete") {
+        store.ielts_tests = store.ielts_tests.filter((t) => !isSeedTestSlug(t.slug));
+      } else {
+        for (const t of targets) t.is_published = false;
+      }
+    });
+    await recordAuditLog({
+      actor,
+      action: action === "delete" ? "delete_test" : "unpublish_test",
+      entityType: "ielts_test",
+      entityLabel: "Đề mẫu",
+      summary:
+        action === "delete"
+          ? `Xóa ${affected} đề mẫu có sẵn`
+          : `Ẩn ${affected} đề mẫu có sẵn khỏi trang học viên`,
+    });
+    revalidateTestRoutes(affectedSlugs);
+    return { ok: true, affected };
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) {
+    return { ok: false, status: 503, error: "Thiếu kết nối Supabase Admin." };
+  }
+
+  const { data: rows, error: readError } = await admin
+    .from("ielts_tests")
+    .select("id, slug")
+    .in("slug", sampleSlugs);
+  if (readError) return { ok: false, status: 500, error: readError.message };
+  const targets = (rows ?? []) as Array<{ id: string; slug: string }>;
+  const ids = targets.map((r) => String(r.id));
+
+  if (action === "delete") {
+    // Tombstone ALL sample slugs (not only the rows present) so none of them comes back.
+    const tomb = await addDeletedSeedTestSlugs(sampleSlugs, actor.id);
+    if (!tomb.ok) {
+      return {
+        ok: false,
+        status: 500,
+        error: `Không thể ghi nhớ danh sách đề mẫu đã xóa nên đã dừng (tránh đề tự xuất hiện lại): ${tomb.error}`,
+      };
+    }
+    if (ids.length > 0) {
+      const { error } = await admin.from("ielts_tests").delete().in("id", ids);
+      if (error) return { ok: false, status: 500, error: error.message };
+    }
+  } else if (ids.length > 0) {
+    const { error } = await admin
+      .from("ielts_tests")
+      .update({ is_published: false })
+      .in("id", ids);
+    if (error) return { ok: false, status: 500, error: error.message };
+  }
+
+  await recordAuditLog({
+    actor,
+    action: action === "delete" ? "delete_test" : "unpublish_test",
+    entityType: "ielts_test",
+    entityLabel: "Đề mẫu",
+    summary:
+      action === "delete"
+        ? `Xóa ${ids.length} đề mẫu có sẵn`
+        : `Ẩn ${ids.length} đề mẫu có sẵn khỏi trang học viên`,
+  });
+  revalidateTestRoutes(targets.map((r) => r.slug));
+  return { ok: true, affected: ids.length };
 }
 
 export async function getAdminTestById(id: string): Promise<IeltsTest | null> {
@@ -585,6 +699,19 @@ export async function deleteCmsTest(
   const existing = await getAdminTestById(id);
   if (!existing) {
     return { ok: false, status: 404, error: "Không tìm thấy đề thi." };
+  }
+
+  // Built-in sample tests are auto re-seeded by slug on every cold start; remember the
+  // deletion FIRST so the sample does not silently come back ("không xóa được bài mẫu").
+  if (isSeedTestSlug(existing.slug)) {
+    const tomb = await addDeletedSeedTestSlugs([existing.slug], actor.id);
+    if (!tomb.ok) {
+      return {
+        ok: false,
+        status: 500,
+        error: `Không thể ghi nhớ đề mẫu đã xóa nên đã dừng (tránh đề tự xuất hiện lại): ${tomb.error}`,
+      };
+    }
   }
 
   if (!isSupabaseConfigured()) {

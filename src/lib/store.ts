@@ -118,6 +118,8 @@ export interface LocalStoreData {
     appearance_published?: SiteAppearanceConfig;
     appearance_draft?: SiteAppearanceConfig;
     appearance_history?: AppearanceVersionEntry[];
+    /** Slugs of built-in sample tests an admin deleted (prevents auto re-seeding). */
+    deleted_seed_test_slugs?: string[];
   };
 }
 

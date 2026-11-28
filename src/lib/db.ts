@@ -23,6 +23,12 @@ import {
 } from "./seed-data";
 import { FULL_SEED_TESTS } from "./seed-tests";
 import {
+  filterOutDeletedSeedTests,
+  getDeletedSeedTestSlugs,
+  readDeletedSeedTestSlugsStrict,
+} from "./seed-test-tombstones";
+import { sortIeltsTestsForCatalog } from "./test-ordering";
+import {
   computeExtendedPremiumExpiry,
   generateSafeOrderCode,
 } from "./payments/payos";
@@ -121,6 +127,7 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
           vidRes,
           convRes,
           weRes,
+          deletedSeedSlugs,
         ] = await Promise.all([
           admin.from("band_conversion_tables").select("id", { count: "exact", head: true }),
           admin.from("pricing_plans").select("id", { count: "exact", head: true }),
@@ -134,6 +141,7 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
           admin.from("learn_videos").select("id", { count: "exact", head: true }),
           admin.from("conversation_topics").select("id", { count: "exact", head: true }),
           admin.from("writing_exercises").select("id", { count: "exact", head: true }),
+          readDeletedSeedTestSlugsStrict().catch(() => null),
         ]);
 
         const seedTasks: Promise<unknown>[] = [];
@@ -218,7 +226,9 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
           );
         }
 
-        // 4. IELTS Tests — upsert missing slugs AND upgrade old <40-question seeded Reading/Listening rows
+        // 4. IELTS Tests — only seed built-in samples on a brand-new empty table (consistent
+        // with every other catalog table), and NEVER resurrect sample slugs an admin deleted.
+        // Existing seeded Reading/Listening rows with <40 questions are still upgraded in place.
         const existingTests = (testsMetaRes.data ?? []) as Array<{
           id: string;
           slug: string;
@@ -229,6 +239,8 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
         const existingBySlug = new Map(
           existingTests.map((r) => [String(r.slug), r])
         );
+        const shouldSeedEmptyCatalog =
+          !testsMetaRes.error && existingTests.length === 0 && deletedSeedSlugs !== null;
 
         const missingTests: Record<string, unknown>[] = [];
         for (const t of FULL_SEED_TESTS) {
@@ -240,6 +252,7 @@ export async function ensureSupabaseCatalogSeeded(): Promise<void> {
           };
           const existing = existingBySlug.get(t.slug);
           if (!existing) {
+            if (!shouldSeedEmptyCatalog || !deletedSeedSlugs || deletedSeedSlugs.has(t.slug)) continue;
             missingTests.push({
               slug: t.slug,
               skill: t.skill,
@@ -808,17 +821,30 @@ function mapTestSummaryRow(row: Record<string, unknown>): IeltsTest {
   };
 }
 
+/** Built-in sample tests used as a code fallback, minus samples an admin deleted. */
+async function getSeedFallbackTests(): Promise<IeltsTest[]> {
+  const deleted = await getDeletedSeedTestSlugs().catch(() => new Set<string>());
+  return filterOutDeletedSeedTests(FULL_SEED_TESTS, deleted);
+}
+
+async function findSeedFallbackTestBySlug(slug: string): Promise<IeltsTest | null> {
+  const list = await getSeedFallbackTests();
+  return list.find((t) => t.slug === slug) ?? null;
+}
+
 const getIeltsTestSummariesCached = cache(
   async (includeUnpublished: boolean): Promise<IeltsTest[]> => {
     if (!isSupabaseConfigured()) {
       const list = readStore().ielts_tests;
-      return includeUnpublished
-        ? list
-        : list.filter((t) => t.is_published && !isHiddenIncompleteDemoTest(t));
+      return sortIeltsTestsForCatalog(
+        includeUnpublished
+          ? list
+          : list.filter((t) => t.is_published && !isHiddenIncompleteDemoTest(t))
+      );
     }
     await ensureSupabaseCatalogSeeded();
     const sb = await getReadSupabase();
-    if (!sb) return FULL_SEED_TESTS;
+    if (!sb) return sortIeltsTestsForCatalog(await getSeedFallbackTests());
 
     let query = sb
       .from("ielts_tests")
@@ -830,17 +856,23 @@ const getIeltsTestSummariesCached = cache(
       query = query.eq("is_published", true);
     }
     const { data, error } = await query;
-    if (error || !data || data.length === 0) return FULL_SEED_TESTS;
+    if (error || !data) {
+      return sortIeltsTestsForCatalog(await getSeedFallbackTests());
+    }
     const mapped = data.map((row) => mapTestSummaryRow(row as Record<string, unknown>));
-    return includeUnpublished
-      ? mapped
-      : mapped.filter((t) => !isHiddenIncompleteDemoTest(t));
+    // Catalog order: Cambridge 21 → 10 (Test 1 → 4) first, other tests keep created_at order.
+    return sortIeltsTestsForCatalog(
+      includeUnpublished
+        ? mapped
+        : mapped.filter((t) => !isHiddenIncompleteDemoTest(t))
+    );
   }
 );
 
 /**
  * Lightweight catalog listing for Homepage, /tests, /sitemap.xml, and /api/search.
  * Reads metadata + `test_data->>questionCount` WITHOUT pulling megabytes of passages/questions JSONB.
+ * Ordered for display: Cambridge books descending (21 → 10), then all other tests by created_at.
  */
 export async function getIeltsTestSummaries(
   includeUnpublished = false
@@ -852,13 +884,15 @@ const getIeltsTestsCached = cache(
   async (includeUnpublished: boolean): Promise<IeltsTest[]> => {
     if (!isSupabaseConfigured()) {
       const list = readStore().ielts_tests;
-      return includeUnpublished
-        ? list
-        : list.filter((t) => t.is_published && !isHiddenIncompleteDemoTest(t));
+      return sortIeltsTestsForCatalog(
+        includeUnpublished
+          ? list
+          : list.filter((t) => t.is_published && !isHiddenIncompleteDemoTest(t))
+      );
     }
     await ensureSupabaseCatalogSeeded();
     const sb = await getReadSupabase();
-    if (!sb) return FULL_SEED_TESTS;
+    if (!sb) return sortIeltsTestsForCatalog(await getSeedFallbackTests());
 
     let query = sb
       .from("ielts_tests")
@@ -868,11 +902,15 @@ const getIeltsTestsCached = cache(
       query = query.eq("is_published", true);
     }
     const { data, error } = await query;
-    if (error || !data || data.length === 0) return FULL_SEED_TESTS;
+    if (error || !data) {
+      return sortIeltsTestsForCatalog(await getSeedFallbackTests());
+    }
     const mapped = data.map((row) => mapTestRow(row as Record<string, unknown>));
-    return includeUnpublished
-      ? mapped
-      : mapped.filter((t) => !isHiddenIncompleteDemoTest(t));
+    return sortIeltsTestsForCatalog(
+      includeUnpublished
+        ? mapped
+        : mapped.filter((t) => !isHiddenIncompleteDemoTest(t))
+    );
   }
 );
 
@@ -892,16 +930,20 @@ const getIeltsTestBySlugCached = cache(
     }
     await ensureSupabaseCatalogSeeded();
     const sb = await getReadSupabase();
-    if (!sb) return FULL_SEED_TESTS.find((t) => t.slug === slug) ?? null;
+    if (!sb) return findSeedFallbackTestBySlug(slug);
 
-    const { data } = await sb
+    const { data, error } = await sb
       .from("ielts_tests")
       .select("*")
       .eq("slug", slug)
       .maybeSingle();
 
+    if (error) {
+      return findSeedFallbackTestBySlug(slug);
+    }
     if (!data) {
-      return FULL_SEED_TESTS.find((t) => t.slug === slug) ?? null;
+      // Deleted or hidden sample tests must 404 instead of being served from code fallback.
+      return null;
     }
     const mapped = mapTestRow(data as Record<string, unknown>);
     if (!includeUnpublished && (!mapped.is_published || isHiddenIncompleteDemoTest(mapped))) {

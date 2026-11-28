@@ -22,6 +22,10 @@ export async function GET(req: Request) {
   ) as "" | "academic" | "general";
   const published = (searchParams.get("published") ?? "") as "" | "true" | "false";
   const premium = (searchParams.get("premium") ?? "") as "" | "true" | "false";
+  const rawSource = searchParams.get("source") ?? "";
+  const source = (
+    rawSource === "sample" || rawSource === "own" ? rawSource : ""
+  ) as "" | "sample" | "own";
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const pageSize = Number(searchParams.get("pageSize") ?? "15") || 15;
 
@@ -31,6 +35,7 @@ export async function GET(req: Request) {
     module: mod,
     published,
     premium,
+    source,
     page,
     pageSize,
   });

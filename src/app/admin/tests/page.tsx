@@ -33,6 +33,8 @@ export default async function AdminTestsPage() {
       <TestsListClient
         initialItems={initial.items}
         initialTotal={initial.total}
+        initialSampleIds={initial.sampleIds}
+        initialSampleTotal={initial.sampleTotal}
       />
     </div>
   );
