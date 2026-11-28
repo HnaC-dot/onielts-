@@ -3792,6 +3792,14 @@ function mapDbBlogPost(p: Record<string, unknown>): BlogPost {
     is_premium: Boolean(p.is_premium),
     tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
     cover_image_url: p.cover_image_url ? String(p.cover_image_url) : null,
+    title_size: (() => {
+      const seoObj =
+        p.seo_meta && typeof p.seo_meta === "object"
+          ? (p.seo_meta as SeoMeta)
+          : undefined;
+      const raw = p.title_size ?? seoObj?.titleSize;
+      return raw === "lg" || raw === "xl" ? raw : "";
+    })(),
     seo_meta:
       p.seo_meta && typeof p.seo_meta === "object"
         ? (p.seo_meta as SeoMeta)

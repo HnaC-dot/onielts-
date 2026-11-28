@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { ContentPublishStatus, FaqItem, SeoMeta, StaticPageItem } from "@/lib/types";
+import { auditHeadingStructure } from "@/lib/heading-typography";
 import { FAQ_CATEGORIES } from "@/lib/system-cms-shared";
 import { useAdminToast } from "./toast-provider";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -40,6 +41,7 @@ export function PagesCmsClient({
   );
   const activePage = pages.find((p) => p.slug === activePageSlug) ?? pages[0] ?? null;
   const [showPageSeo, setShowPageSeo] = useState(false);
+  const [publishHeadingWarnings, setPublishHeadingWarnings] = useState<string[] | null>(null);
 
   // FAQ editor state
   const [editingFaq, setEditingFaq] = useState<{
@@ -67,8 +69,25 @@ export function PagesCmsClient({
     setPages((prev) => prev.map((p) => (p.slug === slug ? { ...p, ...patch } : p)));
   };
 
-  const saveActivePage = async () => {
+  const saveActivePage = async (bypassHeadingWarning = false) => {
     if (!activePage) return;
+
+    if (activePage.status === "published" && !bypassHeadingWarning) {
+      const viAudit = auditHeadingStructure(activePage.body_vi);
+      const enAudit = activePage.body_en
+        ? auditHeadingStructure(activePage.body_en)
+        : { warnings: [] };
+      const allWarnings = [
+        ...viAudit.warnings,
+        ...enAudit.warnings.map((w) => `[Bản EN] ${w}`),
+      ];
+      if (allWarnings.length > 0) {
+        setPublishHeadingWarnings(allWarnings);
+        return;
+      }
+    }
+
+    setPublishHeadingWarnings(null);
     setSaving(true);
     try {
       const res = await fetch("/api/admin/pages", {
@@ -217,7 +236,7 @@ export function PagesCmsClient({
                     type="button"
                     size="sm"
                     disabled={saving}
-                    onClick={saveActivePage}
+                    onClick={() => void saveActivePage(false)}
                   >
                     <Save className="h-4 w-4" />
                     {saving ? "Đang lưu..." : "Lưu trang"}
@@ -277,6 +296,7 @@ export function PagesCmsClient({
                 </label>
                 <RichTextEditor
                   key={`${activePage.slug}-vi`}
+                  preset="static-page"
                   value={activePage.body_vi}
                   onChange={(html) =>
                     patchLocalPage(activePage.slug, { body_vi: html })
@@ -535,6 +555,22 @@ export function PagesCmsClient({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(publishHeadingWarnings && publishHeadingWarnings.length > 0)}
+        title="Cảnh báo cấu trúc tiêu đề (SEO & Accessibility)"
+        description={
+          publishHeadingWarnings
+            ? `Phát hiện vấn đề phân cấp tiêu đề trong trang /${activePage?.slug ?? ""}: ${publishHeadingWarnings.join(" • ")}`
+            : ""
+        }
+        confirmLabel="Vẫn xuất bản"
+        cancelLabel="Quay lại sửa"
+        destructive={false}
+        loading={saving}
+        onCancel={() => setPublishHeadingWarnings(null)}
+        onConfirm={() => void saveActivePage(true)}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteFaqTarget)}

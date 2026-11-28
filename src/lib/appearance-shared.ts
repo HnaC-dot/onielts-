@@ -1,63 +1,31 @@
 import { z } from "zod";
 import { GA4_ID_REGEX, GSC_TOKEN_REGEX } from "./seo-cms-shared";
 import { DEFAULT_SITE_GENERAL_SETTINGS } from "./system-cms-shared";
+import {
+  APPEARANCE_FONTS,
+  DEFAULT_HEADING_TYPOGRAPHY,
+  buildCombinedGoogleFontsHref,
+  buildHeadingTypographyCssVariables,
+  contentTitleSizeSchema,
+  headingTypographySchema,
+  mergeHeadingTypographyWithDefaults,
+  type AppearanceFontId,
+  type ContentTitleSizeOverride,
+  type HeadingTypographyConfig,
+} from "./heading-typography";
 
-// =============================================================================
-// ALLOWLISTS & CONSTANTS
-// =============================================================================
-export const APPEARANCE_FONTS = [
-  {
-    id: "Be Vietnam Pro",
-    label: "Be Vietnam Pro (Mặc định · Tối ưu tiếng Việt)",
-    googleQuery: "",
-    cssFamily: "var(--font-be-vietnam-pro), ui-sans-serif, system-ui, sans-serif",
-  },
-  {
-    id: "Inter",
-    label: "Inter (Hiện đại · Gọn mắt)",
-    googleQuery: "Inter:wght@400;500;600;700",
-    cssFamily: "'Inter', var(--font-be-vietnam-pro), ui-sans-serif, sans-serif",
-  },
-  {
-    id: "Plus Jakarta Sans",
-    label: "Plus Jakarta Sans (Trẻ trung · EdTech)",
-    googleQuery: "Plus+Jakarta+Sans:wght@400;500;600;700",
-    cssFamily:
-      "'Plus Jakarta Sans', var(--font-be-vietnam-pro), ui-sans-serif, sans-serif",
-  },
-  {
-    id: "Lexend",
-    label: "Lexend (Dễ đọc dài · Luyện Reading)",
-    googleQuery: "Lexend:wght@400;500;600;700",
-    cssFamily: "'Lexend', var(--font-be-vietnam-pro), ui-sans-serif, sans-serif",
-  },
-  {
-    id: "Nunito",
-    label: "Nunito (Thân thiện · Bo tròn)",
-    googleQuery: "Nunito:wght@400;500;600;700",
-    cssFamily: "'Nunito', var(--font-be-vietnam-pro), ui-sans-serif, sans-serif",
-  },
-  {
-    id: "Manrope",
-    label: "Manrope (Sắc nét · Chuyên nghiệp)",
-    googleQuery: "Manrope:wght@400;500;600;700",
-    cssFamily: "'Manrope', var(--font-be-vietnam-pro), ui-sans-serif, sans-serif",
-  },
-  {
-    id: "Roboto",
-    label: "Roboto (Phổ thông · Rõ ràng)",
-    googleQuery: "Roboto:wght@400;500;700",
-    cssFamily: "'Roboto', var(--font-be-vietnam-pro), ui-sans-serif, sans-serif",
-  },
-  {
-    id: "Merriweather",
-    label: "Merriweather (Serif học thuật)",
-    googleQuery: "Merriweather:wght@400;700",
-    cssFamily: "'Merriweather', Georgia, serif",
-  },
-] as const;
-
-export type AppearanceFontId = (typeof APPEARANCE_FONTS)[number]["id"];
+export {
+  APPEARANCE_FONTS,
+  DEFAULT_HEADING_TYPOGRAPHY,
+  buildCombinedGoogleFontsHref,
+  buildHeadingTypographyCssVariables,
+  contentTitleSizeSchema,
+  headingTypographySchema,
+  mergeHeadingTypographyWithDefaults,
+  type AppearanceFontId,
+  type ContentTitleSizeOverride,
+  type HeadingTypographyConfig,
+};
 
 export const BORDER_RADIUS_OPTIONS = [
   { id: "none", label: "Vuông (0px)", cssValue: "0px" },
@@ -132,6 +100,8 @@ export interface HomeSectionConfig {
   enabled: boolean;
   titleVi: string;
   titleEn: string;
+  /** Optional per-block title size override ("" / omitted = inherit global Home heading setting). */
+  titleSize?: ContentTitleSizeOverride;
   subtitleVi: string;
   subtitleEn: string;
   badgeVi?: string;
@@ -322,6 +292,7 @@ export interface SiteAppearanceConfig {
     sections: HomeSectionConfig[];
   };
   theme: ThemeConfig;
+  headingTypography: HeadingTypographyConfig;
   branding: BrandingConfig;
   menus: {
     adminSidebar: AdminMenuGroup[];
@@ -753,6 +724,7 @@ export const DEFAULT_APPEARANCE_CONFIG: SiteAppearanceConfig = {
     sections: DEFAULT_HOME_SECTIONS,
   },
   theme: DEFAULT_THEME_CONFIG,
+  headingTypography: DEFAULT_HEADING_TYPOGRAPHY,
   branding: DEFAULT_BRANDING_CONFIG,
   menus: {
     adminSidebar: DEFAULT_ADMIN_SIDEBAR_MENU,
@@ -929,7 +901,10 @@ export function getGoogleFontHref(fontId: AppearanceFontId): string | null {
   return `https://fonts.googleapis.com/css2?family=${found.googleQuery}&display=swap`;
 }
 
-export function buildThemeCssVariables(theme: ThemeConfig): string {
+export function buildThemeCssVariables(
+  theme: ThemeConfig,
+  headingTypography?: HeadingTypographyConfig
+): string {
   const primary = HEX_COLOR_REGEX.test(theme.primaryColor)
     ? theme.primaryColor
     : DEFAULT_THEME_CONFIG.primaryColor;
@@ -955,6 +930,8 @@ export function buildThemeCssVariables(theme: ThemeConfig): string {
     primary.toLowerCase() !== DEFAULT_THEME_CONFIG.primaryColor.toLowerCase();
   const isCustomRadius = theme.borderRadius !== DEFAULT_THEME_CONFIG.borderRadius;
 
+  const headingVarsCss = buildHeadingTypographyCssVariables(headingTypography);
+
   return [
     `:root {`,
     `  --primary: ${primary};`,
@@ -965,6 +942,7 @@ export function buildThemeCssVariables(theme: ThemeConfig): string {
     `  --cms-radius: ${radiusObj.cssValue};`,
     `  --cms-font-sans: ${fontObj.cssFamily};`,
     `}`,
+    headingVarsCss,
     `.dark {`,
     `  --background: ${bgDark};`,
     `  --secondary: ${secondary};`,
@@ -1557,6 +1535,7 @@ const homeSectionSchema = z.object({
   enabled: z.boolean(),
   titleVi: z.string().trim().min(1, "Tiêu đề khối không được để trống.").max(140).transform((v) => sanitizePlainText(v, 140)),
   titleEn: z.string().trim().max(140).optional().default("").transform((v) => sanitizePlainText(v, 140)),
+  titleSize: contentTitleSizeSchema,
   subtitleVi: z.string().trim().max(400).optional().default("").transform((v) => sanitizePlainText(v, 400)),
   subtitleEn: z.string().trim().max(400).optional().default("").transform((v) => sanitizePlainText(v, 400)),
   badgeVi: z.string().trim().max(60).optional().default("").transform((v) => sanitizePlainText(v, 60)),
@@ -1600,6 +1579,7 @@ export const siteAppearanceSchema = z.object({
     borderRadius: z.enum(["none", "sm", "md", "lg", "xl"]),
     defaultColorMode: z.enum(["light", "dark", "system"]),
   }),
+  headingTypography: headingTypographySchema,
   branding: z.object({
     siteName: z.string().trim().min(2, "Tên website tối thiểu 2 ký tự.").max(60).transform((v) => sanitizePlainText(v, 60)),
     taglineVi: z.string().trim().max(260).default("").transform((v) => sanitizePlainText(v, 260)),
@@ -1745,6 +1725,9 @@ export function mergeAppearanceWithDefaults(
       ...DEFAULT_THEME_CONFIG,
       ...(partial.theme ?? {}),
     },
+    headingTypography: mergeHeadingTypographyWithDefaults(
+      partial.headingTypography
+    ),
     branding: {
       ...DEFAULT_BRANDING_CONFIG,
       ...(partial.branding ?? {}),

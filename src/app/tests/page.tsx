@@ -55,7 +55,7 @@ export default async function TestsCatalogPage({
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 space-y-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="ht-tests-h1 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             {isEn ? "IELTS Practice Tests (Computer-Delivered)" : "Kho đề luyện thi IELTS chuẩn máy tính"}
           </h1>
           <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">

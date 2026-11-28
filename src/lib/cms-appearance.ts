@@ -14,6 +14,7 @@ import { getSiteGeneralSettings, getSiteSeoSettings } from "./site-content";
 import {
   DEFAULT_ADMIN_SIDEBAR_MENU,
   DEFAULT_APPEARANCE_CONFIG,
+  DEFAULT_HEADING_TYPOGRAPHY,
   DEFAULT_HOME_SECTIONS,
   DEFAULT_PUBLIC_FOOTER_COLUMNS,
   DEFAULT_PUBLIC_HEADER_MENU,
@@ -449,7 +450,14 @@ export async function restoreAppearanceVersion(
 }
 
 export async function resetAppearanceScope(
-  scope: "all" | "theme" | "menus" | "menu_names" | "homepage" | "ui_texts",
+  scope:
+    | "all"
+    | "theme"
+    | "heading_typography"
+    | "menus"
+    | "menu_names"
+    | "homepage"
+    | "ui_texts",
   publishNow: boolean,
   actor: Actor
 ): Promise<
@@ -468,6 +476,8 @@ export async function resetAppearanceScope(
     next = structuredClone(DEFAULT_APPEARANCE_CONFIG);
   } else if (scope === "theme") {
     next.theme = structuredClone(DEFAULT_THEME_CONFIG);
+  } else if (scope === "heading_typography") {
+    next.headingTypography = structuredClone(DEFAULT_HEADING_TYPOGRAPHY);
   } else if (scope === "menus") {
     next.menus = {
       adminSidebar: structuredClone(DEFAULT_ADMIN_SIDEBAR_MENU),

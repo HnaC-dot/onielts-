@@ -18,6 +18,7 @@ export const seoMetaSchema = z
     ogImage: z.string().max(1000).optional(),
     ogImageAlt: z.string().max(200).optional(),
     coverImageAlt: z.string().max(200).optional(),
+    titleSize: z.enum(["", "lg", "xl"]).optional(),
   })
   .optional()
   .default({});

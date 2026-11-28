@@ -63,7 +63,7 @@ export default async function BlogIndexPage({
 
       <div className="space-y-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="ht-blog-h1 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             {isEn ? "Ôn IELTS Study Blog & Guides" : "Blog & Kinh nghiệm tự học IELTS"}
           </h1>
           <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">

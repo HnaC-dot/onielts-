@@ -17,6 +17,8 @@ export interface SeoMeta {
   ogImage?: string;
   ogImageAlt?: string;
   coverImageAlt?: string;
+  /** Optional fallback mirror for per-post title size override ("", "lg", "xl"). */
+  titleSize?: "" | "lg" | "xl";
 }
 
 export interface MediaUsageRef {
@@ -593,6 +595,7 @@ export interface BlogPost {
   is_premium?: boolean;
   tags?: string[];
   cover_image_url?: string | null;
+  title_size?: "" | "lg" | "xl" | null;
   seo_meta?: SeoMeta;
 }
 

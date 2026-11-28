@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import type { CourseItem, MediaAsset, SeoMeta } from "@/lib/types";
 import { slugifyVi } from "@/lib/seo";
+import { auditHeadingStructure } from "@/lib/heading-typography";
 import { useAdminToast } from "./toast-provider";
 import { ConfirmDialog } from "./confirm-dialog";
 import { MediaPickerModal } from "./media-picker-modal";
@@ -174,6 +175,7 @@ export function CoursesCmsClient({
   // Confirm delete state
   const [deleteTarget, setDeleteTarget] = useState<CourseItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [publishHeadingWarnings, setPublishHeadingWarnings] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!dirty || !editing) return;
@@ -265,8 +267,24 @@ export function CoursesCmsClient({
     setActiveLessonIdx(toIdx);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (bypassHeadingWarning = false) => {
     if (!editing) return;
+
+    if (editing.is_published && !bypassHeadingWarning) {
+      const allWarnings: string[] = [];
+      editing.lessons.forEach((lesson, idx) => {
+        const audit = auditHeadingStructure(lesson.content_vi);
+        for (const w of audit.warnings) {
+          allWarnings.push(`Bài ${idx + 1} (${lesson.title_vi || `#${idx + 1}`}): ${w}`);
+        }
+      });
+      if (allWarnings.length > 0) {
+        setPublishHeadingWarnings(allWarnings);
+        return;
+      }
+    }
+
+    setPublishHeadingWarnings(null);
     setSaving(true);
     try {
       const payload = {
@@ -418,7 +436,7 @@ export function CoursesCmsClient({
                 Xem trước
               </Link>
             )}
-            <Button type="button" size="sm" disabled={saving} onClick={handleSave}>
+            <Button type="button" size="sm" disabled={saving} onClick={() => void handleSave(false)}>
               <Save className="h-4 w-4" />
               {saving ? "Đang lưu..." : "Lưu khóa học"}
             </Button>
@@ -860,6 +878,7 @@ export function CoursesCmsClient({
                 </label>
                 <RichTextEditor
                   key={activeLesson.id}
+                  preset="course"
                   value={activeLesson.content_vi}
                   onChange={(html) =>
                     updateLesson(activeLessonIdx, { content_vi: html })
@@ -1042,6 +1061,22 @@ export function CoursesCmsClient({
             updateLesson(activeLessonIdx, { audioUrl: asset.public_url });
             setAudioPickerOpen(false);
           }}
+        />
+
+        <ConfirmDialog
+          open={Boolean(publishHeadingWarnings && publishHeadingWarnings.length > 0)}
+          title="Cảnh báo cấu trúc tiêu đề bài học (SEO & Accessibility)"
+          description={
+            publishHeadingWarnings
+              ? `Phát hiện vấn đề phân cấp tiêu đề trước khi xuất bản khóa học: ${publishHeadingWarnings.join(" • ")}`
+              : ""
+          }
+          confirmLabel="Vẫn lưu & Xuất bản"
+          cancelLabel="Quay lại sửa"
+          destructive={false}
+          loading={saving}
+          onCancel={() => setPublishHeadingWarnings(null)}
+          onConfirm={() => void handleSave(true)}
         />
       </div>
     );

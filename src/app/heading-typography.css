@@ -1,0 +1,335 @@
+/* ============================================================================
+ * SHARED HEADING TYPOGRAPHY STYLESHEET (Public Website + Admin RichTextEditor)
+ * All sizes use responsive clamp() CSS variables populated from SiteAppearance.
+ * Defaults match Ôn IELTS's baseline typography so untouched configs never
+ * change existing visual layout.
+ * ============================================================================ */
+
+@layer base {
+  :root {
+    /* Home */
+    --ht-home-font: var(--cms-font-sans);
+    --ht-home-weight: 700;
+    --ht-home-h1-lh: 1.15;
+    --ht-home-lh: 1.35;
+    --ht-home-h1: clamp(1.875rem, 4.5vw, 3rem);
+    --ht-home-h1-lg: clamp(2rem, 5vw, 3.375rem);
+    --ht-home-h1-xl: clamp(2.125rem, 5.5vw, 3.75rem);
+    --ht-home-h2: clamp(1.375rem, 3vw, 1.5rem);
+    --ht-home-h2-lg: clamp(1.5rem, 3.4vw, 1.875rem);
+    --ht-home-h2-xl: clamp(1.625rem, 4vw, 2.25rem);
+    --ht-home-h3: clamp(0.95rem, 1.6vw, 1rem);
+
+    /* Blog */
+    --ht-blog-font: var(--cms-font-sans);
+    --ht-blog-weight: 700;
+    --ht-blog-h1-lh: 1.25;
+    --ht-blog-lh: 1.35;
+    --ht-blog-h1: clamp(1.625rem, 3.8vw, 1.875rem);
+    --ht-blog-h1-lg: clamp(1.75rem, 4.2vw, 2.25rem);
+    --ht-blog-h1-xl: clamp(1.875rem, 4.8vw, 2.625rem);
+    --ht-blog-h2: clamp(1.125rem, 2.4vw, 1.25rem);
+    --ht-blog-h2-lg: clamp(1.25rem, 2.8vw, 1.5rem);
+    --ht-blog-h2-xl: clamp(1.35rem, 3.2vw, 1.75rem);
+    --ht-blog-h3: clamp(1rem, 1.9vw, 1.075rem);
+
+    /* Tests */
+    --ht-tests-font: var(--cms-font-sans);
+    --ht-tests-weight: 700;
+    --ht-tests-h1-lh: 1.25;
+    --ht-tests-lh: 1.35;
+    --ht-tests-h1: clamp(1.625rem, 3.8vw, 1.875rem);
+    --ht-tests-h1-lg: clamp(1.75rem, 4.2vw, 2.25rem);
+    --ht-tests-h1-xl: clamp(1.875rem, 4.8vw, 2.5rem);
+    --ht-tests-exam-h1: clamp(0.875rem, 1.5vw, 1rem);
+    --ht-tests-h2: clamp(1.05rem, 2vw, 1.125rem);
+    --ht-tests-h2-lg: clamp(1.125rem, 2.4vw, 1.35rem);
+    --ht-tests-h2-xl: clamp(1.25rem, 2.8vw, 1.55rem);
+    --ht-tests-h3: clamp(1.125rem, 2.2vw, 1.25rem);
+    --ht-tests-passage-title-align: left;
+
+    /* Courses */
+    --ht-courses-font: var(--cms-font-sans);
+    --ht-courses-weight: 700;
+    --ht-courses-h1-lh: 1.25;
+    --ht-courses-lh: 1.35;
+    --ht-courses-h1: clamp(1.625rem, 3.8vw, 1.875rem);
+    --ht-courses-h1-lg: clamp(1.75rem, 4.2vw, 2.25rem);
+    --ht-courses-h1-xl: clamp(1.875rem, 4.8vw, 2.625rem);
+    --ht-courses-h2: clamp(1.125rem, 2.4vw, 1.25rem);
+    --ht-courses-h2-lg: clamp(1.25rem, 2.8vw, 1.5rem);
+    --ht-courses-h2-xl: clamp(1.35rem, 3.2vw, 1.75rem);
+    --ht-courses-h3: clamp(1rem, 1.9vw, 1.075rem);
+
+    /* Static Pages */
+    --ht-pages-font: var(--cms-font-sans);
+    --ht-pages-weight: 700;
+    --ht-pages-h1-lh: 1.25;
+    --ht-pages-lh: 1.35;
+    --ht-pages-h1: clamp(1.625rem, 3.8vw, 1.875rem);
+    --ht-pages-h1-lg: clamp(1.75rem, 4.2vw, 2.25rem);
+    --ht-pages-h1-xl: clamp(1.875rem, 4.8vw, 2.625rem);
+    --ht-pages-h2: clamp(1.125rem, 2.4vw, 1.25rem);
+    --ht-pages-h2-lg: clamp(1.25rem, 2.8vw, 1.5rem);
+    --ht-pages-h2-xl: clamp(1.35rem, 3.2vw, 1.75rem);
+    --ht-pages-h3: clamp(1rem, 1.9vw, 1.075rem);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+ * 1. HOME AREA
+ * ---------------------------------------------------------------------------- */
+.ht-home-h1 {
+  font-family: var(--ht-home-font);
+  font-weight: var(--ht-home-weight);
+  font-size: var(--ht-home-h1);
+  line-height: var(--ht-home-h1-lh);
+  overflow-wrap: break-word;
+}
+.ht-home-h1[data-title-size="lg"] {
+  font-size: var(--ht-home-h1-lg);
+}
+.ht-home-h1[data-title-size="xl"] {
+  font-size: var(--ht-home-h1-xl);
+}
+
+.ht-home-h2 {
+  font-family: var(--ht-home-font);
+  font-weight: var(--ht-home-weight);
+  font-size: var(--ht-home-h2);
+  line-height: var(--ht-home-lh);
+  overflow-wrap: break-word;
+}
+.ht-home-h2[data-title-size="lg"] {
+  font-size: var(--ht-home-h2-lg);
+}
+.ht-home-h2[data-title-size="xl"] {
+  font-size: var(--ht-home-h2-xl);
+}
+
+.ht-home-h3 {
+  font-family: var(--ht-home-font);
+  font-weight: var(--ht-home-weight);
+  font-size: var(--ht-home-h3);
+  line-height: var(--ht-home-lh);
+  overflow-wrap: break-word;
+}
+
+/* ----------------------------------------------------------------------------
+ * 2. BLOG AREA
+ * ---------------------------------------------------------------------------- */
+.ht-blog-h1 {
+  font-family: var(--ht-blog-font);
+  font-weight: var(--ht-blog-weight);
+  font-size: var(--ht-blog-h1);
+  line-height: var(--ht-blog-h1-lh);
+  overflow-wrap: break-word;
+}
+.ht-blog-h1[data-title-size="lg"] {
+  font-size: var(--ht-blog-h1-lg);
+}
+.ht-blog-h1[data-title-size="xl"] {
+  font-size: var(--ht-blog-h1-xl);
+}
+
+.ht-blog-h2 {
+  font-family: var(--ht-blog-font);
+  font-weight: var(--ht-blog-weight);
+  font-size: var(--ht-blog-h2);
+  line-height: var(--ht-blog-lh);
+  overflow-wrap: break-word;
+}
+
+.ht-blog-h3 {
+  font-family: var(--ht-blog-font);
+  font-weight: var(--ht-blog-weight);
+  font-size: var(--ht-blog-h3);
+  line-height: var(--ht-blog-lh);
+  overflow-wrap: break-word;
+}
+
+/* ----------------------------------------------------------------------------
+ * 3. TESTS AREA (Test Title, Part/Section Title, Reading Passage Title)
+ * ---------------------------------------------------------------------------- */
+.ht-tests-h1 {
+  font-family: var(--ht-tests-font);
+  font-weight: var(--ht-tests-weight);
+  font-size: var(--ht-tests-h1);
+  line-height: var(--ht-tests-h1-lh);
+  overflow-wrap: break-word;
+}
+
+.ht-tests-exam-h1 {
+  font-family: var(--ht-tests-font);
+  font-weight: var(--ht-tests-weight);
+  font-size: var(--ht-tests-exam-h1);
+  line-height: var(--ht-tests-h1-lh);
+}
+
+.ht-tests-h2 {
+  font-family: var(--ht-tests-font);
+  font-weight: var(--ht-tests-weight);
+  font-size: var(--ht-tests-h2);
+  line-height: var(--ht-tests-lh);
+  overflow-wrap: break-word;
+}
+
+.ht-tests-h3 {
+  font-family: var(--ht-tests-font);
+  font-weight: var(--ht-tests-weight);
+  font-size: var(--ht-tests-h3);
+  line-height: var(--ht-tests-lh);
+  overflow-wrap: break-word;
+}
+
+/* Shared Reading Passage Title (Live Exam Engine + RichTextEditor reading-passage preset) */
+.reading-passage-title,
+.cms-richtext .reading-passage-title {
+  font-family: var(--ht-tests-font);
+  font-weight: var(--ht-tests-weight);
+  font-size: var(--ht-tests-h3);
+  line-height: var(--ht-tests-lh);
+  text-align: var(--ht-tests-passage-title-align, left);
+  color: var(--foreground);
+  margin-top: 0.25rem;
+  margin-bottom: 0.85rem;
+  letter-spacing: -0.015em;
+  overflow-wrap: break-word;
+}
+
+/* ----------------------------------------------------------------------------
+ * 4. COURSES AREA
+ * ---------------------------------------------------------------------------- */
+.ht-courses-h1 {
+  font-family: var(--ht-courses-font);
+  font-weight: var(--ht-courses-weight);
+  font-size: var(--ht-courses-h1);
+  line-height: var(--ht-courses-h1-lh);
+  overflow-wrap: break-word;
+}
+
+.ht-courses-h2 {
+  font-family: var(--ht-courses-font);
+  font-weight: var(--ht-courses-weight);
+  font-size: var(--ht-courses-h2);
+  line-height: var(--ht-courses-lh);
+  overflow-wrap: break-word;
+}
+
+.ht-courses-h3 {
+  font-family: var(--ht-courses-font);
+  font-weight: var(--ht-courses-weight);
+  font-size: var(--ht-courses-h3);
+  line-height: var(--ht-courses-lh);
+  overflow-wrap: break-word;
+}
+
+/* ----------------------------------------------------------------------------
+ * 5. STATIC PAGES AREA
+ * ---------------------------------------------------------------------------- */
+.ht-pages-h1 {
+  font-family: var(--ht-pages-font);
+  font-weight: var(--ht-pages-weight);
+  font-size: var(--ht-pages-h1);
+  line-height: var(--ht-pages-h1-lh);
+  overflow-wrap: break-word;
+}
+
+.ht-pages-h2 {
+  font-family: var(--ht-pages-font);
+  font-weight: var(--ht-pages-weight);
+  font-size: var(--ht-pages-h2);
+  line-height: var(--ht-pages-lh);
+  overflow-wrap: break-word;
+}
+
+.ht-pages-h3 {
+  font-family: var(--ht-pages-font);
+  font-weight: var(--ht-pages-weight);
+  font-size: var(--ht-pages-h3);
+  line-height: var(--ht-pages-lh);
+  overflow-wrap: break-word;
+}
+
+/* ----------------------------------------------------------------------------
+ * 6. SHARED RICH TEXT HEADINGS (EXACT PARITY BETWEEN EDITOR & PUBLIC PAGES)
+ * ---------------------------------------------------------------------------- */
+.cms-richtext h2 {
+  font-family: var(--ht-blog-font);
+  font-size: var(--ht-blog-h2);
+  font-weight: var(--ht-blog-weight);
+  line-height: var(--ht-blog-lh);
+  margin-top: 1.5rem;
+  margin-bottom: 0.65rem;
+  color: var(--foreground);
+  overflow-wrap: break-word;
+}
+.cms-richtext h3 {
+  font-family: var(--ht-blog-font);
+  font-size: var(--ht-blog-h3);
+  font-weight: var(--ht-blog-weight);
+  line-height: var(--ht-blog-lh);
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+  overflow-wrap: break-word;
+}
+.cms-richtext h4 {
+  font-family: var(--ht-blog-font);
+  font-size: 0.975rem;
+  font-weight: var(--ht-blog-weight);
+  line-height: var(--ht-blog-lh);
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+  color: var(--foreground);
+}
+
+/* Scoped rich-text overrides for Courses, Static Pages, and Reading Passages */
+.cms-richtext[data-heading-scope="courses"] h2 {
+  font-family: var(--ht-courses-font);
+  font-size: var(--ht-courses-h2);
+  font-weight: var(--ht-courses-weight);
+  line-height: var(--ht-courses-lh);
+}
+.cms-richtext[data-heading-scope="courses"] h3 {
+  font-family: var(--ht-courses-font);
+  font-size: var(--ht-courses-h3);
+  font-weight: var(--ht-courses-weight);
+  line-height: var(--ht-courses-lh);
+}
+.cms-richtext[data-heading-scope="pages"] h2 {
+  font-family: var(--ht-pages-font);
+  font-size: var(--ht-pages-h2);
+  font-weight: var(--ht-pages-weight);
+  line-height: var(--ht-pages-lh);
+}
+.cms-richtext[data-heading-scope="pages"] h3 {
+  font-family: var(--ht-pages-font);
+  font-size: var(--ht-pages-h3);
+  font-weight: var(--ht-pages-weight);
+  line-height: var(--ht-pages-lh);
+}
+.cms-richtext[data-heading-scope="tests"] h2 {
+  font-family: var(--ht-tests-font);
+  font-size: var(--ht-tests-h2);
+  font-weight: var(--ht-tests-weight);
+  line-height: var(--ht-tests-lh);
+}
+.cms-richtext[data-heading-scope="tests"] h3 {
+  font-family: var(--ht-tests-font);
+  font-size: var(--ht-tests-h3);
+  font-weight: var(--ht-tests-weight);
+  line-height: var(--ht-tests-lh);
+}
+
+/* Highlight accidental H1 inside rich text editor canvas for visibility */
+.cms-richtext[contenteditable="true"] h1 {
+  font-size: var(--ht-blog-h1);
+  font-weight: var(--ht-blog-weight);
+  line-height: var(--ht-blog-h1-lh);
+  border-left: 3px solid #f59e0b;
+  padding-left: 0.65rem;
+  margin: 0.85rem 0;
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 0 0.5rem 0.5rem 0;
+}

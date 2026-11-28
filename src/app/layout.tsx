@@ -17,8 +17,8 @@ import {
 } from "@/lib/cms-appearance";
 import {
   applyUiTextOverrides,
+  buildCombinedGoogleFontsHref,
   buildThemeCssVariables,
-  getGoogleFontHref,
 } from "@/lib/appearance-shared";
 import { isValidSocialProfileUrl } from "@/lib/system-cms-shared";
 import { GA4_ID_REGEX, GSC_TOKEN_REGEX } from "@/lib/seo-cms-shared";
@@ -27,7 +27,7 @@ import "./globals.css";
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ["vietnamese", "latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-be-vietnam-pro",
   display: "swap",
 });
@@ -134,8 +134,14 @@ export default async function RootLayout({
   const ga4Id =
     ga4Candidate && GA4_ID_REGEX.test(ga4Candidate) ? ga4Candidate : "";
 
-  const googleFontHref = getGoogleFontHref(appearance.theme.fontFamily);
-  const themeCss = buildThemeCssVariables(appearance.theme);
+  const googleFontHref = buildCombinedGoogleFontsHref(
+    appearance.theme.fontFamily,
+    appearance.headingTypography
+  );
+  const themeCss = buildThemeCssVariables(
+    appearance.theme,
+    appearance.headingTypography
+  );
 
   return (
     <html lang={locale} suppressHydrationWarning className={beVietnamPro.variable}>

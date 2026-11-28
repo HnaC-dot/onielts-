@@ -1283,7 +1283,7 @@ export function TestEngineClient({
               </span>
             )}
           </div>
-          <h1 className="mt-1 truncate text-sm font-bold text-slate-900 sm:text-base dark:text-white">
+          <h1 className="ht-tests-exam-h1 mt-1 truncate text-sm font-bold text-slate-900 sm:text-base dark:text-white">
             {isEn ? test.title_en : test.title_vi}
           </h1>
         </div>
@@ -1869,7 +1869,7 @@ export function TestEngineClient({
             }`}
           >
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              <h2 className="ht-tests-h2 text-lg font-bold text-slate-900 dark:text-white">
                 {currentSection.title}
               </h2>
               {currentSection.instruction && (

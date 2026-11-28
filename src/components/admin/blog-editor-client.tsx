@@ -29,6 +29,11 @@ import {
   type BlogQualityConfig,
   type InternalLinkCandidate,
 } from "@/lib/content-production-shared";
+import {
+  CONTENT_TITLE_SIZE_OPTIONS,
+  auditHeadingStructure,
+  type ContentTitleSizeOverride,
+} from "@/lib/heading-typography";
 import { escapeHtml } from "@/lib/sanitize";
 import { slugifyVi } from "@/lib/seo";
 import { RichTextEditor } from "./rich-text-editor";
@@ -81,6 +86,11 @@ export function BlogEditorClient({
 
   const [titleVi, setTitleVi] = useState(initialPost?.title_vi ?? "");
   const [titleEn, setTitleEn] = useState(initialPost?.title_en ?? "");
+  const [titleSize, setTitleSize] = useState<ContentTitleSizeOverride>(
+    initialPost?.title_size === "lg" || initialPost?.title_size === "xl"
+      ? initialPost.title_size
+      : ""
+  );
   const [slug, setSlug] = useState(initialPost?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(Boolean(initialPost));
   const [excerptVi, setExcerptVi] = useState(initialPost?.excerpt_vi ?? "");
@@ -152,6 +162,11 @@ export function BlogEditorClient({
     [titleVi, excerptVi, contentVi, coverImageUrl, seoMeta, qualityConfig]
   );
 
+  const headingAudit = useMemo(
+    () => auditHeadingStructure(contentVi),
+    [contentVi]
+  );
+
   // Check for previously auto-saved local draft on mount
   useEffect(() => {
     try {
@@ -190,6 +205,7 @@ export function BlogEditorClient({
         const snapshot = {
           titleVi,
           titleEn,
+          titleSize,
           slug,
           excerptVi,
           excerptEn,
@@ -224,6 +240,7 @@ export function BlogEditorClient({
     draftStorageKey,
     titleVi,
     titleEn,
+    titleSize,
     slug,
     excerptVi,
     excerptEn,
@@ -249,6 +266,11 @@ export function BlogEditorClient({
     if (!restorableDraft) return;
     setTitleVi(String(restorableDraft.titleVi ?? ""));
     setTitleEn(String(restorableDraft.titleEn ?? ""));
+    setTitleSize(
+      restorableDraft.titleSize === "lg" || restorableDraft.titleSize === "xl"
+        ? restorableDraft.titleSize
+        : ""
+    );
     setSlug(String(restorableDraft.slug ?? ""));
     setExcerptVi(String(restorableDraft.excerptVi ?? ""));
     setExcerptEn(String(restorableDraft.excerptEn ?? ""));
@@ -342,6 +364,7 @@ export function BlogEditorClient({
     const payload = {
       title_vi: titleVi,
       title_en: titleEn || titleVi,
+      title_size: titleSize,
       slug: slug || slugifyVi(titleVi),
       excerpt_vi: excerptVi,
       excerpt_en: excerptEn || excerptVi,
@@ -380,7 +403,7 @@ export function BlogEditorClient({
     if (
       !skipQualityCheck &&
       (effectiveStatus === "published" || effectiveStatus === "scheduled") &&
-      !qualityReport.passed
+      (!qualityReport.passed || headingAudit.hasWarnings)
     ) {
       setPendingPublishStatus(effectiveStatus);
       return;
@@ -680,6 +703,7 @@ export function BlogEditorClient({
                 </div>
               )}
               <RichTextEditor
+                preset="blog"
                 value={contentVi}
                 onChange={(html) => {
                   setContentVi(html);
@@ -722,6 +746,7 @@ export function BlogEditorClient({
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"
                   />
                   <RichTextEditor
+                    preset="blog"
                     value={contentEn}
                     onChange={(html) => {
                       setContentEn(html);
@@ -797,6 +822,30 @@ export function BlogEditorClient({
                 </p>
               </div>
             )}
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Cỡ tiêu đề bài viết (tùy chọn)
+              </label>
+              <select
+                value={titleSize}
+                onChange={(e) => {
+                  setTitleSize(e.target.value as ContentTitleSizeOverride);
+                  markDirty();
+                }}
+                aria-label="Cỡ tiêu đề bài viết"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"
+              >
+                {CONTENT_TITLE_SIZE_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500">
+                Chỉ đổi cỡ chữ hiển thị ngoài web; tiêu đề gốc vẫn giữ nguyên văn bản thuần cho SEO &amp; slug.
+              </p>
+            </div>
 
             <div className="space-y-2.5 pt-1 text-xs">
               <label className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer dark:border-slate-800">
@@ -1012,7 +1061,7 @@ export function BlogEditorClient({
         </div>
       </div>
 
-      {/* Pre-Publish Quality Gate Modal */}
+      {/* Pre-Publish Quality Gate & Heading Structure Modal */}
       {pendingPublishStatus && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
           <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-5 shadow-xl dark:border-amber-900 dark:bg-slate-900 space-y-4">
@@ -1022,16 +1071,23 @@ export function BlogEditorClient({
               </span>
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Bài viết chưa đạt đủ tiêu chuẩn chất lượng ({qualityReport.score}/{qualityReport.maxScore})
+                  {headingAudit.hasWarnings && qualityReport.passed
+                    ? "Cảnh báo cấu trúc tiêu đề SEO & Truy cập"
+                    : `Bài viết có cảnh báo trước khi đăng (${qualityReport.score}/${qualityReport.maxScore})`}
                 </h3>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                  Các tiêu chí dưới đây chưa hoàn tất trước khi{" "}
+                  Vui lòng kiểm tra các mục dưới đây trước khi{" "}
                   {pendingPublishStatus === "scheduled" ? "lên lịch đăng" : "xuất bản công khai"}:
                 </p>
               </div>
             </div>
 
             <ul className="space-y-1.5 rounded-xl bg-amber-50/70 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              {headingAudit.warnings.map((w, idx) => (
+                <li key={`h-warn-${idx}`}>
+                  <strong>• Cấu trúc tiêu đề:</strong> {w}
+                </li>
+              ))}
               {qualityReport.checks
                 .filter((c) => !c.passed)
                 .map((c) => (

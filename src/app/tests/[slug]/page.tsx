@@ -133,7 +133,7 @@ export default async function TestDetailPage({
         <Badge>{test.skill.toUpperCase()}</Badge>
         <Badge variant="secondary">{test.module === "academic" ? "Academic" : "General"}</Badge>
       </div>
-      <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+      <h1 className="ht-tests-h1 text-3xl font-bold text-slate-900 dark:text-white">
         {isEn ? test.title_en : test.title_vi}
       </h1>
       <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -161,7 +161,7 @@ export default async function TestDetailPage({
       {test.speakingPrompts && (
         <div className="space-y-4">
           <Card className="p-6 space-y-2">
-            <h2 className="text-base font-bold">Part 1 — Introduction &amp; Interview</h2>
+            <h2 className="ht-tests-h2 text-base font-bold">Part 1 — Introduction &amp; Interview</h2>
             <ul className="list-disc pl-5 text-sm text-slate-700 dark:text-slate-300 space-y-1">
               {test.speakingPrompts.part1.map((q, i) => (
                 <li key={i}>{q}</li>
@@ -169,7 +169,7 @@ export default async function TestDetailPage({
             </ul>
           </Card>
           <Card className="p-6 space-y-2 border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/30">
-            <h2 className="text-base font-bold">Part 2 — Cue Card</h2>
+            <h2 className="ht-tests-h2 text-base font-bold">Part 2 — Cue Card</h2>
             <p className="text-sm font-semibold text-slate-900 dark:text-white">
               {test.speakingPrompts.part2.topic}
             </p>
@@ -180,7 +180,7 @@ export default async function TestDetailPage({
             </ul>
           </Card>
           <Card className="p-6 space-y-2">
-            <h2 className="text-base font-bold">Part 3 — Follow-up Discussion</h2>
+            <h2 className="ht-tests-h2 text-base font-bold">Part 3 — Follow-up Discussion</h2>
             <ul className="list-disc pl-5 text-sm text-slate-700 dark:text-slate-300 space-y-1">
               {test.speakingPrompts.part3.map((q, i) => (
                 <li key={i}>{q}</li>

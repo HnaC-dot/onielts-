@@ -23,6 +23,13 @@ function mapBlogRow(p: Record<string, unknown>): BlogPost {
       : p.is_published
       ? "published"
       : "draft";
+  const seoMeta =
+    p.seo_meta && typeof p.seo_meta === "object"
+      ? (p.seo_meta as SeoMeta)
+      : {};
+  const rawTitleSize = p.title_size ?? seoMeta.titleSize;
+  const titleSize: "" | "lg" | "xl" =
+    rawTitleSize === "lg" || rawTitleSize === "xl" ? rawTitleSize : "";
   return {
     id: String(p.id),
     slug: String(p.slug),
@@ -46,10 +53,8 @@ function mapBlogRow(p: Record<string, unknown>): BlogPost {
     is_premium: Boolean(p.is_premium),
     tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
     cover_image_url: p.cover_image_url ? String(p.cover_image_url) : null,
-    seo_meta:
-      p.seo_meta && typeof p.seo_meta === "object"
-        ? (p.seo_meta as SeoMeta)
-        : {},
+    title_size: titleSize,
+    seo_meta: seoMeta,
   };
 }
 
@@ -188,6 +193,11 @@ function normalizeBlogPayload(rawInput: BlogPostFormInput) {
       ? scheduledIso
       : new Date().toISOString();
 
+  const normalizedTitleSize: "lg" | "xl" | null =
+    rawInput.title_size === "lg" || rawInput.title_size === "xl"
+      ? rawInput.title_size
+      : null;
+
   return {
     slug: slugifyVi(rawInput.slug),
     title_vi: rawInput.title_vi,
@@ -209,8 +219,22 @@ function normalizeBlogPayload(rawInput: BlogPostFormInput) {
       new Set((rawInput.tags ?? []).map((t) => t.trim()).filter(Boolean))
     ),
     cover_image_url: rawInput.cover_image_url?.trim() || null,
-    seo_meta: rawInput.seo_meta ?? {},
+    title_size: normalizedTitleSize,
+    seo_meta: {
+      ...(rawInput.seo_meta ?? {}),
+      titleSize: normalizedTitleSize ?? undefined,
+    },
   };
+}
+
+function stripMissingBlogColumns(
+  payload: ReturnType<typeof normalizeBlogPayload> & { updated_at?: string },
+  errorMessage: string
+) {
+  const copy: Record<string, unknown> = { ...payload };
+  if (/updated_at/i.test(errorMessage)) delete copy.updated_at;
+  if (/title_size/i.test(errorMessage)) delete copy.title_size;
+  return copy;
 }
 
 export async function createCmsBlogPost(
@@ -281,11 +305,21 @@ export async function createCmsBlogPost(
     };
   }
 
-  const { data, error } = await admin
+  let { data, error } = await admin
     .from("blog_posts")
     .insert(payload)
     .select("*")
     .single();
+
+  if (error && /title_size/i.test(error.message ?? "")) {
+    const retry = await admin
+      .from("blog_posts")
+      .insert(stripMissingBlogColumns(payload, error.message))
+      .select("*")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error || !data) {
     return {
@@ -400,17 +434,18 @@ export async function updateCmsBlogPost(
     }
   }
 
+  const updateBody = { ...payload, updated_at: new Date().toISOString() };
   let { data, error } = await admin
     .from("blog_posts")
-    .update({ ...payload, updated_at: new Date().toISOString() })
+    .update(updateBody)
     .eq("id", id)
     .select("*")
     .single();
 
-  if (error && /updated_at/i.test(error.message ?? "")) {
+  if (error && /updated_at|title_size/i.test(error.message ?? "")) {
     const retry = await admin
       .from("blog_posts")
-      .update(payload)
+      .update(stripMissingBlogColumns(updateBody, error.message))
       .eq("id", id)
       .select("*")
       .single();

@@ -243,7 +243,10 @@ export default async function HomePage() {
             <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:py-20">
               <div className="grid items-center gap-12 lg:grid-cols-12">
                 <div className="lg:col-span-7 space-y-6">
-                  <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-5xl sm:leading-[1.12] dark:text-white">
+                  <h1
+                    className="ht-home-h1 text-3xl font-bold tracking-tight text-slate-900 sm:text-5xl sm:leading-[1.12] dark:text-white"
+                    data-title-size={sec.titleSize || undefined}
+                  >
                     {title || t("heroTitle")}
                   </h1>
                   <p className="max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg dark:text-slate-300">
@@ -350,7 +353,10 @@ export default async function HomePage() {
           <section key={sec.id} className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
             <div className="mb-7">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                <h2
+                  className="ht-home-h2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white"
+                  data-title-size={sec.titleSize || undefined}
+                >
                   {title || t("testimonialsTitle")}
                 </h2>
                 {badgeLabel && <Badge variant="secondary">{badgeLabel}</Badge>}
@@ -372,7 +378,10 @@ export default async function HomePage() {
           <section key={sec.id} className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                <h2
+                  className="ht-home-h2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white"
+                  data-title-size={sec.titleSize || undefined}
+                >
                   {title || t("latestTestsTitle")}
                 </h2>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
@@ -410,7 +419,7 @@ export default async function HomePage() {
                           {test.duration_minutes}m
                         </span>
                       </div>
-                      <h3 className="mt-3.5 text-base font-bold leading-snug text-slate-900 dark:text-white">
+                      <h3 className="ht-home-h3 mt-3.5 text-base font-bold leading-snug text-slate-900 dark:text-white">
                         {isEn ? test.title_en : test.title_vi}
                       </h3>
                       <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
@@ -472,7 +481,10 @@ export default async function HomePage() {
                         : `Ngày thi Việt Nam (UTC+7): ${vnToday}`}
                     </span>
                   </div>
-                  <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                  <h2
+                    className="ht-home-h2 text-2xl font-bold tracking-tight sm:text-3xl"
+                    data-title-size={sec.titleSize || undefined}
+                  >
                     {title || t("dailyCtaTitle")}
                   </h2>
                   <p className="text-sm leading-relaxed text-emerald-100/90 sm:text-base">
@@ -552,7 +564,10 @@ export default async function HomePage() {
           <section key={sec.id} className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                <h2
+                  className="ht-home-h2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white"
+                  data-title-size={sec.titleSize || undefined}
+                >
                   {title || t("toolsTitle")}
                 </h2>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
@@ -601,6 +616,7 @@ export default async function HomePage() {
             subtitle={subtitle || t("coursesSubtitle")}
             viewAllHref="/courses"
             viewAllLabel={viewAllLabel}
+            titleSize={sec.titleSize}
           >
             {items.map((course) => (
               <Link
@@ -615,7 +631,7 @@ export default async function HomePage() {
                       {course.lessons.length} {isEn ? "lessons" : "bài học"}
                     </span>
                   </div>
-                  <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                  <h3 className="ht-home-h3 mt-3 text-base font-bold text-slate-900 dark:text-white">
                     {isEn ? course.title_en : course.title_vi}
                   </h3>
                   <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
@@ -640,6 +656,7 @@ export default async function HomePage() {
             subtitle={subtitle || t("conversationsSubtitle")}
             viewAllHref="/conversations"
             viewAllLabel={viewAllLabel}
+            titleSize={sec.titleSize}
           >
             {items.map((topic) => (
               <Link
@@ -652,7 +669,7 @@ export default async function HomePage() {
                     <Badge variant="secondary">{topic.part}</Badge>
                     <MessageSquare className="h-4 w-4 text-emerald-600" />
                   </div>
-                  <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                  <h3 className="ht-home-h3 mt-3 text-base font-bold text-slate-900 dark:text-white">
                     {isEn ? topic.title_en : topic.title_vi}
                   </h3>
                   <p className="mt-1.5 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
@@ -684,6 +701,7 @@ export default async function HomePage() {
             subtitle={subtitle || t("writingExercisesSubtitle")}
             viewAllHref="/writing/exercises"
             viewAllLabel={viewAllLabel}
+            titleSize={sec.titleSize}
           >
             {items.map((ex) => (
               <Link
@@ -693,7 +711,7 @@ export default async function HomePage() {
               >
                 <Card className="h-full p-5 transition hover:border-emerald-300 hover:shadow-md">
                   <Badge>{ex.topic}</Badge>
-                  <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                  <h3 className="ht-home-h3 mt-3 text-base font-bold text-slate-900 dark:text-white">
                     {isEn ? ex.title_en : ex.title_vi}
                   </h3>
                   <p className="mt-2 rounded-xl bg-slate-50 p-3 text-xs italic text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
@@ -719,6 +737,7 @@ export default async function HomePage() {
             subtitle={subtitle || t("pronunciationSubtitle")}
             viewAllHref="/pronunciation"
             viewAllLabel={viewAllLabel}
+            titleSize={sec.titleSize}
           >
             {items.map((sound) => (
               <Link
@@ -752,6 +771,7 @@ export default async function HomePage() {
             subtitle={subtitle || t("dictationSubtitle")}
             viewAllHref="/dictation"
             viewAllLabel={viewAllLabel}
+            titleSize={sec.titleSize}
           >
             {items.map((lesson) => (
               <Link
@@ -766,7 +786,7 @@ export default async function HomePage() {
                       {lesson.accent}
                     </span>
                   </div>
-                  <h3 className="mt-3 text-base font-bold text-slate-900 dark:text-white">
+                  <h3 className="ht-home-h3 mt-3 text-base font-bold text-slate-900 dark:text-white">
                     {isEn ? lesson.title_en : lesson.title_vi}
                   </h3>
                   <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
@@ -789,6 +809,7 @@ export default async function HomePage() {
             subtitle={subtitle || t("videosSubtitle")}
             viewAllHref="/videos"
             viewAllLabel={viewAllLabel}
+            titleSize={sec.titleSize}
           >
             {items.map((video) => (
               <Link
@@ -841,6 +862,7 @@ export default async function HomePage() {
             }
             viewAllHref="/blog"
             viewAllLabel={viewAllLabel}
+            titleSize={sec.titleSize}
           >
             {items.map((post) => (
               <Link

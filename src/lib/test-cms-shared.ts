@@ -14,6 +14,7 @@ import {
   normalizeSectionToGroups,
   resolveGroupDisplayContent,
 } from "./test-groups";
+import { auditHeadingStructure } from "./heading-typography";
 
 export const QUESTION_TYPE_CATALOG: ReadonlyArray<{
   value: QuestionType;
@@ -896,8 +897,17 @@ export function validateTestForPublish(
     if (test.skill === "listening" && !sec.audioUrl?.trim()) {
       warnings.push(`Part ${idx + 1} (${sec.title}) chưa gắn file âm thanh MP3.`);
     }
-    if (test.skill === "reading" && (!sec.passage || sec.passage.trim().length < 80)) {
-      warnings.push(`Passage ${idx + 1} (${sec.title}) chưa có đoạn văn đầy đủ.`);
+    if (test.skill === "reading") {
+      if (!sec.passage || sec.passage.trim().length < 80) {
+        warnings.push(`Passage ${idx + 1} (${sec.title}) chưa có đoạn văn đầy đủ.`);
+      } else {
+        const headingAudit = auditHeadingStructure(sec.passage, {
+          allowPassageStartAtH3: true,
+        });
+        for (const w of headingAudit.warnings) {
+          warnings.push(`Passage ${idx + 1} (${sec.title}): ${w}`);
+        }
+      }
     }
     const hasMapQ = sec.questions.some((q) => q.type === "map_labelling");
     if (hasMapQ && !sec.diagramSvgType && !sec.diagramImageUrl?.trim()) {

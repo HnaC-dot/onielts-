@@ -513,74 +513,88 @@ export function AnnotatablePassage({
                   {evidenceBadgeText}
                 </div>
               )}
-              <p
-                data-paragraph-index={para.index}
-                className="whitespace-pre-line"
-              >
-                {segments.map((seg, idx) => {
-                  if (seg.type === "text" || !seg.annotation) {
-                    return <React.Fragment key={idx}>{seg.text}</React.Fragment>;
-                  }
-                  const ann = seg.annotation;
-                  const hasNote = Boolean(ann.note && ann.note.trim().length > 0);
-                  const isFlashed = flashedAnnotationId === ann.id;
-                  const colorCls =
-                    MARK_COLOR_CLASSES[ann.color] ?? MARK_COLOR_CLASSES.amber;
-                  return (
-                    <mark
-                      key={ann.id}
-                      data-annotation-id={ann.id}
-                      role="button"
-                      tabIndex={0}
-                      title={
-                        hasNote
-                          ? ann.note
-                          : isEn
-                          ? "Click to change color, add note, save to flashcard, or remove"
-                          : "Nhấn để đổi màu, thêm ghi chú, lưu Flashcard hoặc xóa"
+              {(() => {
+                const Tag =
+                  para.kind === "passage-title" || para.kind === "heading"
+                    ? "h3"
+                    : "p";
+                const blockClass =
+                  para.kind === "passage-title"
+                    ? "reading-passage-title whitespace-pre-line"
+                    : para.kind === "heading"
+                    ? "ht-tests-h3 whitespace-pre-line text-slate-900 dark:text-white"
+                    : "whitespace-pre-line";
+                return (
+                  <Tag
+                    data-paragraph-index={para.index}
+                    className={blockClass}
+                  >
+                    {segments.map((seg, idx) => {
+                      if (seg.type === "text" || !seg.annotation) {
+                        return <React.Fragment key={idx}>{seg.text}</React.Fragment>;
                       }
-                      onClick={(e) => handleClickMark(e, ann)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const pos = clampPopoverPosition(rect, 310);
-                          setPendingSelection(null);
-                          setNewNoteMode(false);
-                          setActivePopover({
-                            annotationId: ann.id,
-                            x: pos.x,
-                            y: pos.y,
-                            placeBelow: pos.placeBelow,
-                            editingNote: false,
-                            noteDraft: ann.note ?? "",
-                          });
-                        }
-                      }}
-                      className={`cursor-pointer rounded-xs px-0.5 transition ${colorCls} ${
-                        hasNote
-                          ? "underline decoration-emerald-600/85 decoration-2 underline-offset-2 dark:decoration-emerald-400"
-                          : ""
-                      } ${
-                        isFlashed
-                          ? "ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-slate-900 animate-pulse"
-                          : ""
-                      }`}
-                    >
-                      {seg.text}
-                      {hasNote && (
-                        <span
-                          data-annotation-ui="true"
-                          aria-hidden="true"
-                          className="ml-0.5 inline-flex select-none align-super text-emerald-700 dark:text-emerald-300"
+                      const ann = seg.annotation;
+                      const hasNote = Boolean(ann.note && ann.note.trim().length > 0);
+                      const isFlashed = flashedAnnotationId === ann.id;
+                      const colorCls =
+                        MARK_COLOR_CLASSES[ann.color] ?? MARK_COLOR_CLASSES.amber;
+                      return (
+                        <mark
+                          key={ann.id}
+                          data-annotation-id={ann.id}
+                          role="button"
+                          tabIndex={0}
+                          title={
+                            hasNote
+                              ? ann.note
+                              : isEn
+                              ? "Click to change color, add note, save to flashcard, or remove"
+                              : "Nhấn để đổi màu, thêm ghi chú, lưu Flashcard hoặc xóa"
+                          }
+                          onClick={(e) => handleClickMark(e, ann)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const pos = clampPopoverPosition(rect, 310);
+                              setPendingSelection(null);
+                              setNewNoteMode(false);
+                              setActivePopover({
+                                annotationId: ann.id,
+                                x: pos.x,
+                                y: pos.y,
+                                placeBelow: pos.placeBelow,
+                                editingNote: false,
+                                noteDraft: ann.note ?? "",
+                              });
+                            }
+                          }}
+                          className={`cursor-pointer rounded-xs px-0.5 transition ${colorCls} ${
+                            hasNote
+                              ? "underline decoration-emerald-600/85 decoration-2 underline-offset-2 dark:decoration-emerald-400"
+                              : ""
+                          } ${
+                            isFlashed
+                              ? "ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-slate-900 animate-pulse"
+                              : ""
+                          }`}
                         >
-                          <StickyNote className="h-3 w-3" />
-                        </span>
-                      )}
-                    </mark>
-                  );
-                })}
-              </p>
+                          {seg.text}
+                          {hasNote && (
+                            <span
+                              data-annotation-ui="true"
+                              aria-hidden="true"
+                              className="ml-0.5 inline-flex select-none align-super text-emerald-700 dark:text-emerald-300"
+                            >
+                              <StickyNote className="h-3 w-3" />
+                            </span>
+                          )}
+                        </mark>
+                      );
+                    })}
+                  </Tag>
+                );
+              })()}
             </div>
           );
         })}

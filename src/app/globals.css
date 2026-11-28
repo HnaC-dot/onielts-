@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./heading-typography.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -67,27 +68,11 @@ body {
   scrollbar-width: none;
 }
 
-/* CMS Rich Text (Blog Editor & Public Articles) */
+/* CMS Rich Text (Blog Editor & Public Articles — headings styled in heading-typography.css) */
 .cms-richtext:empty::before {
   content: attr(data-placeholder);
   color: #94a3b8;
   pointer-events: none;
-}
-.cms-richtext h2 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  line-height: 1.4;
-  margin-top: 1.5rem;
-  margin-bottom: 0.65rem;
-  color: var(--foreground);
-}
-.cms-richtext h3 {
-  font-size: 1.075rem;
-  font-weight: 700;
-  line-height: 1.45;
-  margin-top: 1.25rem;
-  margin-bottom: 0.5rem;
-  color: var(--foreground);
 }
 .cms-richtext p {
   margin-bottom: 0.9rem;

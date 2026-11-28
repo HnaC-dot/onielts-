@@ -78,7 +78,15 @@ export async function POST(req: Request) {
 
   if (action === "reset_defaults") {
     const rawScope = String(body.scope ?? "all");
-    const validScopes = ["all", "theme", "menus", "menu_names", "homepage", "ui_texts"] as const;
+    const validScopes = [
+      "all",
+      "theme",
+      "heading_typography",
+      "menus",
+      "menu_names",
+      "homepage",
+      "ui_texts",
+    ] as const;
     if (!validScopes.includes(rawScope as (typeof validScopes)[number])) {
       return NextResponse.json({ error: "Phạm vi khôi phục không hợp lệ." }, { status: 400 });
     }

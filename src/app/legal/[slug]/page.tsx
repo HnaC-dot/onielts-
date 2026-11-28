@@ -82,13 +82,14 @@ export default async function LegalPage({
           <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
             {isEn ? `Last updated: ${updatedLabel}` : `Cập nhật lần cuối: ${updatedLabel}`}
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="ht-pages-h1 mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             {title}
           </h1>
         </div>
 
         <div
-          className="prose prose-sm prose-slate max-w-none leading-7 text-slate-700 dark:prose-invert dark:text-slate-300"
+          data-heading-scope="pages"
+          className="cms-richtext prose prose-sm prose-slate max-w-none leading-7 text-slate-700 dark:prose-invert dark:text-slate-300"
           dangerouslySetInnerHTML={{ __html: safeHtml }}
         />
 
@@ -100,7 +101,7 @@ export default async function LegalPage({
                 className="rounded-2xl border border-slate-200 p-5 space-y-2 dark:border-slate-800"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  <h2 className="ht-pages-h2 text-base font-bold text-slate-900 dark:text-white">
                     {isEn ? f.question_en || f.question_vi : f.question_vi}
                   </h2>
                   <Badge variant="secondary">{f.category}</Badge>

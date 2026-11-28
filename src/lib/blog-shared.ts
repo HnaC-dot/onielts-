@@ -54,6 +54,7 @@ export const blogPostFormSchema = z.object({
   is_premium: z.boolean().optional().default(false),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional().default([]),
   cover_image_url: z.string().trim().max(1000).nullable().optional(),
+  title_size: z.enum(["", "lg", "xl"]).nullable().optional().default(""),
   seo_meta: seoMetaSchema,
 });
 

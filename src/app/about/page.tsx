@@ -57,12 +57,13 @@ export default async function AboutPage() {
       />
 
       <div className="max-w-3xl space-y-4">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+        <h1 className="ht-pages-h1 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
           {title}
         </h1>
         {safeHtml ? (
           <div
-            className="prose prose-slate max-w-none text-base leading-relaxed text-slate-600 dark:prose-invert dark:text-slate-300"
+            data-heading-scope="pages"
+            className="cms-richtext prose prose-slate max-w-none text-base leading-relaxed text-slate-600 dark:prose-invert dark:text-slate-300"
             dangerouslySetInnerHTML={{ __html: safeHtml }}
           />
         ) : (
@@ -77,7 +78,7 @@ export default async function AboutPage() {
       <div className="grid gap-5 md:grid-cols-3">
         <Card className="p-6 space-y-3">
           <Sparkles className="h-7 w-7 text-emerald-600" />
-          <h2 className="text-lg font-bold">
+          <h2 className="ht-pages-h2 text-lg font-bold">
             {isEn ? "100% Original Content" : "100% Nội dung nguyên bản"}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -88,7 +89,7 @@ export default async function AboutPage() {
         </Card>
         <Card className="p-6 space-y-3">
           <ShieldCheck className="h-7 w-7 text-emerald-600" />
-          <h2 className="text-lg font-bold">
+          <h2 className="ht-pages-h2 text-lg font-bold">
             {isEn ? "Private & Transparent" : "Riêng tư & Minh bạch"}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -99,7 +100,7 @@ export default async function AboutPage() {
         </Card>
         <Card className="p-6 space-y-3">
           <HeartHandshake className="h-7 w-7 text-emerald-600" />
-          <h2 className="text-lg font-bold">
+          <h2 className="ht-pages-h2 text-lg font-bold">
             {isEn ? "Built for Daily Consistency" : "Thiết kế cho sự bền bỉ mỗi ngày"}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">

@@ -227,7 +227,10 @@ export default async function BlogDetailPage({
               </span>
             </div>
 
-            <h1 className="text-3xl font-bold leading-tight text-slate-900 dark:text-white">
+            <h1
+              className="ht-blog-h1 text-3xl font-bold leading-tight text-slate-900 dark:text-white"
+              data-title-size={post.title_size || post.seo_meta?.titleSize || undefined}
+            >
               {articleTitle}
             </h1>
             <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
@@ -271,6 +274,7 @@ export default async function BlogDetailPage({
           )}
 
           <div
+            data-heading-scope="blog"
             className="cms-richtext border-t border-slate-100 pt-6 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 [&_h2]:scroll-mt-24 [&_h3]:scroll-mt-24"
             dangerouslySetInnerHTML={{ __html: htmlWithAnchors }}
           />

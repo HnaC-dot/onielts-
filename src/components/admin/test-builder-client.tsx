@@ -49,15 +49,32 @@ import {
   validateTestForPublish,
 } from "@/lib/test-cms-shared";
 import { slugifyVi } from "@/lib/seo";
+import { escapeHtml } from "@/lib/sanitize";
+import { splitPassageParagraphs } from "@/lib/test-groups";
+import { auditHeadingStructure } from "@/lib/heading-typography";
 import { SeoPanel } from "./seo-panel";
 import { MediaPickerModal } from "./media-picker-modal";
 import { ConfirmDialog } from "./confirm-dialog";
 import { QuestionGroupEditor } from "./question-group-editor";
+import { RichTextEditor } from "./rich-text-editor";
 import { TestLivePreviewModal } from "./test-live-preview-modal";
 import { useAdminToast } from "./toast-provider";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+
+const PASSAGE_HTML_RE = /<(?:p|div|h[1-6]|blockquote|li|br|ul|ol|strong|em|b|i)\b/i;
+
+function plainPassageToHtml(raw: string): string {
+  if (!raw.trim()) return "";
+  if (PASSAGE_HTML_RE.test(raw)) return raw;
+  return raw
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br />")}</p>`)
+    .join("\n");
+}
 
 interface TestBuilderClientProps {
   initialTest?: IeltsTest | null;
@@ -286,6 +303,12 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [passageModeBySecId, setPassageModeBySecId] = useState<
+    Record<string, "plain" | "rich">
+  >({});
+  const [publishHeadingWarnings, setPublishHeadingWarnings] = useState<string[] | null>(
+    null
+  );
   const [errorMsg, setErrorMsg] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
@@ -675,7 +698,10 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
     }
   };
 
-  const handleSave = async (publishTarget: boolean) => {
+  const handleSave = async (
+    publishTarget: boolean,
+    bypassHeadingWarning = false
+  ) => {
     setErrorMsg("");
 
     if (publishTarget && !validationReport.canPublish) {
@@ -690,6 +716,24 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
       }
       return;
     }
+
+    if (publishTarget && skill === "reading" && !bypassHeadingWarning) {
+      const headingWarnings: string[] = [];
+      sections.forEach((sec, idx) => {
+        const audit = auditHeadingStructure(sec.passage ?? "", {
+          allowPassageStartAtH3: true,
+        });
+        for (const w of audit.warnings) {
+          headingWarnings.push(`Passage ${idx + 1} (${sec.title}): ${w}`);
+        }
+      });
+      if (headingWarnings.length > 0) {
+        setPublishHeadingWarnings(headingWarnings);
+        return;
+      }
+    }
+
+    setPublishHeadingWarnings(null);
 
     const payload = {
       slug: slug || slugifyVi(titleVi),
@@ -1321,20 +1365,89 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
               </div>
 
               {/* Reading Passage */}
-              {skill === "reading" && (
-                <div className="space-y-1.5 text-xs">
-                  <label className="font-semibold text-slate-700 dark:text-slate-300">
-                    Đoạn văn bài đọc (phân tách các đoạn bằng 1 dòng trống — VD đặt nhãn A, B, C ở đầu đoạn)
-                  </label>
-                  <textarea
-                    rows={10}
-                    value={currentSec.passage ?? ""}
-                    onChange={(e) => updateCurrentSection({ passage: e.target.value })}
-                    placeholder="Paragraph A&#10;Nội dung đoạn A...&#10;&#10;Paragraph B&#10;Nội dung đoạn B..."
-                    className="w-full rounded-xl border border-slate-200 bg-white p-3 leading-6 dark:border-slate-700 dark:bg-slate-950"
-                  />
-                </div>
-              )}
+              {skill === "reading" && (() => {
+                const rawPassage = currentSec.passage ?? "";
+                const detectedMode: "plain" | "rich" = PASSAGE_HTML_RE.test(rawPassage)
+                  ? "rich"
+                  : "plain";
+                const passageMode = passageModeBySecId[currentSec.id] ?? detectedMode;
+
+                return (
+                  <div className="space-y-2 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label className="font-semibold text-slate-700 dark:text-slate-300">
+                        Đoạn văn bài đọc{" "}
+                        {passageMode === "plain"
+                          ? "(phân tách các đoạn bằng 1 dòng trống — VD đặt nhãn A, B, C ở đầu đoạn)"
+                          : "(hỗ trợ gắn kiểu 'Tiêu đề bài đọc' & tiêu đề phụ H2/H3 đồng bộ ngoài web)"}
+                      </label>
+                      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-900">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (passageMode === "rich" && PASSAGE_HTML_RE.test(rawPassage)) {
+                              const plain = splitPassageParagraphs(rawPassage)
+                                .map((p) => p.text)
+                                .join("\n\n");
+                              updateCurrentSection({ passage: plain });
+                            }
+                            setPassageModeBySecId((prev) => ({
+                              ...prev,
+                              [currentSec.id]: "plain",
+                            }));
+                          }}
+                          className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer ${
+                            passageMode === "plain"
+                              ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
+                              : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+                          }`}
+                        >
+                          Văn bản thuần
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (passageMode === "plain" && rawPassage.trim()) {
+                              updateCurrentSection({
+                                passage: plainPassageToHtml(rawPassage),
+                              });
+                            }
+                            setPassageModeBySecId((prev) => ({
+                              ...prev,
+                              [currentSec.id]: "rich",
+                            }));
+                          }}
+                          className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer ${
+                            passageMode === "rich"
+                              ? "bg-emerald-600 text-white shadow-xs"
+                              : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+                          }`}
+                        >
+                          Trình soạn bài đọc (Tiêu đề bài đọc)
+                        </button>
+                      </div>
+                    </div>
+
+                    {passageMode === "rich" ? (
+                      <RichTextEditor
+                        key={`${currentSec.id}-reading-passage`}
+                        preset="reading-passage"
+                        value={rawPassage}
+                        onChange={(html) => updateCurrentSection({ passage: html })}
+                        placeholder="Nhập tiêu đề bài đọc rồi bấm nút 'Tiêu đề bài đọc', sau đó nhập các đoạn văn A, B, C..."
+                      />
+                    ) : (
+                      <textarea
+                        rows={10}
+                        value={rawPassage}
+                        onChange={(e) => updateCurrentSection({ passage: e.target.value })}
+                        placeholder="Paragraph A&#10;Nội dung đoạn A...&#10;&#10;Paragraph B&#10;Nội dung đoạn B..."
+                        className="w-full rounded-xl border border-slate-200 bg-white p-3 leading-6 dark:border-slate-700 dark:bg-slate-950"
+                      />
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Listening MP3 & Transcript */}
               {skill === "listening" && (
@@ -2096,6 +2209,22 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
           });
           toast.success(`Đã gắn sơ đồ ${asset.filename}`);
         }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(publishHeadingWarnings && publishHeadingWarnings.length > 0)}
+        title="Cảnh báo cấu trúc tiêu đề bài đọc (SEO & Accessibility)"
+        description={
+          publishHeadingWarnings
+            ? `Phát hiện cảnh báo phân cấp tiêu đề trước khi xuất bản đề Reading: ${publishHeadingWarnings.join(" • ")}`
+            : ""
+        }
+        confirmLabel="Vẫn xuất bản"
+        cancelLabel="Quay lại sửa"
+        destructive={false}
+        loading={saving}
+        onCancel={() => setPublishHeadingWarnings(null)}
+        onConfirm={() => void handleSave(true, true)}
       />
 
       <ConfirmDialog

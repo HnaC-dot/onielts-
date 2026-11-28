@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   Sparkles,
   Trash2,
+  Type,
 } from "lucide-react";
 import {
   APPEARANCE_FONTS,
@@ -37,13 +38,16 @@ import {
   type AppearanceFontId,
   type AppearanceVersionEntry,
   type BorderRadiusPreset,
+  type ContentTitleSizeOverride,
   type HomeSectionConfig,
   type HomeSectionId,
   type SiteAppearanceConfig,
 } from "@/lib/appearance-shared";
+import { CONTENT_TITLE_SIZE_OPTIONS } from "@/lib/heading-typography";
 import { GA4_ID_REGEX } from "@/lib/seo-cms-shared";
 import type { MediaAsset } from "@/lib/types";
 import { AppearanceMenusEditor } from "./appearance-menus-editor";
+import { AppearanceHeadingTypography } from "./appearance-heading-typography";
 import { MediaPickerModal } from "./media-picker-modal";
 import { ConfirmDialog } from "./confirm-dialog";
 import { useAdminToast } from "./toast-provider";
@@ -61,6 +65,7 @@ interface AppearanceCmsClientProps {
 type MainTab =
   | "homepage"
   | "theme"
+  | "headings"
   | "branding"
   | "menus"
   | "footer"
@@ -131,7 +136,16 @@ export function AppearanceCmsClient({
   const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
   const [dragSectionIdx, setDragSectionIdx] = useState<number | null>(null);
   const [confirmReset, setConfirmReset] = useState<
-    null | { scope: "all" | "theme" | "menus" | "homepage" | "ui_texts"; label: string }
+    null | {
+      scope:
+        | "all"
+        | "theme"
+        | "heading_typography"
+        | "menus"
+        | "homepage"
+        | "ui_texts";
+      label: string;
+    }
   >(null);
 
   // UI Text table filters
@@ -146,8 +160,8 @@ export function AppearanceCmsClient({
   );
 
   const themeCssPreview = useMemo(
-    () => buildThemeCssVariables(config.theme),
-    [config.theme]
+    () => buildThemeCssVariables(config.theme, config.headingTypography),
+    [config.theme, config.headingTypography]
   );
 
   const saveDraft = async (overrideNote?: string) => {
@@ -395,11 +409,12 @@ export function AppearanceCmsClient({
         </div>
       </Card>
 
-      {/* 9-Tab Navigation */}
+      {/* 10-Tab Navigation */}
       <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3 dark:border-slate-800">
         {[
           { id: "homepage" as const, label: "Trang chủ", icon: Layout },
           { id: "theme" as const, label: "Theme & Font", icon: Palette },
+          { id: "headings" as const, label: "Kiểu chữ tiêu đề", icon: Type },
           { id: "branding" as const, label: "Thương hiệu", icon: Sparkles },
           { id: "menus" as const, label: "Menu (Admin/Header/Footer)", icon: MenuIcon },
           { id: "footer" as const, label: "Footer & MXH", icon: FileText },
@@ -579,6 +594,28 @@ export function AppearanceCmsClient({
 
                 {/* Section-specific controls */}
                 <div className="grid gap-3 sm:grid-cols-4">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                      Cỡ tiêu đề khối
+                    </label>
+                    <select
+                      value={sec.titleSize ?? ""}
+                      onChange={(e) =>
+                        updateSection(idx, {
+                          titleSize: e.target.value as ContentTitleSizeOverride,
+                        })
+                      }
+                      aria-label={`Cỡ tiêu đề khối ${sec.titleVi}`}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950"
+                    >
+                      {CONTENT_TITLE_SIZE_OPTIONS.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   {sec.id !== "hero" && (
                     <div>
                       <label className="mb-1 block text-[11px] font-bold text-slate-600 dark:text-slate-400">
@@ -907,6 +944,28 @@ export function AppearanceCmsClient({
             </pre>
           </Card>
         </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 2B: HEADING TYPOGRAPHY (PER-AREA CLAMP CSS VARS + LIVE PREVIEW)   */}
+      {/* ===================================================================== */}
+      {tab === "headings" && (
+        <AppearanceHeadingTypography
+          value={config.headingTypography}
+          theme={config.theme}
+          onChange={(nextHeadings) =>
+            setConfig({
+              ...config,
+              headingTypography: nextHeadings,
+            })
+          }
+          onRequestResetAll={() =>
+            setConfirmReset({
+              scope: "heading_typography",
+              label: "Kiểu chữ tiêu đề (tất cả 5 khu vực)",
+            })
+          }
+        />
       )}
 
       {/* ===================================================================== */}

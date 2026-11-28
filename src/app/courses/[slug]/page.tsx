@@ -95,7 +95,7 @@ export default async function CourseDetailPage({
             <Badge variant="secondary">{course.level}</Badge>
             {course.is_premium && <Badge variant="amber">Premium</Badge>}
           </div>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
+          <h1 className="ht-courses-h1 mt-2 text-3xl font-bold text-slate-900 dark:text-white">
             {isEn ? course.title_en : course.title_vi}
           </h1>
           <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">

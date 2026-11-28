@@ -11,6 +11,7 @@ import {
   type CmsTestFormInput,
 } from "./test-cms-shared";
 import { slugifyVi } from "./seo";
+import { sanitizeRichHtml } from "./sanitize";
 import { invalidateSeoRedirectCache } from "./seo-redirects-edge";
 import { readStore, updateStore } from "./store";
 import type { IeltsTest, SeoMeta, SessionUser, TestSection } from "./types";
@@ -133,12 +134,20 @@ export async function getAdminTestById(id: string): Promise<IeltsTest | null> {
   return data ? mapAdminTestRow(data as Record<string, unknown>) : null;
 }
 
+function sanitizePassageIfHtml(passage?: string): string | undefined {
+  if (!passage) return undefined;
+  if (/<(?:p|div|h[1-6]|blockquote|li|br|ul|ol|strong|em|b|i|script|style|iframe)\b/i.test(passage)) {
+    return sanitizeRichHtml(passage);
+  }
+  return passage;
+}
+
 function normalizeTestPayload(data: CmsTestFormInput) {
   const sections: TestSection[] = data.sections.map((s) => ({
     id: s.id,
     title: s.title,
     instruction: s.instruction || undefined,
-    passage: s.passage || undefined,
+    passage: sanitizePassageIfHtml(s.passage),
     audioUrl: s.audioUrl || undefined,
     audioScript: s.audioScript || undefined,
     diagramLabel: s.diagramLabel || undefined,

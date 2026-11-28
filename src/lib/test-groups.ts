@@ -532,28 +532,139 @@ export interface PassageParagraph {
   index: number;
   label?: string;
   text: string;
+  kind?: "paragraph" | "passage-title" | "heading";
+}
+
+const PASSAGE_HTML_TAG_REGEX =
+  /<(?:p|div|h[1-6]|blockquote|li|br|ul|ol|strong|em|b|i)\b/i;
+
+function decodeBasicHtmlEntities(input: string): string {
+  return input
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => {
+      const cp = Number.parseInt(hex, 16);
+      return Number.isFinite(cp) ? String.fromCodePoint(cp) : _;
+    })
+    .replace(/&#(\d+);/g, (_, dec: string) => {
+      const cp = Number.parseInt(dec, 10);
+      return Number.isFinite(cp) ? String.fromCodePoint(cp) : _;
+    });
+}
+
+function htmlFragmentToPlainText(fragment: string): string {
+  return decodeBasicHtmlEntities(
+    fragment
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+  )
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .trim();
+}
+
+function detectParagraphLabel(text: string): string | undefined {
+  const labelMatch =
+    text.match(/^(?:Paragraph|Section)\s+([A-Z])\b/i) ??
+    text.match(/^([A-Z])(?:\s{1,2}|[.:)\-—]\s+)/);
+  return labelMatch ? labelMatch[1].toUpperCase() : undefined;
 }
 
 /**
  * Splits a Reading passage into stable indexed paragraphs (`0, 1, 2, ...`) and detects
  * optional paragraph labels (e.g. `A ...`, `Paragraph B: ...`, `Section C — ...`).
+ *
+ * - For plain-text passages (all seeded & legacy tests): keeps the exact `\n\n+` split untouched.
+ * - For Rich-Text HTML passages authored with the `reading-passage` preset: extracts headings
+ *   (`<h3 class="reading-passage-title">`, `<h2>`, `<h3>`) and paragraph blocks cleanly so
+ *   highlight/note offset annotations and passage-title styling work seamlessly together.
  */
 export function splitPassageParagraphs(passage?: string): PassageParagraph[] {
   if (!passage) return [];
-  return passage
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((text, index) => {
-      const labelMatch =
-        text.match(/^(?:Paragraph|Section)\s+([A-Z])\b/i) ??
-        text.match(/^([A-Z])(?:\s{1,2}|[.:)\-—]\s+)/);
-      return {
+
+  if (!PASSAGE_HTML_TAG_REGEX.test(passage)) {
+    return passage
+      .split(/\n\n+/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((text, index) => ({
         index,
-        label: labelMatch ? labelMatch[1].toUpperCase() : undefined,
+        label: detectParagraphLabel(text),
         text,
-      };
-    });
+      }));
+  }
+
+  const results: PassageParagraph[] = [];
+  const blockRegex =
+    /<(h[1-6]|p|div|blockquote|li)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  let lastEnd = 0;
+
+  const pushPlainRemainder = (raw: string) => {
+    const cleaned = htmlFragmentToPlainText(raw);
+    if (!cleaned) return;
+    for (const part of cleaned.split(/\n\n+/).map((s) => s.trim()).filter(Boolean)) {
+      results.push({
+        index: results.length,
+        label: detectParagraphLabel(part),
+        text: part,
+        kind: "paragraph",
+      });
+    }
+  };
+
+  while ((match = blockRegex.exec(passage)) !== null) {
+    if (match.index > lastEnd) {
+      pushPlainRemainder(passage.slice(lastEnd, match.index));
+    }
+    const tag = match[1].toLowerCase();
+    const attrs = match[2] ?? "";
+    const inner = match[3] ?? "";
+    const text = htmlFragmentToPlainText(inner);
+    if (text) {
+      const isHeading = /^h[1-6]$/.test(tag);
+      const isPassageTitle =
+        isHeading &&
+        /\bclass\s*=\s*["'][^"']*\breading-passage-title\b[^"']*["']/i.test(attrs);
+      const kind: PassageParagraph["kind"] = isPassageTitle
+        ? "passage-title"
+        : isHeading
+        ? "heading"
+        : "paragraph";
+      results.push({
+        index: results.length,
+        label: kind === "paragraph" ? detectParagraphLabel(text) : undefined,
+        text,
+        kind,
+      });
+    }
+    lastEnd = match.index + match[0].length;
+  }
+
+  if (lastEnd < passage.length) {
+    pushPlainRemainder(passage.slice(lastEnd));
+  }
+
+  if (results.length === 0) {
+    const fallback = htmlFragmentToPlainText(passage);
+    if (fallback) {
+      return [
+        {
+          index: 0,
+          label: detectParagraphLabel(fallback),
+          text: fallback,
+          kind: "paragraph",
+        },
+      ];
+    }
+  }
+
+  return results;
 }
 
 /**

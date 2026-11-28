@@ -174,7 +174,7 @@ export function CoursePlayerClient({
                 <BookOpen className="mr-1 h-3 w-3" />
                 {activeLesson.duration_min} {isEn ? "min" : "phút"}
               </Badge>
-              <h2 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+              <h2 className="ht-courses-h2 mt-2 text-xl font-bold text-slate-900 dark:text-white">
                 {isEn ? activeLesson.title_en : activeLesson.title_vi}
               </h2>
             </div>
@@ -222,7 +222,8 @@ export function CoursePlayerClient({
           )}
 
           <div
-            className="prose prose-sm prose-slate max-w-none leading-7 text-slate-800 dark:prose-invert dark:text-slate-200"
+            data-heading-scope="courses"
+            className="cms-richtext prose prose-sm prose-slate max-w-none leading-7 text-slate-800 dark:prose-invert dark:text-slate-200"
             dangerouslySetInnerHTML={{ __html: lessonHtml }}
           />
 
