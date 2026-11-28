@@ -179,7 +179,9 @@ export function formatWordLimitDirective(
   }
   return locale === "vi"
     ? `${prefixVi} ${wordVi}`
-    : `${prefixEn} ${wordEn} ONLY`;
+    : n === 1
+    ? `${prefixEn} ${wordEn} ONLY`
+    : `${prefixEn} ${wordEn}`;
 }
 
 /**
@@ -589,10 +591,13 @@ export function getPassageParagraphsForGroup(
 }
 
 const LEGACY_PROMPT_PREFIX_REGEX =
-  /^(?:Complete the summary|Summary Completion|Note Completion|Table Completion|Sentence Completion|Flow-?chart(?:\s+Completion)?|Short Answer|Form Completion|Lecture Notes|Diagram(?:\s+Stage\s*\d+)?|Map Labelling|Floor Plan Direction)\s*(?:\([^)]*\))?\s*[:\-—]\s*/i;
+  /^(?:Complete\s+the\s+(?:summary|flow-?chart|notes?|table|sentences?|diagram|form)(?:\s+below)?(?:\s+using\s+the\s+list\s+of\s+(?:words|phrases|options|letters)(?:[,\s]+(?:[A-Z]\s*[-–—]\s*[A-Z]|\([^)]*\)))?)?|Summary\s+Completion|Note\s+Completion|Table\s+Completion|Sentence\s+Completion|Flow-?chart(?:\s+Completion)?|Short\s+Answer|Form\s+Completion|Lecture\s+Notes|Diagram(?:\s+Stage\s*\d+)?|Map\s+Labelling|Floor\s+Plan\s+Direction)(?:\s*\([^)]*\))*\s*[:\-–—]\s*/i;
+
+const EXPLICIT_Q_BLANK_REGEX =
+  /\[\s*Q?\s*(\d+)\s*[:.\-–—]?\s*(?:_{2,}|\.{3,})\s*\]|\(\s*Q\s*(\d+)\s*[:.\-–—]?\s*(?:_{2,}|\.{3,})\s*\)/gi;
 
 /**
- * Removes redundant legacy type/word-limit prefixes from a flat question prompt
+ * Removes redundant legacy type/word-limit/word-bank prefixes from a flat question prompt
  * when rendering inside a grouped IELTS QuestionGroup card (read-time only).
  */
 export function stripLegacyPromptPrefix(prompt: string): string {
@@ -601,18 +606,150 @@ export function stripLegacyPromptPrefix(prompt: string): string {
 }
 
 /**
- * Converts a legacy prompt containing `___` blanks into a `{{questionNumber}}` template
- * so the inline completion renderer can place the `<input>` directly inside the text.
+ * Converts a legacy prompt containing `[Qn: ___]` cross-references and `___` blanks
+ * into a `{{n}}` template so the inline completion renderer places every input/dropzone
+ * at its exact position without misplacing blanks inside `[Qm: ___]`.
  */
 export function promptToBlankTemplate(prompt: string, questionNumber: number): string {
   const cleaned = stripLegacyPromptPrefix(prompt);
-  if (new RegExp(`\\{\\{\\s*${questionNumber}\\s*\\}\\}`).test(cleaned)) {
-    return cleaned;
+
+  // 1. Replace explicit cross-question markers like `[Q17: ___]` or `(Q8: ___)` FIRST
+  //    so replacing bare `___` never accidentally targets another question's bracketed marker.
+  const withExplicitRefs = cleaned.replace(
+    EXPLICIT_Q_BLANK_REGEX,
+    (_full, bracketNum: string | undefined, parenNum: string | undefined) => {
+      const n = Number.parseInt(bracketNum ?? parenNum ?? "", 10);
+      return Number.isFinite(n) && n > 0 ? `{{${n}}}` : _full;
+    }
+  );
+
+  const ownPlaceholderRegex = new RegExp(`\\{\\{\\s*${questionNumber}\\s*\\}\\}`);
+  if (ownPlaceholderRegex.test(withExplicitRefs)) {
+    return withExplicitRefs;
   }
-  if (/_{2,}/.test(cleaned)) {
-    return cleaned.replace(/_{2,}/, `{{${questionNumber}}}`);
+
+  // 2. Replace the question's own remaining bare `___` blank with `{{questionNumber}}`
+  if (/_{2,}/.test(withExplicitRefs)) {
+    return withExplicitRefs.replace(/_{2,}/, `{{${questionNumber}}}`);
   }
-  return `${cleaned} {{${questionNumber}}}`;
+
+  return `${withExplicitRefs} {{${questionNumber}}}`;
+}
+
+/**
+ * Extracts a shared heading prefix like `"Multilingualism in Delhi — "` or
+ * `"Generating biogas for domestic use in Dunga — "` repeated across flat legacy
+ * questions in a group, hoisting it once as the group's visual title.
+ */
+function extractSharedTitleAndBodies(questions: TestQuestion[]): {
+  sharedTitle?: string;
+  bodies: Array<{ question: TestQuestion; body: string }>;
+} {
+  const stripped = questions.map((question) => ({
+    question,
+    hadPrefix: LEGACY_PROMPT_PREFIX_REGEX.test(question.prompt),
+    body: stripLegacyPromptPrefix(question.prompt),
+  }));
+
+  // Look for `"<Title> — <Body>"` (em-dash / en-dash / spaced hyphen)
+  const titleMatchRegex = /^([^—–|\n]{2,110}?)\s+(?:—|–|-)\s+([\s\S]+)$/;
+  const candidateCounts = new Map<string, { display: string; count: number }>();
+
+  for (const item of stripped) {
+    const m = item.body.match(titleMatchRegex);
+    if (!m) continue;
+    const rawTitle = m[1].trim();
+    // Skip candidates that contain blanks, arrows, or look like sentences
+    if (
+      /_{2,}|\{\{|\[Q\d|[↓→]|[.!?]$/.test(rawTitle) ||
+      rawTitle.length < 2
+    ) {
+      continue;
+    }
+    const key = rawTitle.toLowerCase();
+    const prev = candidateCounts.get(key);
+    candidateCounts.set(key, {
+      display: prev?.display ?? rawTitle,
+      count: (prev?.count ?? 0) + 1,
+    });
+  }
+
+  let sharedTitle: string | undefined;
+  let sharedKey: string | undefined;
+  for (const [key, info] of candidateCounts.entries()) {
+    const isStrongMatch =
+      (questions.length >= 2 && info.count >= 2) ||
+      (questions.length === 1 && info.count === 1 && stripped[0].hadPrefix);
+    if (isStrongMatch) {
+      sharedTitle = info.display;
+      sharedKey = key;
+      break;
+    }
+  }
+
+  const bodies = stripped.map((item) => {
+    if (!sharedKey) return { question: item.question, body: item.body };
+    const m = item.body.match(titleMatchRegex);
+    if (m && m[1].trim().toLowerCase() === sharedKey) {
+      return { question: item.question, body: m[2].trim() };
+    }
+    return { question: item.question, body: item.body };
+  });
+
+  return { sharedTitle, bodies };
+}
+
+function normalizeTemplateForDedup(tpl: string): string {
+  return tpl
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Deduplicates legacy flat prompts that repeat the exact same shared sentence,
+ * flow-chart, or notes block across multiple consecutive questions (differing only
+ * in which blank was `[Qn: ___]` vs `________`).
+ * Guarantees every question number in the group appears at least once.
+ */
+export function deduplicateQuestionTemplates(
+  entries: Array<{ question: TestQuestion; template: string }>
+): string[] {
+  const kept: string[] = [];
+  const seenNorms = new Set<string>();
+  const coveredNumbers = new Set<number>();
+
+  for (const entry of entries) {
+    const norm = normalizeTemplateForDedup(entry.template);
+    const blanks = extractBlankNumbers(entry.template);
+
+    if (seenNorms.has(norm)) {
+      continue;
+    }
+    if (blanks.length > 0 && blanks.every((n) => coveredNumbers.has(n))) {
+      continue;
+    }
+
+    kept.push(entry.template);
+    seenNorms.add(norm);
+    for (const n of blanks) {
+      coveredNumbers.add(n);
+    }
+  }
+
+  // Safety guarantee: never drop any question number in the group
+  for (const entry of entries) {
+    if (!coveredNumbers.has(entry.question.number)) {
+      kept.push(entry.template);
+      for (const n of extractBlankNumbers(entry.template)) {
+        coveredNumbers.add(n);
+      }
+    }
+  }
+
+  return kept;
 }
 
 const NUMERIC_TOKEN_REGEX = /^[$£€¥+-]?\d[\d,./:%-]*(?:st|nd|rd|th)?$/i;
@@ -695,8 +832,8 @@ export function checkWordLimitSoftWarning(
 /**
  * Resolves structured display content for completion groups:
  * - Uses explicit `group.sharedContent` verbatim when authored.
- * - Synthesizes clean table / flowchart / notes / summary / sentence layouts at read time
- *   from legacy flat prompts without mutating stored DB data.
+ * - Synthesizes clean, deduplicated table / flowchart / notes / summary / sentence layouts
+ *   at read time from legacy flat prompts without mutating stored DB data.
  */
 export function resolveGroupDisplayContent(
   group: QuestionGroup,
@@ -708,14 +845,22 @@ export function resolveGroupDisplayContent(
   }
   if (questions.length === 0) return null;
 
+  const { sharedTitle, bodies } = extractSharedTitleAndBodies(questions);
+  const resolvedTitle = group.title || sharedTitle;
+  const templateEntries = bodies.map(({ question, body }) => ({
+    question,
+    template: promptToBlankTemplate(body, question.number),
+  }));
+  const dedupedTemplates = deduplicateQuestionTemplates(templateEntries);
+
   if (group.type === "table_completion") {
-    const rawRows = questions.map((q) => {
-      const tpl = promptToBlankTemplate(q.prompt, q.number);
+    const rawRows = dedupedTemplates.map((tpl, idx) => {
       const cells = tpl
         .split(/\s*\|\s*/)
         .map((c) => c.trim())
         .filter(Boolean);
-      return cells.length >= 2 ? cells : [`Q${q.number}`, tpl];
+      const firstBlank = extractBlankNumbers(tpl)[0] ?? questions[idx]?.number ?? idx + 1;
+      return cells.length >= 2 ? cells : [`Q${firstBlank}`, tpl];
     });
     const colCount = Math.max(2, ...rawRows.map((r) => r.length));
     const paddedRows = rawRows.map((r) => {
@@ -738,7 +883,7 @@ export function resolveGroupDisplayContent(
     return {
       kind: "table",
       table: {
-        title: group.title,
+        title: resolvedTitle,
         headers,
         rows: paddedRows,
       },
@@ -747,10 +892,9 @@ export function resolveGroupDisplayContent(
 
   if (group.type === "flowchart_completion") {
     const steps: string[] = [];
-    for (const q of questions) {
-      const tpl = promptToBlankTemplate(q.prompt, q.number);
+    for (const tpl of dedupedTemplates) {
       const parts = tpl
-        .split(/\s*(?:→|->)\s*/)
+        .split(/\s*(?:→|->|↓|⬇|=>|\n+)\s*/)
         .map((p) => p.trim())
         .filter(Boolean);
       if (parts.length > 1) {
@@ -762,20 +906,27 @@ export function resolveGroupDisplayContent(
     return {
       kind: "flowchart",
       flowchart: {
-        title: group.title,
+        title: resolvedTitle,
         steps,
       },
     };
   }
 
   if (group.type === "note_completion") {
+    const bullets = dedupedTemplates.flatMap((tpl) => {
+      const lines = tpl
+        .split(/\n+|\s*•\s*/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      return lines.length > 0 ? lines : [tpl];
+    });
     return {
       kind: "notes",
       notes: {
-        title: group.title,
+        title: resolvedTitle,
         sections: [
           {
-            bullets: questions.map((q) => promptToBlankTemplate(q.prompt, q.number)),
+            bullets,
           },
         ],
       },
@@ -785,14 +936,16 @@ export function resolveGroupDisplayContent(
   if (group.type === "summary_completion") {
     return {
       kind: "summary",
-      text: questions.map((q) => promptToBlankTemplate(q.prompt, q.number)).join(" "),
+      listTitle: resolvedTitle,
+      text: dedupedTemplates.join(" "),
     };
   }
 
   if (group.type === "sentence_completion") {
     return {
       kind: "plain",
-      text: questions.map((q) => promptToBlankTemplate(q.prompt, q.number)).join("\n"),
+      listTitle: resolvedTitle,
+      text: dedupedTemplates.join("\n"),
     };
   }
 

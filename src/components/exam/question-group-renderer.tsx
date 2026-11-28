@@ -1298,6 +1298,7 @@ export function QuestionGroupRenderer({
     // 6. SUMMARY COMPLETION WITH WORD BANK (Flowing summary drop-zones + chip bank)
     if (type === "summary_completion" && bankItems.length > 0) {
       const display = resolveGroupDisplayContent(group, questions, isEn);
+      const summaryTitle = group.title || display?.listTitle;
       const summaryText =
         display?.text ||
         questions.map((q) => promptToBlankTemplate(q.prompt, q.number)).join(" ");
@@ -1305,9 +1306,9 @@ export function QuestionGroupRenderer({
       return (
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-3 text-sm leading-8 text-slate-800 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100">
-            {group.title && (
+            {summaryTitle && (
               <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                {group.title}
+                {summaryTitle}
               </h4>
             )}
             {summaryText.split(/\n\n+/).map((para, pIdx) => (
@@ -1501,12 +1502,13 @@ export function QuestionGroupRenderer({
     }
 
     if (display?.kind === "summary" && display.text) {
+      const summaryTitle = group.title || display.listTitle;
       return (
         <div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-3 text-sm leading-8 text-slate-800 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100">
-            {group.title && (
+            {summaryTitle && (
               <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                {group.title}
+                {summaryTitle}
               </h4>
             )}
             {display.text.split(/\n\n+/).map((para, pIdx) => (

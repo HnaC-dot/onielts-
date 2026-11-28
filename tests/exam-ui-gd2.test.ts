@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { QuestionGroup, TestQuestion } from "../src/lib/types";
 import { FULL_SEED_TESTS } from "../src/lib/seed-tests";
 import {
   checkWordLimitSoftWarning,
@@ -176,6 +177,238 @@ describe("GĐ2 — Question-Type CBT UI Helpers, Inline Layouts & Accessibility"
       // Inline table, flowchart arrows, notes, summary
       expect(rendererSrc).toContain("ArrowDown");
       expect(rendererSrc).toContain("checkWordLimitSoftWarning");
+    });
+  });
+
+  describe("4. Shared legacy prompt deduplication, [Qn: ___] markers, title hoisting & downward arrows", () => {
+    it("strips 'Complete the summary using the list of words (A–J): Title —', converts [Qn: ___], and deduplicates shared sentences", () => {
+      const group: QuestionGroup = {
+        id: "g-delhi",
+        type: "summary_completion",
+        questionRange: { start: 14, end: 17 },
+        questionIds: ["q14", "q15", "q16", "q17"],
+      };
+      const questions: TestQuestion[] = [
+        {
+          id: "q14",
+          number: 14,
+          type: "summary_completion",
+          prompt:
+            "Complete the summary using the list of words (A–J): Multilingualism in Delhi — The city of Delhi has a ________ and as you walk through its streets you hear people speaking a variety of languages.",
+          correctAnswers: ["A"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q15",
+          number: 15,
+          type: "summary_completion",
+          prompt:
+            "Complete the summary using the list of words (A–J): Multilingualism in Delhi — Some of them have spent their entire life in Delhi, while others are ________.",
+          correctAnswers: ["B"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q16",
+          number: 16,
+          type: "summary_completion",
+          prompt:
+            "Complete the summary using the list of words (A–J): Multilingualism in Delhi — Whether they have come from a ________ or have travelled from the other side of India, they have all come in search of things such as improved [Q17: ___].",
+          correctAnswers: ["C"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q17",
+          number: 17,
+          type: "summary_completion",
+          prompt:
+            "Complete the summary using the list of words (A–J): Multilingualism in Delhi — Whether they have come from a [Q16: ___] or have travelled from the other side of India, they have all come in search of things such as improved ________.",
+          correctAnswers: ["D"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+      ];
+
+      const display = resolveGroupDisplayContent(group, questions, false);
+      expect(display?.kind).toBe("summary");
+      expect(display?.listTitle).toBe("Multilingualism in Delhi");
+      expect(display?.text).not.toContain("Complete the summary");
+      expect(display?.text).not.toContain("Multilingualism in Delhi");
+      expect(display?.text).not.toContain("[Q17:");
+      expect(display?.text).not.toContain("[Q16:");
+      expect(display?.text).not.toContain("____");
+      // Each placeholder 14, 15, 16, 17 appears exactly once in order (no duplicate Q16/Q17 sentence)
+      expect(display?.text?.match(/\{\{\d+\}\}/g)).toEqual([
+        "{{14}}",
+        "{{15}}",
+        "{{16}}",
+        "{{17}}",
+      ]);
+      expect(display?.text?.match(/Whether they have come/g)).toHaveLength(1);
+    });
+
+    it("never misplaces Q28 inside [Q27: ___] and deduplicates shared multi-blank summary sentences", () => {
+      const group: QuestionGroup = {
+        id: "g-gift",
+        type: "summary_completion",
+        questionRange: { start: 27, end: 29 },
+        questionIds: ["q27", "q28", "q29"],
+      };
+      const questions: TestQuestion[] = [
+        {
+          id: "q27",
+          number: 27,
+          type: "summary_completion",
+          prompt:
+            "Complete the summary using the list of words (A–J): A birthday gift — Peter Bellerby's plan to give his father a globe for his birthday was an unexpectedly ________ for which he had to overcome [Q28: ___].",
+          correctAnswers: ["A"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q28",
+          number: 28,
+          type: "summary_completion",
+          prompt:
+            "Complete the summary using the list of words (A–J): A birthday gift — Peter Bellerby’s plan to give his father a globe for his birthday was an unexpectedly [Q27: ___] for which he had to overcome ________.",
+          correctAnswers: ["B"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q29",
+          number: 29,
+          type: "summary_completion",
+          prompt:
+            "Complete the summary using the list of words (A–J): A birthday gift — He soon learnt that a straightforward ________ would not be possible.",
+          correctAnswers: ["C"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+      ];
+
+      // Individual promptToBlankTemplate on Q28 places {{27}} and {{28}} in exact positions
+      const q28Tpl = promptToBlankTemplate(questions[1].prompt, 28);
+      expect(q28Tpl).toContain("unexpectedly {{27}} for which he had to overcome {{28}}.");
+      expect(q28Tpl).not.toContain("[Q27:");
+
+      const display = resolveGroupDisplayContent(group, questions, false);
+      expect(display?.listTitle).toBe("A birthday gift");
+      expect(display?.text?.match(/Peter Bellerby/g)).toHaveLength(1);
+      expect(display?.text?.match(/\{\{\d+\}\}/g)).toEqual([
+        "{{27}}",
+        "{{28}}",
+        "{{29}}",
+      ]);
+    });
+
+    it("deduplicates shared flow-charts and splits downward arrows (↓) into clean vertical steps", () => {
+      const group: QuestionGroup = {
+        id: "g-flow",
+        type: "flowchart_completion",
+        questionRange: { start: 8, end: 10 },
+        questionIds: ["q8", "q9", "q10"],
+      };
+      const questions: TestQuestion[] = [
+        {
+          id: "q8",
+          number: 8,
+          type: "flowchart_completion",
+          prompt:
+            "Complete the flow-chart (NO MORE THAN TWO WORDS): Generating biogas for domestic use in Dunga — First, place water hyacinth together with some ________ into a digester ↓ Leave the mixture until the [Q9: ___] is completed ↓ Capture the gas emitted by the digester and use [Q10: ___] to transport it to individual homes ↓ Then use the gas for cooking as well as making water fit for human consumption",
+          correctAnswers: ["cow dung"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q9",
+          number: 9,
+          type: "flowchart_completion",
+          prompt:
+            "Complete the flow-chart (NO MORE THAN TWO WORDS): Generating biogas for domestic use in Dunga — First, place water hyacinth together with some [Q8: ___] into a digester ↓ Leave the mixture until the ________ is completed ↓ Capture the gas emitted by the digester and use [Q10: ___] to transport it to individual homes ↓ Then use the gas for cooking as well as making water fit for human consumption",
+          correctAnswers: ["fermentation"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q10",
+          number: 10,
+          type: "flowchart_completion",
+          prompt:
+            "Complete the flow-chart (NO MORE THAN TWO WORDS): Generating biogas for domestic use in Dunga — First, place water hyacinth together with some [Q8: ___] into a digester ↓ Leave the mixture until the [Q9: ___] is completed ↓ Capture the gas emitted by the digester and use ________ to transport it to individual homes ↓ Then use the gas for cooking as well as making water fit for human consumption",
+          correctAnswers: ["pipes"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+      ];
+
+      const display = resolveGroupDisplayContent(group, questions, false);
+      expect(display?.kind).toBe("flowchart");
+      expect(display?.flowchart?.title).toBe("Generating biogas for domestic use in Dunga");
+      expect(display?.flowchart?.steps).toHaveLength(4);
+      expect(display?.flowchart?.steps[0]).toBe(
+        "First, place water hyacinth together with some {{8}} into a digester"
+      );
+      expect(display?.flowchart?.steps[1]).toBe(
+        "Leave the mixture until the {{9}} is completed"
+      );
+      expect(display?.flowchart?.steps[2]).toBe(
+        "Capture the gas emitted by the digester and use {{10}} to transport it to individual homes"
+      );
+      expect(display?.flowchart?.steps[3]).toBe(
+        "Then use the gas for cooking as well as making water fit for human consumption"
+      );
+    });
+
+    it("deduplicates shared note_completion blocks across Q11–Q13 without misplacing [Q11: ___]", () => {
+      const group: QuestionGroup = {
+        id: "g-notes",
+        type: "note_completion",
+        questionRange: { start: 11, end: 13 },
+        questionIds: ["q11", "q12", "q13"],
+      };
+      const questions: TestQuestion[] = [
+        {
+          id: "q11",
+          number: 11,
+          type: "note_completion",
+          prompt:
+            "Complete the notes (ONE WORD ONLY): Cooking with biogas in Dunga — Benefits: spend so much ________ collecting fuel; bring in [Q12: ___]; Drawbacks: the [Q13: ___] is high.",
+          correctAnswers: ["time"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q12",
+          number: 12,
+          type: "note_completion",
+          prompt:
+            "Complete the notes (ONE WORD ONLY): Cooking with biogas in Dunga — Benefits: spend so much [Q11: ___] collecting fuel; bring in ________; Drawbacks: the [Q13: ___] is high.",
+          correctAnswers: ["income"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+        {
+          id: "q13",
+          number: 13,
+          type: "note_completion",
+          prompt:
+            "Complete the notes (ONE WORD ONLY): Cooking with biogas in Dunga — Benefits: spend so much [Q11: ___] collecting fuel; bring in [Q12: ___]; Drawbacks: the ________ is high.",
+          correctAnswers: ["cost"],
+          explanation_vi: "",
+          explanation_en: "",
+        },
+      ];
+
+      const display = resolveGroupDisplayContent(group, questions, false);
+      expect(display?.kind).toBe("notes");
+      expect(display?.notes?.title).toBe("Cooking with biogas in Dunga");
+      expect(display?.notes?.sections[0]?.bullets).toHaveLength(1);
+      expect(display?.notes?.sections[0]?.bullets[0]).toBe(
+        "Benefits: spend so much {{11}} collecting fuel; bring in {{12}}; Drawbacks: the {{13}} is high."
+      );
     });
   });
 });
