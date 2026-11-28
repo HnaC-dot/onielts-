@@ -891,5 +891,107 @@ describe.skipIf(!DB_URL)(
         expect((logs.rowCount ?? 0) >= 1).toBe(true);
       });
     });
+
+    it("enforces Migration 0010 owner-only RLS on public.test_session_drafts", async () => {
+      // 1. anon is denied SELECT and INSERT (REVOKE ALL FROM PUBLIC, anon -> 42501)
+      await withSessionRole(client, "anon", null, async () => {
+        await expect(
+          client.query("SELECT id FROM public.test_session_drafts")
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+
+      await withSessionRole(client, "anon", null, async () => {
+        await expect(
+          client.query(
+            `INSERT INTO public.test_session_drafts (user_id, test_slug, mode_key)
+             VALUES ($1, 'int-published-test', 'full')`,
+            [LEARNER_A]
+          )
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+
+      // Seed a draft owned by Learner A as superuser for cross-user isolation tests
+      const seeded = await client.query(
+        `INSERT INTO public.test_session_drafts
+           (user_id, test_slug, mode_key, answers, flagged, annotations, notes_text, timer_seconds, active_section_idx)
+         VALUES
+           ($1, 'int-published-test', 'full', '{"q1":"TRUE"}'::jsonb, '{"q1":true}'::jsonb, '[]'::jsonb, 'Private draft note', 2400, 1)
+         ON CONFLICT (user_id, test_slug, mode_key)
+         DO UPDATE SET notes_text = EXCLUDED.notes_text
+         RETURNING id`,
+        [LEARNER_A]
+      );
+      const draftId = seeded.rows[0]?.id as string;
+      expect(draftId).toBeTruthy();
+
+      try {
+        // 2. Learner A can SELECT, UPDATE, and DELETE own draft, and INSERT a new mode draft
+        await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+          const readOwn = await client.query(
+            "SELECT id, notes_text, timer_seconds FROM public.test_session_drafts WHERE id = $1",
+            [draftId]
+          );
+          expect(readOwn.rowCount).toBe(1);
+          expect(readOwn.rows[0]?.notes_text).toBe("Private draft note");
+
+          const updOwn = await client.query(
+            "UPDATE public.test_session_drafts SET notes_text = 'Updated note', timer_seconds = 2300 WHERE id = $1 RETURNING notes_text",
+            [draftId]
+          );
+          expect(updOwn.rowCount).toBe(1);
+          expect(updOwn.rows[0]?.notes_text).toBe("Updated note");
+
+          const insOwn = await client.query(
+            `INSERT INTO public.test_session_drafts (user_id, test_slug, mode_key, answers)
+             VALUES ($1, 'int-published-test', 'part:0', '{"q2":"FALSE"}'::jsonb)
+             RETURNING id`,
+            [LEARNER_A]
+          );
+          expect(insOwn.rowCount).toBe(1);
+
+          const delOwn = await client.query(
+            "DELETE FROM public.test_session_drafts WHERE id = $1 RETURNING id",
+            [draftId]
+          );
+          expect(delOwn.rowCount).toBe(1);
+        });
+
+        // 3. Learner A cannot INSERT a draft impersonating Learner B
+        await withSessionRole(client, "authenticated", LEARNER_A, async () => {
+          await expect(
+            client.query(
+              `INSERT INTO public.test_session_drafts (user_id, test_slug, mode_key)
+               VALUES ($1, 'int-published-test', 'full')`,
+              [LEARNER_B]
+            )
+          ).rejects.toMatchObject({ code: "42501" });
+        });
+
+        // 4. Learner B cannot SELECT, UPDATE, or DELETE Learner A's draft
+        await withSessionRole(client, "authenticated", LEARNER_B, async () => {
+          const readOther = await client.query(
+            "SELECT id FROM public.test_session_drafts WHERE id = $1",
+            [draftId]
+          );
+          expect(readOther.rowCount).toBe(0);
+
+          const updOther = await client.query(
+            "UPDATE public.test_session_drafts SET notes_text = 'Hacked' WHERE id = $1 RETURNING id",
+            [draftId]
+          );
+          expect(updOther.rowCount).toBe(0);
+
+          const delOther = await client.query(
+            "DELETE FROM public.test_session_drafts WHERE id = $1 RETURNING id",
+            [draftId]
+          );
+          expect(delOther.rowCount).toBe(0);
+        });
+      } finally {
+        await client
+          .query("DELETE FROM public.test_session_drafts WHERE id = $1", [draftId])
+          .catch(() => {});
+      }
+    });
   }
 );

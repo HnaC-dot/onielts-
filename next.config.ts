@@ -58,6 +58,15 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/api/tests/draft",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-store, max-age=0",
+          },
+        ],
+      },
     ];
   },
   turbopack: {

@@ -322,7 +322,6 @@ function buildAutoGroupFromRun(
   runIndex: number
 ): QuestionGroup {
   const first = run[0];
-  const last = run[run.length - 1];
   const type = first.type;
 
   const detectedLimit = COMPLETION_TYPES.has(type)

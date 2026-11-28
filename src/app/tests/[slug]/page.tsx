@@ -6,6 +6,7 @@ import { ArrowRight, Eye, Mic, PenTool } from "lucide-react";
 import { getAuthState } from "@/lib/auth";
 import { isStaffRole } from "@/lib/admin-auth";
 import { getIeltsTestBySlug } from "@/lib/db";
+import { parsePracticeModeQuery } from "@/lib/exam-session";
 import { sanitizeTestForClient } from "@/lib/test-grader";
 import { buildBreadcrumbJsonLd, serializeJsonLd } from "@/lib/seo";
 import { buildPublicPageMetadata } from "@/lib/seo-server";
@@ -42,26 +43,28 @@ export default async function TestDetailPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ preview?: string }>;
+  searchParams: Promise<{
+    preview?: string;
+    mode?: string;
+    part?: string;
+    group?: string;
+  }>;
 }) {
-  const [{ slug }, query, locale] = await Promise.all([
+  const [{ slug }, query, locale, authState] = await Promise.all([
     params,
     searchParams,
     getLocale(),
+    getAuthState(),
   ]);
   const isEn = locale === "en";
+  const isAuthenticated = Boolean(authState.user);
 
-  let allowPreview = false;
-  if (query.preview === "1") {
-    const authState = await getAuthState();
-    if (
+  const allowPreview = Boolean(
+    query.preview === "1" &&
       authState.user &&
       isStaffRole(authState.user.role) &&
       !authState.user.is_locked
-    ) {
-      allowPreview = true;
-    }
-  }
+  );
 
   const test = await getIeltsTestBySlug(slug, allowPreview);
   if (!test) notFound();
@@ -76,6 +79,7 @@ export default async function TestDetailPage({
   if (test.skill === "reading" || test.skill === "listening") {
     // Strip answer keys & explanations before sending to the browser
     const safeTest = sanitizeTestForClient(test);
+    const resolvedMode = parsePracticeModeQuery(query, safeTest);
     return (
       <>
         <script
@@ -95,7 +99,13 @@ export default async function TestDetailPage({
             </div>
           </div>
         )}
-        <TestEngineClient test={safeTest} />
+        <TestEngineClient
+          test={safeTest}
+          initialPracticeMode={resolvedMode.practiceMode}
+          initialSectionIdx={resolvedMode.sectionIdx}
+          initialGroupId={resolvedMode.groupId}
+          isAuthenticated={isAuthenticated}
+        />
       </>
     );
   }

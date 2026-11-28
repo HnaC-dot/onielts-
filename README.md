@@ -31,7 +31,7 @@ Open `http://localhost:3000`.
 > **Cảnh báo an toàn dữ liệu (`npm run seed` & Migrations):**
 > - `scripts/seed-supabase.ts` luôn dùng `ignoreDuplicates: true` cho `ielts_tests` và toàn bộ bảng catalog để **không ghi đè đề thi đã chỉnh sửa trong Admin CMS**. Không bao giờ xóa cờ `ignoreDuplicates: true` hoặc chạy lệnh `DELETE`/`TRUNCATE` trên bảng `ielts_tests` ở Production.
 > - Trước khi chạy migration mới hoặc nâng cấp lớn: **sao lưu Supabase** (Snapshot / `pg_dump`), **thử migration trên Supabase branch / Vercel Preview trước**, và **đánh Git tag** mốc an toàn (VD `git tag pre-upgrade`).
-> - Tuyệt đối không sửa các file migration cũ (`0001`–`0009`); chỉ thêm file migration mới dạng cộng thêm (additive).
+> - Tuyệt đối không sửa các file migration cũ (`0001`–`0010`); chỉ thêm file migration mới dạng cộng thêm (additive).
 
 ---
 
@@ -80,6 +80,7 @@ Run the SQL migrations in **exact ascending order** inside **Supabase → SQL Ed
 7. `supabase/migrations/0007_content_production.sql` — Adds `content_calendar_items`, `newsletter_subscribers`, and `blog_posts.updated_at`.
 8. `supabase/migrations/0008_payments_ai_safety.sql` — Adds `orders.duration_months`, `order_code_seq`, atomic PayOS RPCs (`create_checkout_order_atomic`, `fulfill_paid_order_atomic`), `ai_usage_logs` reservation columns (`actor_key`, `quota_bucket`, `status`), and advisory-locked `reserve_ai_quota_atomic` RPC.
 9. `supabase/migrations/0009_security_rls_hardening.sql` — Hardens column grants and RLS across `ielts_tests` (hides `test_data` from `anon`/`authenticated`), `daily_exam_attempts` (anti-cheating score lock + safe leaderboard view), `profiles` (locks streak/referral/verification columns), `site_settings` (whitelist public keys), `feature_requests`/`contact_messages`/`newsletter_subscribers` (service-role write only, hides PII columns), `promo_codes`, `flashcards` (set ownership check), `pronunciation_sounds`, `blog_posts`, `admin_audit_logs` (admin-only SELECT), and `cms-media` Storage (admin-only direct writes).
+10. `supabase/migrations/0010_test_drafts_annotations.sql` — Adds `public.test_session_drafts` (per-user auto-saved exam answers, flags, notes, timer, active section, and passage annotations JSONB) with owner-only RLS (`auth.uid() = user_id`, `anon` denied).
 
 ### Running Real RLS Integration Tests
 
@@ -150,7 +151,7 @@ Never auto-grant admin in application code. To promote an account to `admin`:
 ## 7. Vercel Deploy Checklist
 
 - [ ] All required environment variables set for **Production** (and **Preview** if desired), with zero server secrets prefixed with `NEXT_PUBLIC_`.
-- [ ] All 9 Supabase SQL migrations (`0001`–`0009`) executed in order.
+- [ ] All 10 Supabase SQL migrations (`0001`–`0010`) executed in order.
 - [ ] Google OAuth Client ID/Secret saved in Supabase and `https://<domain>/auth/callback**` added to Supabase **Redirect URLs**.
 - [ ] Upstash Redis (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) configured for distributed production rate limiting.
 - [ ] Redeploy triggered after any env var change.

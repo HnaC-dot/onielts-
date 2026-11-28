@@ -73,6 +73,7 @@ import {
   type NewsletterSubscriber,
 } from "./content-production-shared";
 import { FULL_SEED_TESTS } from "./seed-tests";
+import type { StoredTestSessionDraft } from "./exam-session";
 
 export interface LocalStoreData {
   version: number;
@@ -86,6 +87,7 @@ export interface LocalStoreData {
   ielts_tests: IeltsTest[];
   test_attempts: TestAttempt[];
   test_attempt_answers: TestAttemptAnswerRecord[];
+  test_session_drafts?: StoredTestSessionDraft[];
   daily_exam_attempts: DailyExamAttempt[];
   writing_submissions: WritingSubmission[];
   speaking_submissions: SpeakingSubmission[];
@@ -121,7 +123,7 @@ export interface LocalStoreData {
 
 const STORE_DIR = path.join(process.cwd(), ".local-data");
 const STORE_PATH = path.join(STORE_DIR, "store.json");
-const CURRENT_STORE_VERSION = 9;
+const CURRENT_STORE_VERSION = 10;
 
 function buildInitialStore(): LocalStoreData {
   return {
@@ -136,6 +138,7 @@ function buildInitialStore(): LocalStoreData {
     ielts_tests: structuredClone(FULL_SEED_TESTS),
     test_attempts: [],
     test_attempt_answers: [],
+    test_session_drafts: [],
     daily_exam_attempts: [],
     writing_submissions: [],
     speaking_submissions: [],
@@ -246,6 +249,9 @@ function ensureStoreFile(): LocalStoreData {
           }
           if (!Array.isArray(parsed.test_attempt_answers)) {
             parsed.test_attempt_answers = [];
+          }
+          if (!Array.isArray(parsed.test_session_drafts)) {
+            parsed.test_session_drafts = [];
           }
           if (!Array.isArray(parsed.content_calendar_items)) {
             parsed.content_calendar_items = [];

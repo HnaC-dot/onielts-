@@ -116,7 +116,7 @@ export default async function TestsCatalogPage({
                 </p>
               </div>
 
-              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <span>{test.module === "academic" ? "Academic" : "General"}</span>
                   <span>·</span>
@@ -124,13 +124,23 @@ export default async function TestsCatalogPage({
                     {test.questionCount} {test.skill === "reading" || test.skill === "listening" ? (isEn ? "questions" : "câu") : (isEn ? "tasks" : "phần")}
                   </span>
                 </div>
-                <Link
-                  href={`/tests/${test.slug}`}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline dark:text-emerald-400"
-                >
-                  {isEn ? "Start Test" : "Vào phòng thi"}
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
+                <div className="flex items-center gap-3">
+                  {(test.skill === "reading" || test.skill === "listening") && (
+                    <Link
+                      href={`/tests/${test.slug}?mode=part`}
+                      className="text-xs font-semibold text-slate-600 hover:text-emerald-700 hover:underline dark:text-slate-400 dark:hover:text-emerald-400"
+                    >
+                      {isEn ? "By Part" : "Luyện từng phần"}
+                    </Link>
+                  )}
+                  <Link
+                    href={`/tests/${test.slug}`}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline dark:text-emerald-400"
+                  >
+                    {isEn ? "Start Test" : "Vào phòng thi"}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
               </div>
             </Card>
           );
