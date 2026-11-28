@@ -1932,21 +1932,37 @@ export function TestBuilderClient({ initialTest }: TestBuilderClientProps) {
                             {/* Options Editor for choice/matching types */}
                             {needsOpts && (
                               <div className="space-y-1.5 rounded-lg bg-slate-50 p-3 dark:bg-slate-900/60">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
                                   <span className="font-semibold text-slate-700 dark:text-slate-300">
-                                    Các lựa chọn hiển thị (Options)
+                                    {q.type === "map_labelling"
+                                      ? "Các lựa chọn (Options — để trống nếu là dạng điền từ vào sơ đồ)"
+                                      : "Các lựa chọn hiển thị (Options)"}
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateQuestion(q.id, {
-                                        options: [...(q.options ?? []), ""],
-                                      })
-                                    }
-                                    className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
-                                  >
-                                    + Thêm lựa chọn
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    {q.type === "map_labelling" &&
+                                      (q.options?.length ?? 0) > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            updateQuestion(q.id, { options: undefined })
+                                          }
+                                          className="text-[11px] font-semibold text-slate-500 hover:text-red-600 hover:underline cursor-pointer"
+                                        >
+                                          Xóa hết (dạng điền từ)
+                                        </button>
+                                      )}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateQuestion(q.id, {
+                                          options: [...(q.options ?? []), ""],
+                                        })
+                                      }
+                                      className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                                    >
+                                      + Thêm lựa chọn
+                                    </button>
+                                  </div>
                                 </div>
                                 <div className="grid gap-1.5 sm:grid-cols-2">
                                   {(q.options ?? []).map((opt, optIdx) => (

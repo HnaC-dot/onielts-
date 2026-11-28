@@ -112,7 +112,15 @@ export const testQuestionSchema = z
   })
   .superRefine((q, ctx) => {
     if (OPTION_REQUIRED_TYPES.has(q.type)) {
-      if (!q.options || q.options.length < 2) {
+      if (q.type === "map_labelling") {
+        if (q.options && q.options.length === 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Question #${q.number} (${q.type}) must provide either 0 options (fill-in-the-blank) or at least 2 options`,
+            path: ["options"],
+          });
+        }
+      } else if (!q.options || q.options.length < 2) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `Question #${q.number} (${q.type}) must provide at least 2 options`,

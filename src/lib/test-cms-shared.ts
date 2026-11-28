@@ -832,7 +832,13 @@ export function validateTestForPublish(
     }
     if (OPTION_TYPES_SET.has(q.type) && !coveredBySharedBank.has(q.id)) {
       const validOpts = (q.options ?? []).map((o) => o.trim()).filter(Boolean);
-      if (validOpts.length < 2) {
+      // Map / Diagram Labelling supports BOTH choice-based (A–H) AND fill-in-the-blank
+      // completion (e.g. "NO MORE THAN TWO WORDS" with 0 options). Only flag if partially filled (1 option).
+      if (q.type === "map_labelling") {
+        if (validOpts.length === 1) {
+          missingOptionNumbers.push(q.number);
+        }
+      } else if (validOpts.length < 2) {
         missingOptionNumbers.push(q.number);
       }
     }

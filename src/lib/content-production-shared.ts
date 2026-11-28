@@ -1023,6 +1023,7 @@ export function parseBulkTestCsv(rawCsv: string): BulkImportParseResult {
     if (
       !rowHasError &&
       OPTION_TYPES_SET.has(qTypeRaw as QuestionType) &&
+      qTypeRaw !== "map_labelling" &&
       (!parsedOptions || parsedOptions.length < 2)
     ) {
       const def = QUESTION_TYPE_CATALOG.find((c) => c.value === qTypeRaw);
@@ -1091,7 +1092,8 @@ export function parseBulkTestCsv(rawCsv: string): BulkImportParseResult {
       options:
         parsedOptions && parsedOptions.length > 0
           ? parsedOptions
-          : OPTION_TYPES_SET.has(qTypeRaw as QuestionType)
+          : OPTION_TYPES_SET.has(qTypeRaw as QuestionType) &&
+            qTypeRaw !== "map_labelling"
           ? defaultOpts
           : undefined,
       correctAnswers,

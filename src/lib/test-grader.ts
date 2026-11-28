@@ -51,6 +51,7 @@ const COMPLETION_WORD_LIMIT_TYPES = new Set<QuestionType>([
   "note_completion",
   "flowchart_completion",
   "short_answer",
+  "map_labelling",
 ]);
 
 const NUMERIC_TOKEN_REGEX = /^[$£€¥+-]?\d[\d,./:%-]*(?:st|nd|rd|th)?$/i;

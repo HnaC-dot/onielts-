@@ -271,6 +271,9 @@ export function buildDefaultGroupInstruction(
         ? `Answer the questions below. ${limitText} for each answer.`
         : "Answer the questions below.";
     case "map_labelling":
+      if (!bankRange && limitText) {
+        return `Label the map/diagram below. ${limitText} from the passage for each answer.`;
+      }
       return `Label the map/diagram below. Choose the correct answer${bankRange ? ` (${bankRange})` : ""}.`;
   }
 }
@@ -326,12 +329,17 @@ function buildAutoGroupFromRun(
   const first = run[0];
   const type = first.type;
 
-  const detectedLimit = COMPLETION_TYPES.has(type)
-    ? mergeWordLimits([
-        ...run.map((q) => parseWordLimitFromText(q.prompt)),
-        parseWordLimitFromText(section.instruction),
-      ])
-    : undefined;
+  const isCompletionMap =
+    type === "map_labelling" &&
+    run.every((q) => !q.options || q.options.length === 0);
+
+  const detectedLimit =
+    COMPLETION_TYPES.has(type) || isCompletionMap
+      ? mergeWordLimits([
+          ...run.map((q) => parseWordLimitFromText(q.prompt)),
+          parseWordLimitFromText(section.instruction),
+        ])
+      : undefined;
 
   let answerBank: QuestionGroupOption[] | undefined;
   let allowReuse: boolean | undefined;
@@ -400,12 +408,13 @@ function buildAutoGroupFromRun(
 function shouldSplitRun(prev: TestQuestion, next: TestQuestion): boolean {
   if (prev.type !== next.type) return true;
   if (prev.groupId && next.groupId && prev.groupId !== next.groupId) return true;
-  // Separate matching / word-bank groups if they use different option sets
+  // Separate matching / word-bank / map_labelling groups if they use different option sets
   if (
     prev.type === "matching_info" ||
     prev.type === "matching_features" ||
     prev.type === "matching_sentence_endings" ||
-    prev.type === "summary_completion"
+    prev.type === "summary_completion" ||
+    prev.type === "map_labelling"
   ) {
     if (!sameOptionSignature(prev.options, next.options)) return true;
   }
@@ -702,7 +711,7 @@ export function getPassageParagraphsForGroup(
 }
 
 const LEGACY_PROMPT_PREFIX_REGEX =
-  /^(?:Complete\s+the\s+(?:summary|flow-?chart|notes?|table|sentences?|diagram|form)(?:\s+below)?(?:\s+using\s+the\s+list\s+of\s+(?:words|phrases|options|letters)(?:[,\s]+(?:[A-Z]\s*[-–—]\s*[A-Z]|\([^)]*\)))?)?|Summary\s+Completion|Note\s+Completion|Table\s+Completion|Sentence\s+Completion|Flow-?chart(?:\s+Completion)?|Short\s+Answer|Form\s+Completion|Lecture\s+Notes|Diagram(?:\s+Stage\s*\d+)?|Map\s+Labelling|Floor\s+Plan\s+Direction)(?:\s*\([^)]*\))*\s*[:\-–—]\s*/i;
+  /^(?:Complete\s+the\s+(?:summary|flow-?chart|notes?|table|sentences?|diagram|form)(?:\s+below)?(?:\s+using\s+the\s+list\s+of\s+(?:words|phrases|options|letters)(?:[,\s]+(?:[A-Z]\s*[-–—]\s*[A-Z]|\([^)]*\)))?)?|Label\s+the\s+(?:map|diagram)(?:\s+below)?|Summary\s+Completion|Note\s+Completion|Table\s+Completion|Sentence\s+Completion|Flow-?chart(?:\s+Completion)?|Short\s+Answer|Form\s+Completion|Lecture\s+Notes|Diagram(?:\s+Stage\s*\d+)?|Map\s+Labelling|Floor\s+Plan\s+Direction)(?:\s*\([^)]*\))*\s*[:\-–—]\s*/i;
 
 const EXPLICIT_Q_BLANK_REGEX =
   /\[\s*Q?\s*(\d+)\s*[:.\-–—]?\s*(?:_{2,}|\.{3,})\s*\]|\(\s*Q\s*(\d+)\s*[:.\-–—]?\s*(?:_{2,}|\.{3,})\s*\)/gi;
@@ -1053,6 +1062,19 @@ export function resolveGroupDisplayContent(
   }
 
   if (group.type === "sentence_completion") {
+    return {
+      kind: "plain",
+      listTitle: resolvedTitle,
+      text: dedupedTemplates.join("\n"),
+    };
+  }
+
+  if (
+    group.type === "map_labelling" &&
+    (!group.answerBank || group.answerBank.length === 0) &&
+    questions.every((q) => !q.options || q.options.length === 0) &&
+    questions.some((q) => /_{2,}|\{\{\s*\d+\s*\}\}/.test(q.prompt))
+  ) {
     return {
       kind: "plain",
       listTitle: resolvedTitle,

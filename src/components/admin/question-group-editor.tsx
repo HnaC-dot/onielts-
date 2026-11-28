@@ -64,6 +64,7 @@ const WORD_LIMIT_TYPES = new Set<QuestionType>([
   "note_completion",
   "sentence_completion",
   "short_answer",
+  "map_labelling",
 ]);
 
 const SHARED_BANK_TYPES = new Set<QuestionType>([
@@ -433,11 +434,13 @@ export function QuestionGroupEditor({
               orphanBlanks.length > 0 ||
               missingBlanks.length > 0;
 
-            const showWordBankToggle = group.type === "summary_completion";
+            const showWordBankToggle =
+              group.type === "summary_completion" ||
+              group.type === "map_labelling";
             const hasAnswerBank = Boolean(group.answerBank && group.answerBank.length > 0);
             const showBankEditor =
-              SHARED_BANK_TYPES.has(group.type) ||
-              (group.type === "summary_completion" && hasAnswerBank);
+              (SHARED_BANK_TYPES.has(group.type) && group.type !== "map_labelling") ||
+              (showWordBankToggle && hasAnswerBank);
             const showWordLimitConfig =
               WORD_LIMIT_TYPES.has(group.type) && !hasAnswerBank;
 
@@ -623,13 +626,16 @@ export function QuestionGroupEditor({
                                               ? g.answerBank
                                               : ["A", "B", "C", "D", "E", "F"].map((id) => ({
                                                   id,
-                                                  text: `Word ${id}`,
+                                                  text:
+                                                    g.type === "map_labelling"
+                                                      ? id
+                                                      : `Word ${id}`,
                                                 }))
                                             : undefined;
                                         const nextWl: QuestionWordLimit | undefined = useBank
                                           ? undefined
                                           : g.wordLimit ?? {
-                                              maxWords: 1,
+                                              maxWords: g.type === "map_labelling" ? 2 : 1,
                                               allowNumber: false,
                                               numberMode: "word_only",
                                             };
@@ -641,7 +647,9 @@ export function QuestionGroupEditor({
                                       });
                                     }}
                                   />
-                                  Dùng Ngân hàng từ (Word Bank)
+                                  {group.type === "map_labelling"
+                                    ? "Dùng danh sách chọn (A–H)"
+                                    : "Dùng Ngân hàng từ (Word Bank)"}
                                 </label>
                               )}
                             </div>

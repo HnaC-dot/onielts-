@@ -662,12 +662,16 @@ export function QuestionGroupRenderer({
   const renderGroupBody = () => {
     const type: QuestionType = group.type;
 
-    // 1. TFNG / YNNG / MCQ (Single Choice) / MAP LABELLING
+    // 1. TFNG / YNNG / MCQ (Single Choice) / CHOICE-BASED MAP LABELLING
+    const isChoiceMapLabelling =
+      type === "map_labelling" &&
+      (bankItems.length > 0 ||
+        questions.some((q) => Boolean(q.options && q.options.length > 0)));
     if (
       type === "tfng" ||
       type === "ynng" ||
       type === "mcq" ||
-      type === "map_labelling"
+      isChoiceMapLabelling
     ) {
       return (
         <div className="space-y-5">

@@ -13,6 +13,7 @@ import {
 import {
   extractGroupBlankNumbers,
   getPassageParagraphsForGroup,
+  normalizeSectionToGroups,
   splitPassageParagraphs,
 } from "@/lib/test-groups";
 import {
@@ -497,5 +498,154 @@ describe("GĐ6 — Admin Group Builder, Live Preview & Strengthened Pre-Publish 
     expect(groupEditorSrc).toContain("createQuestionGroupSkeleton");
     expect(groupEditorSrc).toContain("allowNumberWordEquivalence");
     expect(groupEditorSrc).toContain("passageRange");
+  });
+
+  it("supports fill-in-the-blank Map/Diagram Labelling (0 options, word limit) in publish validation, auto-grouping, grading & UI", () => {
+    const diagramQuestions = [
+      {
+        id: "dm-q9",
+        number: 9,
+        type: "map_labelling" as const,
+        prompt:
+          "Label the diagram (NO MORE THAN TWO WORDS) — Raising the hull of the Mary Rose: Stage 1 bolts attached to ___",
+        correctAnswers: ["frame", "lifting frame"],
+        explanation_vi: "Khung nâng gắn bằng bu-lông.",
+        explanation_en: "Lifting frame attached via bolts.",
+      },
+      {
+        id: "dm-q10",
+        number: 10,
+        type: "map_labelling" as const,
+        prompt:
+          "Label the diagram (NO MORE THAN TWO WORDS) — Raising the hull of the Mary Rose: Stage 1 lifted by ___",
+        correctAnswers: ["hydraulic jacks"],
+        explanation_vi: "Kích thủy lực nâng khung.",
+        explanation_en: "Hydraulic jacks raise the frame.",
+      },
+      {
+        id: "dm-q11",
+        number: 11,
+        type: "map_labelling" as const,
+        prompt:
+          "Label the diagram (NO MORE THAN TWO WORDS) — Raising the hull of the Mary Rose: Stage 2 guided by ___",
+        correctAnswers: ["stabbing guides"],
+        explanation_vi: "Thanh dẫn hướng định vị.",
+        explanation_en: "Stabbing guides align the hull.",
+      },
+      {
+        id: "dm-q12",
+        number: 12,
+        type: "map_labelling" as const,
+        prompt:
+          "Label the diagram (NO MORE THAN TWO WORDS) — Raising the hull of the Mary Rose: Stage 2 lowered into ___",
+        correctAnswers: ["cradle", "lifting cradle"],
+        explanation_vi: "Hạ xuống giá đỡ.",
+        explanation_en: "Lowered into the cradle.",
+      },
+      {
+        id: "dm-q13",
+        number: 13,
+        type: "map_labelling" as const,
+        prompt:
+          "Label the diagram (NO MORE THAN TWO WORDS) — Raising the hull of the Mary Rose: Stage 3 cushioned by ___",
+        correctAnswers: ["air bags"],
+        explanation_vi: "Đệm túi khí bảo vệ thân tàu.",
+        explanation_en: "Air bags cushion the hull.",
+      },
+    ];
+
+    const fillerQuestions = Array.from({ length: 35 }, (_, idx) => {
+      const n = idx < 8 ? idx + 1 : idx + 6;
+      return {
+        id: `dm-q${n}`,
+        number: n,
+        type: "tfng" as const,
+        prompt: `Statement ${n} about the Mary Rose excavation.`,
+        options: ["TRUE", "FALSE", "NOT GIVEN"],
+        correctAnswers: ["TRUE"],
+        explanation_vi: "Giải thích chuẩn.",
+        explanation_en: "Explanation.",
+      };
+    });
+
+    const all40 = [...fillerQuestions.slice(0, 8), ...diagramQuestions, ...fillerQuestions.slice(8)];
+    const section: TestSection = {
+      id: "sec-mary-rose",
+      title: "Passage 1: Raising the Mary Rose",
+      passage: "A The Mary Rose was raised using a lifting frame, hydraulic jacks, stabbing guides, a cradle, and air bags. ".repeat(4),
+      questions: all40,
+    };
+
+    // 1. Publish validator MUST allow 0-option completion Diagram Labelling
+    const report = validateTestForPublish({
+      skill: "reading",
+      sections: [section],
+    });
+    expect(report.canPublish).toBe(true);
+    expect(report.errors).toEqual([]);
+
+    // 2. Broken single-option map_labelling MUST still be rejected
+    const brokenSingleOpt = structuredClone(section);
+    brokenSingleOpt.questions[8].options = ["A"];
+    const brokenReport = validateTestForPublish({
+      skill: "reading",
+      sections: [brokenSingleOpt],
+    });
+    expect(brokenReport.canPublish).toBe(false);
+
+    // 3. Auto-grouping detects NO MORE THAN TWO WORDS & builds completion instruction
+    const groups = normalizeSectionToGroups(section);
+    const diagGroup = groups.find((g) => g.type === "map_labelling")!;
+    expect(diagGroup).toBeDefined();
+    expect(diagGroup.wordLimit).toEqual({
+      maxWords: 2,
+      allowNumber: false,
+      numberMode: "word_only",
+    });
+    expect(diagGroup.instruction).toContain("TWO WORDS");
+
+    // 4. Server grader accepts both variants & enforces NO MORE THAN TWO WORDS
+    const testObj: IeltsTest = {
+      id: "mary-rose-test",
+      slug: "mary-rose-test",
+      skill: "reading",
+      module: "academic",
+      title_vi: "Raising the Mary Rose",
+      title_en: "Raising the Mary Rose",
+      description_vi: "Reading diagram labelling test",
+      description_en: "Reading diagram labelling test",
+      duration_minutes: 60,
+      difficulty: "band_6_7",
+      questionCount: 40,
+      is_published: true,
+      created_at: "2026-01-01T00:00:00.000Z",
+      sections: [section],
+    };
+
+    const graded = gradeObjectiveTest(
+      testObj,
+      {
+        "dm-q9": "lifting frame",
+        "dm-q10": "hydraulic jacks",
+        "dm-q11": "steel stabbing guides", // 3 words -> exceeds NO MORE THAN TWO WORDS
+        "dm-q12": "cradle",
+        "dm-q13": "air bags",
+      },
+      DEFAULT_BAND_CONVERSIONS
+    );
+
+    expect(graded.details.find((d) => d.questionId === "dm-q9")?.isCorrect).toBe(true);
+    expect(graded.details.find((d) => d.questionId === "dm-q10")?.isCorrect).toBe(true);
+    expect(graded.details.find((d) => d.questionId === "dm-q11")?.isCorrect).toBe(false);
+    expect(graded.details.find((d) => d.questionId === "dm-q11")?.wordLimitExceeded).toBe(true);
+    expect(graded.details.find((d) => d.questionId === "dm-q12")?.isCorrect).toBe(true);
+    expect(graded.details.find((d) => d.questionId === "dm-q13")?.isCorrect).toBe(true);
+
+    // 5. QuestionGroupRenderer gates radio choices on isChoiceMapLabelling
+    const rendererSrc = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/exam/question-group-renderer.tsx"),
+      "utf-8"
+    );
+    expect(rendererSrc).toContain("isChoiceMapLabelling");
   });
 });
