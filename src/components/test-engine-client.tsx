@@ -14,7 +14,6 @@ import {
   FileText,
   HardDrive,
   Headphones,
-  Highlighter,
   Layers,
   ListChecks,
   Loader2,
@@ -25,6 +24,7 @@ import {
   Play,
   RotateCcw,
   StickyNote,
+  Undo2,
   Volume2,
   X,
 } from "lucide-react";
@@ -47,13 +47,24 @@ import {
   mergeDraftSnapshots,
   MIN_SPLIT_RATIO,
   SPLIT_RATIO_STORAGE_KEY,
+  type ExamAnnotationColor,
   type ExamDraftPayload,
   type ExamPracticeMode,
   type ExamTextAnnotation,
 } from "@/lib/exam-session";
+import {
+  applyAnnotationsBatch,
+  clearAnnotations,
+  popAnnotationHistory,
+  pushAnnotationHistory,
+  removeAnnotationById,
+  updateAnnotationById,
+} from "@/lib/exam-annotations";
 import { formatDuration } from "@/lib/utils";
 import { TestDiagramSvg } from "./test-diagram-svg";
 import { QuestionGroupRenderer } from "./exam/question-group-renderer";
+import { AnnotatablePassage } from "./exam/annotatable-passage";
+import { AnnotationsDrawer } from "./exam/annotations-drawer";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -223,12 +234,13 @@ export function TestEngineClient({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isTimerPaused, setIsTimerPaused] = useState(false);
 
-  // Answers, flags, highlights, annotations (GĐ4-ready), scratchpad notes
+  // Answers, flags, offset-based annotations (GĐ4), scratchpad notes
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
-  const [highlightedLines, setHighlightedLines] = useState<Record<string, boolean>>({});
   const [annotations, setAnnotations] = useState<ExamTextAnnotation[]>([]);
-  const [highlightMode, setHighlightMode] = useState(false);
+  const [annotationHistory, setAnnotationHistory] = useState<ExamTextAnnotation[][]>([]);
+  const [flashedAnnotationId, setFlashedAnnotationId] = useState<string | null>(null);
+  const flashTimerRef = useRef<number | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesText, setNotesText] = useState("");
   const [fontSize, setFontSize] = useState<"sm" | "base" | "lg">("base");
@@ -445,7 +457,7 @@ export function TestEngineClient({
     document.body.style.overflow = "hidden";
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !notesOpen) {
         setFocusMode(false);
       }
     };
@@ -465,7 +477,7 @@ export function TestEngineClient({
       window.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
-  }, [focusMode]);
+  }, [focusMode, notesOpen]);
 
   const toggleFocusMode = () => {
     setFocusMode((prev) => {
@@ -543,8 +555,8 @@ export function TestEngineClient({
       if (merged) {
         setAnswers(merged.answers);
         setFlagged(merged.flagged);
-        setHighlightedLines(merged.highlightedLines ?? {});
         setAnnotations(merged.annotations ?? []);
+        setAnnotationHistory([]);
         setNotesText(merged.notesText ?? "");
         if (isCountdown) {
           if (merged.timerSeconds > 0 && merged.timerSeconds <= totalSeconds) {
@@ -571,8 +583,8 @@ export function TestEngineClient({
       } else {
         setAnswers({});
         setFlagged({});
-        setHighlightedLines({});
         setAnnotations([]);
+        setAnnotationHistory([]);
         setNotesText("");
         setSecondsLeft(totalSeconds);
         setElapsedSeconds(0);
@@ -609,7 +621,6 @@ export function TestEngineClient({
       modeKey,
       answers,
       flagged,
-      highlightedLines,
       annotations,
       notesText,
       timerSeconds: isCountdown ? secondsLeft : elapsedSeconds,
@@ -621,7 +632,6 @@ export function TestEngineClient({
     modeKey,
     answers,
     flagged,
-    highlightedLines,
     annotations,
     notesText,
     isCountdown,
@@ -712,8 +722,12 @@ export function TestEngineClient({
     };
   }, [isDaily, graded, isAuthenticated, modeKey, buildCurrentDraftPayload]);
 
-  // Warn before closing tab / refreshing when unsubmitted answers or notes exist
-  const hasUnsavedWork = !graded && (totalAnsweredCount > 0 || notesText.trim().length > 0);
+  // Warn before closing tab / refreshing when unsubmitted answers, highlights, or notes exist
+  const hasUnsavedWork =
+    !graded &&
+    (totalAnsweredCount > 0 ||
+      notesText.trim().length > 0 ||
+      annotations.length > 0);
   useEffect(() => {
     if (!hasUnsavedWork || typeof window === "undefined") return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -724,14 +738,79 @@ export function TestEngineClient({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedWork]);
 
-  // Cleanup TTS on unmount
+  // Cleanup TTS and annotation flash timer on unmount
   useEffect(() => {
     return () => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
+      if (flashTimerRef.current) {
+        window.clearTimeout(flashTimerRef.current);
+      }
     };
   }, []);
+
+  // GĐ4 Annotation CRUD & Undo stack (works in both Exam Mode and Review Mode)
+  const handleAddAnnotations = useCallback(
+    (items: ExamTextAnnotation[]) => {
+      if (items.length === 0) return;
+      setAnnotationHistory((hist) => pushAnnotationHistory(hist, annotations));
+      setAnnotations(applyAnnotationsBatch(annotations, items));
+    },
+    [annotations]
+  );
+
+  const handleUpdateAnnotation = useCallback(
+    (id: string, patch: { color?: ExamAnnotationColor; note?: string | null }) => {
+      setAnnotationHistory((hist) => pushAnnotationHistory(hist, annotations));
+      setAnnotations(updateAnnotationById(annotations, id, patch));
+    },
+    [annotations]
+  );
+
+  const handleDeleteAnnotation = useCallback(
+    (id: string) => {
+      setAnnotationHistory((hist) => pushAnnotationHistory(hist, annotations));
+      setAnnotations(removeAnnotationById(annotations, id));
+    },
+    [annotations]
+  );
+
+  const handleClearAllAnnotations = useCallback(() => {
+    if (annotations.length === 0) return;
+    setAnnotationHistory((hist) => pushAnnotationHistory(hist, annotations));
+    setAnnotations(clearAnnotations(annotations));
+  }, [annotations]);
+
+  const handleUndoAnnotation = useCallback(() => {
+    const { previous, nextHistory } = popAnnotationHistory(annotationHistory);
+    if (!previous) return;
+    setAnnotationHistory(nextHistory);
+    setAnnotations(previous);
+  }, [annotationHistory]);
+
+  // Global Ctrl/Cmd+Z undo shortcut for annotations (never hijacks text inputs/textareas)
+  useEffect(() => {
+    if (annotationHistory.length === 0 || typeof window === "undefined") return;
+    const handleUndoShortcut = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      if (e.key.toLowerCase() !== "z") return;
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT" ||
+          active.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      handleUndoAnnotation();
+    };
+    window.addEventListener("keydown", handleUndoShortcut);
+    return () => window.removeEventListener("keydown", handleUndoShortcut);
+  }, [annotationHistory.length, handleUndoAnnotation]);
 
   // Sync playbackRate on HTML5 audio element
   useEffect(() => {
@@ -819,8 +898,8 @@ export function TestEngineClient({
     clearPersistedDraft();
     setAnswers({});
     setFlagged({});
-    setHighlightedLines({});
     setAnnotations([]);
+    setAnnotationHistory([]);
     setNotesText("");
     setSecondsLeft(totalSeconds);
     setElapsedSeconds(0);
@@ -831,6 +910,42 @@ export function TestEngineClient({
     setSaveStatus("idle");
   };
 
+  const handleJumpToAnnotation = (ann: ExamTextAnnotation) => {
+    const isTranscript = ann.sectionId.endsWith("::transcript");
+    const baseSectionId = isTranscript
+      ? ann.sectionId.slice(0, -"::transcript".length)
+      : ann.sectionId;
+    const targetSecIdx = test.sections.findIndex((s) => s.id === baseSectionId);
+
+    if (isTranscript) {
+      setShowScript(true);
+    }
+    if (targetSecIdx >= 0 && targetSecIdx !== effectiveSectionIdx && practiceMode !== "group") {
+      switchSection(targetSecIdx);
+    }
+    if (passageResolution.isFiltered && !showFullPassage) {
+      setShowFullPassage(true);
+    }
+    setMobilePane("passage");
+    setNotesOpen(false);
+
+    if (flashTimerRef.current) {
+      window.clearTimeout(flashTimerRef.current);
+    }
+    setFlashedAnnotationId(ann.id);
+
+    window.setTimeout(() => {
+      const markEl = document.querySelector<HTMLElement>(
+        `mark[data-annotation-id="${CSS.escape(ann.id)}"]`
+      );
+      markEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 90);
+
+    flashTimerRef.current = window.setTimeout(() => {
+      setFlashedAnnotationId(null);
+    }, 1900);
+  };
+
   const audioParagraphs = useMemo(() => {
     const raw = currentSection?.audioScript ?? "";
     return raw
@@ -838,6 +953,15 @@ export function TestEngineClient({
       .map((s) => s.trim())
       .filter(Boolean);
   }, [currentSection]);
+
+  const audioPassageParagraphs = useMemo(
+    () =>
+      audioParagraphs.map((text, index) => ({
+        index,
+        text,
+      })),
+    [audioParagraphs]
+  );
 
   const toggleMp3Play = async () => {
     const el = audioRef.current;
@@ -979,6 +1103,15 @@ export function TestEngineClient({
       ? "Section"
       : "Passage";
 
+  const sectionLabelsById = useMemo(() => {
+    const map: Record<string, string> = {};
+    test.sections.forEach((sec, idx) => {
+      map[sec.id] = `${sectionUnitLabel} ${idx + 1}`;
+      map[`${sec.id}::transcript`] = `${sectionUnitLabel} ${idx + 1} (Transcript)`;
+    });
+    return map;
+  }, [test.sections, sectionUnitLabel]);
+
   const navigatorItems = useMemo(() => {
     if (practiceMode === "group" && activeGroupEntry) {
       return activeGroupEntry.groupQuestions.map((q) => ({
@@ -1115,22 +1248,24 @@ export function TestEngineClient({
             )}
           </div>
 
-          {/* Highlight toggle */}
-          {test.skill === "reading" && (
+          {/* Undo last highlight/note change (Ctrl/Cmd+Z) */}
+          {annotationHistory.length > 0 && (
             <Button
               type="button"
               size="sm"
-              variant={highlightMode ? "default" : "outline"}
-              onClick={() => setHighlightMode((v) => !v)}
+              variant="outline"
+              onClick={handleUndoAnnotation}
+              title={isEn ? "Undo highlight/note (Ctrl/Cmd+Z)" : "Hoàn tác tô sáng/ghi chú (Ctrl/Cmd+Z)"}
+              aria-label={isEn ? "Undo highlight or note" : "Hoàn tác tô sáng hoặc ghi chú"}
             >
-              <Highlighter className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">
-                {isEn ? "Highlight" : "Tô sáng"}
+              <Undo2 className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">
+                {isEn ? "Undo" : "Hoàn tác"}
               </span>
             </Button>
           )}
 
-          {/* Notes toggle */}
+          {/* My Notes & Highlights drawer trigger */}
           <Button
             type="button"
             size="sm"
@@ -1138,7 +1273,14 @@ export function TestEngineClient({
             onClick={() => setNotesOpen((v) => !v)}
           >
             <StickyNote className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{isEn ? "Notes" : "Ghi chú"}</span>
+            <span className="hidden sm:inline">
+              {isEn ? "My Notes" : "Ghi chú của tôi"}
+            </span>
+            {annotations.length > 0 && (
+              <span className="rounded-full bg-emerald-600 px-1.5 py-0.2 text-[10px] font-bold text-white">
+                {annotations.length}
+              </span>
+            )}
           </Button>
 
           {/* Font size */}
@@ -1427,28 +1569,6 @@ export function TestEngineClient({
             </button>
           </div>
         </div>
-      )}
-
-      {/* Collapsible Scratchpad Notes */}
-      {notesOpen && (
-        <Card className="shrink-0 p-4 border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20">
-          <label className="mb-1.5 block text-xs font-bold text-amber-900 dark:text-amber-300">
-            {isEn
-              ? "Exam Scratchpad Notes (auto-saved)"
-              : "Ghi chú nháp trong khi làm bài (tự động lưu)"}
-          </label>
-          <textarea
-            rows={3}
-            value={notesText}
-            onChange={(e) => setNotesText(e.target.value)}
-            placeholder={
-              isEn
-                ? "Jot down keywords, numbers, or paraphrases..."
-                : "Ghi nhanh từ khóa, con số, ý chính đoạn văn..."
-            }
-            className="w-full rounded-xl border border-amber-200 bg-white p-3 text-xs dark:border-amber-900 dark:bg-slate-950"
-          />
-        </Card>
       )}
 
       {/* GRADED RESULT SUMMARY + MISTAKE ANALYTICS */}
@@ -1778,10 +1898,19 @@ export function TestEngineClient({
                 </div>
 
                 {currentSection.audioScript && (showScript || graded) && (
-                  <div className="mt-2 space-y-2 rounded-xl bg-white p-3.5 text-xs leading-6 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                    {audioParagraphs.map((p, idx) => (
-                      <p key={idx}>{p}</p>
-                    ))}
+                  <div className="mt-2 rounded-xl bg-white p-3.5 dark:bg-slate-950">
+                    <AnnotatablePassage
+                      sectionId={`${currentSection.id}::transcript`}
+                      paragraphs={audioPassageParagraphs}
+                      annotations={annotations}
+                      textSizeClass="text-xs leading-6"
+                      isEn={isEn}
+                      flashedAnnotationId={flashedAnnotationId}
+                      onAddAnnotations={handleAddAnnotations}
+                      onUpdateAnnotation={handleUpdateAnnotation}
+                      onDeleteAnnotation={handleDeleteAnnotation}
+                      showHint={false}
+                    />
                   </div>
                 )}
               </div>
@@ -1835,10 +1964,19 @@ export function TestEngineClient({
                   </button>
                 </div>
                 {(showScript || graded) && (
-                  <div className="mt-2 space-y-2 rounded-xl bg-white p-3.5 text-xs leading-6 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                    {audioParagraphs.map((p, idx) => (
-                      <p key={idx}>{p}</p>
-                    ))}
+                  <div className="mt-2 rounded-xl bg-white p-3.5 dark:bg-slate-950">
+                    <AnnotatablePassage
+                      sectionId={`${currentSection.id}::transcript`}
+                      paragraphs={audioPassageParagraphs}
+                      annotations={annotations}
+                      textSizeClass="text-xs leading-6"
+                      isEn={isEn}
+                      flashedAnnotationId={flashedAnnotationId}
+                      onAddAnnotations={handleAddAnnotations}
+                      onUpdateAnnotation={handleUpdateAnnotation}
+                      onDeleteAnnotation={handleDeleteAnnotation}
+                      showHint={false}
+                    />
                   </div>
                 )}
               </div>
@@ -1918,54 +2056,19 @@ export function TestEngineClient({
               </div>
             )}
 
-            {/* READING PASSAGE WITH CLICK-TO-HIGHLIGHT */}
+            {/* READING PASSAGE WITH OFFSET-BASED HIGHLIGHT, NOTE, COPY & FLASHCARD TOOLBAR */}
             {currentSection.passage && (
-              <div
-                className={`space-y-4 ${textSizeCls} text-slate-800 dark:text-slate-200`}
-              >
-                {highlightMode && (
-                  <p className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                    {isEn
-                      ? "Highlight mode ON: click any sentence below to highlight/unhighlight."
-                      : "Chế độ Tô sáng đang BẬT: nhấn vào bất kỳ câu nào bên dưới để đánh dấu ý quan trọng."}
-                  </p>
-                )}
-                {renderedParagraphs.map((para) => (
-                  <p
-                    key={para.index}
-                    data-paragraph-index={para.index}
-                    className="whitespace-pre-line"
-                  >
-                    {para.text.split(/(?<=[.!?])\s+/).map((sent, sIdx) => {
-                      const key = `${currentSection.id}-${para.index}-${sIdx}`;
-                      const isLit = Boolean(highlightedLines[key]);
-                      return (
-                        <span
-                          key={key}
-                          onClick={() => {
-                            if (!highlightMode) return;
-                            setHighlightedLines((prev) => ({
-                              ...prev,
-                              [key]: !prev[key],
-                            }));
-                          }}
-                          className={`${
-                            highlightMode
-                              ? "cursor-pointer hover:bg-amber-100/70"
-                              : ""
-                          } ${
-                            isLit
-                              ? "rounded bg-amber-200/80 px-0.5 text-slate-950 dark:bg-amber-700/60 dark:text-white"
-                              : ""
-                          }`}
-                        >
-                          {sent}{" "}
-                        </span>
-                      );
-                    })}
-                  </p>
-                ))}
-              </div>
+              <AnnotatablePassage
+                sectionId={currentSection.id}
+                paragraphs={renderedParagraphs}
+                annotations={annotations}
+                textSizeClass={textSizeCls}
+                isEn={isEn}
+                flashedAnnotationId={flashedAnnotationId}
+                onAddAnnotations={handleAddAnnotations}
+                onUpdateAnnotation={handleUpdateAnnotation}
+                onDeleteAnnotation={handleDeleteAnnotation}
+              />
             )}
           </Card>
 
@@ -2133,6 +2236,23 @@ export function TestEngineClient({
           })}
         </div>
       </Card>
+
+      {/* My Notes & Highlights Drawer (GĐ4) */}
+      <AnnotationsDrawer
+        open={notesOpen}
+        onClose={() => setNotesOpen(false)}
+        annotations={annotations}
+        sectionLabelsById={sectionLabelsById}
+        notesText={notesText}
+        onNotesTextChange={setNotesText}
+        canUndo={annotationHistory.length > 0}
+        onUndo={handleUndoAnnotation}
+        onJumpToAnnotation={handleJumpToAnnotation}
+        onUpdateAnnotation={handleUpdateAnnotation}
+        onDeleteAnnotation={handleDeleteAnnotation}
+        onClearAllAnnotations={handleClearAllAnnotations}
+        isEn={isEn}
+      />
     </div>
   );
 }

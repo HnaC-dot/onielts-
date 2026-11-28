@@ -220,7 +220,7 @@ export function GlobalFlashcardModal() {
 
       {isOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
           aria-labelledby="flashcard-modal-title"
