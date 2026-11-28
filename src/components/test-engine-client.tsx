@@ -29,7 +29,8 @@ import {
   X,
 } from "lucide-react";
 import type { IeltsTest, QuestionType } from "@/lib/types";
-import type { GradedTestResult } from "@/lib/test-grader";
+import type { GradedTestResult, QuestionGradeDetail } from "@/lib/test-grader";
+import { locateEvidenceParagraph } from "@/lib/exam-evidence";
 import {
   normalizeSectionToGroups,
   splitPassageParagraphs,
@@ -241,6 +242,12 @@ export function TestEngineClient({
   const [annotationHistory, setAnnotationHistory] = useState<ExamTextAnnotation[][]>([]);
   const [flashedAnnotationId, setFlashedAnnotationId] = useState<string | null>(null);
   const flashTimerRef = useRef<number | null>(null);
+  const [evidenceHighlight, setEvidenceHighlight] = useState<{
+    sectionId: string;
+    paragraphIndex: number;
+    label: string;
+  } | null>(null);
+  const evidenceTimerRef = useRef<number | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesText, setNotesText] = useState("");
   const [fontSize, setFontSize] = useState<"sm" | "base" | "lg">("base");
@@ -747,6 +754,9 @@ export function TestEngineClient({
       if (flashTimerRef.current) {
         window.clearTimeout(flashTimerRef.current);
       }
+      if (evidenceTimerRef.current) {
+        window.clearTimeout(evidenceTimerRef.current);
+      }
     };
   }, []);
 
@@ -962,6 +972,58 @@ export function TestEngineClient({
       })),
     [audioParagraphs]
   );
+
+  const handleLocateEvidence = (detail: QuestionGradeDetail) => {
+    if (!currentSection) return;
+    const isReadingPassage = Boolean(currentSection.passage);
+    const targetParagraphs = isReadingPassage
+      ? allPassageParagraphs
+      : audioPassageParagraphs;
+    if (targetParagraphs.length === 0) return;
+
+    const targetSectionId = isReadingPassage
+      ? currentSection.id
+      : `${currentSection.id}::transcript`;
+
+    const located = locateEvidenceParagraph(
+      targetParagraphs,
+      detail.sectionRef,
+      detail.acceptedAnswers
+    );
+    const targetIdx = located ? located.paragraphIndex : 0;
+
+    if (isReadingPassage && passageResolution.isFiltered && !showFullPassage) {
+      setShowFullPassage(true);
+    }
+    if (!isReadingPassage) {
+      setShowScript(true);
+    }
+    setMobilePane("passage");
+
+    const badgeLabel = isEn
+      ? `Evidence · Q${detail.number}${detail.sectionRef ? ` (${detail.sectionRef})` : ""}`
+      : `Đoạn chứa đáp án · Câu ${detail.number}${detail.sectionRef ? ` (${detail.sectionRef})` : ""}`;
+
+    if (evidenceTimerRef.current) {
+      window.clearTimeout(evidenceTimerRef.current);
+    }
+    setEvidenceHighlight({
+      sectionId: targetSectionId,
+      paragraphIndex: targetIdx,
+      label: badgeLabel,
+    });
+
+    window.setTimeout(() => {
+      const targetEl = document.querySelector<HTMLElement>(
+        `[data-section-id="${CSS.escape(targetSectionId)}"] [data-paragraph-index="${targetIdx}"]`
+      );
+      targetEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 90);
+
+    evidenceTimerRef.current = window.setTimeout(() => {
+      setEvidenceHighlight(null);
+    }, 4200);
+  };
 
   const toggleMp3Play = async () => {
     const el = audioRef.current;
@@ -1906,6 +1968,16 @@ export function TestEngineClient({
                       textSizeClass="text-xs leading-6"
                       isEn={isEn}
                       flashedAnnotationId={flashedAnnotationId}
+                      highlightedEvidenceParagraphIndex={
+                        evidenceHighlight?.sectionId === `${currentSection.id}::transcript`
+                          ? evidenceHighlight.paragraphIndex
+                          : null
+                      }
+                      evidenceBadgeText={
+                        evidenceHighlight?.sectionId === `${currentSection.id}::transcript`
+                          ? evidenceHighlight.label
+                          : null
+                      }
                       onAddAnnotations={handleAddAnnotations}
                       onUpdateAnnotation={handleUpdateAnnotation}
                       onDeleteAnnotation={handleDeleteAnnotation}
@@ -1972,6 +2044,16 @@ export function TestEngineClient({
                       textSizeClass="text-xs leading-6"
                       isEn={isEn}
                       flashedAnnotationId={flashedAnnotationId}
+                      highlightedEvidenceParagraphIndex={
+                        evidenceHighlight?.sectionId === `${currentSection.id}::transcript`
+                          ? evidenceHighlight.paragraphIndex
+                          : null
+                      }
+                      evidenceBadgeText={
+                        evidenceHighlight?.sectionId === `${currentSection.id}::transcript`
+                          ? evidenceHighlight.label
+                          : null
+                      }
                       onAddAnnotations={handleAddAnnotations}
                       onUpdateAnnotation={handleUpdateAnnotation}
                       onDeleteAnnotation={handleDeleteAnnotation}
@@ -2065,6 +2147,16 @@ export function TestEngineClient({
                 textSizeClass={textSizeCls}
                 isEn={isEn}
                 flashedAnnotationId={flashedAnnotationId}
+                highlightedEvidenceParagraphIndex={
+                  evidenceHighlight?.sectionId === currentSection.id
+                    ? evidenceHighlight.paragraphIndex
+                    : null
+                }
+                evidenceBadgeText={
+                  evidenceHighlight?.sectionId === currentSection.id
+                    ? evidenceHighlight.label
+                    : null
+                }
                 onAddAnnotations={handleAddAnnotations}
                 onUpdateAnnotation={handleUpdateAnnotation}
                 onDeleteAnnotation={handleDeleteAnnotation}
@@ -2161,6 +2253,10 @@ export function TestEngineClient({
                 onToggleFlag={(qId) =>
                   setFlagged((prev) => ({ ...prev, [qId]: !prev[qId] }))
                 }
+                onLocateEvidence={handleLocateEvidence}
+                canLocateEvidence={Boolean(
+                  currentSection.passage || currentSection.audioScript
+                )}
               />
             ))}
           </div>

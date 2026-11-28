@@ -29,6 +29,8 @@ interface AnnotatablePassageProps {
   textSizeClass: string;
   isEn: boolean;
   flashedAnnotationId?: string | null;
+  highlightedEvidenceParagraphIndex?: number | null;
+  evidenceBadgeText?: string | null;
   onAddAnnotations: (items: ExamTextAnnotation[]) => void;
   onUpdateAnnotation: (
     id: string,
@@ -185,6 +187,8 @@ export function AnnotatablePassage({
   textSizeClass,
   isEn,
   flashedAnnotationId = null,
+  highlightedEvidenceParagraphIndex = null,
+  evidenceBadgeText = null,
   onAddAnnotations,
   onUpdateAnnotation,
   onDeleteAnnotation,
@@ -450,6 +454,7 @@ export function AnnotatablePassage({
     <div
       ref={containerRef}
       data-no-flashcard-popup="true"
+      data-section-id={sectionId}
       onMouseUp={captureCurrentSelection}
       onTouchEnd={() => {
         window.setTimeout(captureCurrentSelection, 30);
@@ -489,76 +494,94 @@ export function AnnotatablePassage({
         {paragraphs.map((para) => {
           const paraAnnotations = annotationsByParagraph.get(para.index) ?? [];
           const segments = buildParagraphSegments(para.text, paraAnnotations);
+          const isEvidenceHighlighted =
+            highlightedEvidenceParagraphIndex === para.index;
           return (
-            <p
+            <div
               key={para.index}
-              data-paragraph-index={para.index}
-              className="whitespace-pre-line"
+              className={
+                isEvidenceHighlighted
+                  ? "rounded-xl border-l-4 border-emerald-500 bg-emerald-50/80 px-3.5 py-2.5 -mx-3.5 ring-1 ring-emerald-200 transition-all dark:bg-emerald-950/40 dark:ring-emerald-800/70"
+                  : "transition-all"
+              }
             >
-              {segments.map((seg, idx) => {
-                if (seg.type === "text" || !seg.annotation) {
-                  return <React.Fragment key={idx}>{seg.text}</React.Fragment>;
-                }
-                const ann = seg.annotation;
-                const hasNote = Boolean(ann.note && ann.note.trim().length > 0);
-                const isFlashed = flashedAnnotationId === ann.id;
-                const colorCls =
-                  MARK_COLOR_CLASSES[ann.color] ?? MARK_COLOR_CLASSES.amber;
-                return (
-                  <mark
-                    key={ann.id}
-                    data-annotation-id={ann.id}
-                    role="button"
-                    tabIndex={0}
-                    title={
-                      hasNote
-                        ? ann.note
-                        : isEn
-                        ? "Click to change color, add note, save to flashcard, or remove"
-                        : "Nhấn để đổi màu, thêm ghi chú, lưu Flashcard hoặc xóa"
-                    }
-                    onClick={(e) => handleClickMark(e, ann)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const pos = clampPopoverPosition(rect, 310);
-                        setPendingSelection(null);
-                        setNewNoteMode(false);
-                        setActivePopover({
-                          annotationId: ann.id,
-                          x: pos.x,
-                          y: pos.y,
-                          placeBelow: pos.placeBelow,
-                          editingNote: false,
-                          noteDraft: ann.note ?? "",
-                        });
+              {isEvidenceHighlighted && evidenceBadgeText && (
+                <div
+                  data-annotation-ui="true"
+                  className="mb-1.5 inline-flex select-none items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-xs"
+                >
+                  {evidenceBadgeText}
+                </div>
+              )}
+              <p
+                data-paragraph-index={para.index}
+                className="whitespace-pre-line"
+              >
+                {segments.map((seg, idx) => {
+                  if (seg.type === "text" || !seg.annotation) {
+                    return <React.Fragment key={idx}>{seg.text}</React.Fragment>;
+                  }
+                  const ann = seg.annotation;
+                  const hasNote = Boolean(ann.note && ann.note.trim().length > 0);
+                  const isFlashed = flashedAnnotationId === ann.id;
+                  const colorCls =
+                    MARK_COLOR_CLASSES[ann.color] ?? MARK_COLOR_CLASSES.amber;
+                  return (
+                    <mark
+                      key={ann.id}
+                      data-annotation-id={ann.id}
+                      role="button"
+                      tabIndex={0}
+                      title={
+                        hasNote
+                          ? ann.note
+                          : isEn
+                          ? "Click to change color, add note, save to flashcard, or remove"
+                          : "Nhấn để đổi màu, thêm ghi chú, lưu Flashcard hoặc xóa"
                       }
-                    }}
-                    className={`cursor-pointer rounded-xs px-0.5 transition ${colorCls} ${
-                      hasNote
-                        ? "underline decoration-emerald-600/85 decoration-2 underline-offset-2 dark:decoration-emerald-400"
-                        : ""
-                    } ${
-                      isFlashed
-                        ? "ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-slate-900 animate-pulse"
-                        : ""
-                    }`}
-                  >
-                    {seg.text}
-                    {hasNote && (
-                      <span
-                        data-annotation-ui="true"
-                        aria-hidden="true"
-                        className="ml-0.5 inline-flex select-none align-super text-emerald-700 dark:text-emerald-300"
-                      >
-                        <StickyNote className="h-3 w-3" />
-                      </span>
-                    )}
-                  </mark>
-                );
-              })}
-            </p>
+                      onClick={(e) => handleClickMark(e, ann)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const pos = clampPopoverPosition(rect, 310);
+                          setPendingSelection(null);
+                          setNewNoteMode(false);
+                          setActivePopover({
+                            annotationId: ann.id,
+                            x: pos.x,
+                            y: pos.y,
+                            placeBelow: pos.placeBelow,
+                            editingNote: false,
+                            noteDraft: ann.note ?? "",
+                          });
+                        }
+                      }}
+                      className={`cursor-pointer rounded-xs px-0.5 transition ${colorCls} ${
+                        hasNote
+                          ? "underline decoration-emerald-600/85 decoration-2 underline-offset-2 dark:decoration-emerald-400"
+                          : ""
+                      } ${
+                        isFlashed
+                          ? "ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-slate-900 animate-pulse"
+                          : ""
+                      }`}
+                    >
+                      {seg.text}
+                      {hasNote && (
+                        <span
+                          data-annotation-ui="true"
+                          aria-hidden="true"
+                          className="ml-0.5 inline-flex select-none align-super text-emerald-700 dark:text-emerald-300"
+                        >
+                          <StickyNote className="h-3 w-3" />
+                        </span>
+                      )}
+                    </mark>
+                  );
+                })}
+              </p>
+            </div>
           );
         })}
       </div>

@@ -9,6 +9,7 @@ import {
   Flag,
   GripVertical,
   Info,
+  LocateFixed,
   X,
   XCircle,
 } from "lucide-react";
@@ -45,6 +46,8 @@ export interface QuestionGroupRendererProps {
   onAnswerChange: (questionId: string, value: string) => void;
   onAnswersPatch: (patch: Record<string, string>) => void;
   onToggleFlag: (questionId: string) => void;
+  onLocateEvidence?: (detail: QuestionGradeDetail) => void;
+  canLocateEvidence?: boolean;
 }
 
 function normalizeTokenId(raw: string): string {
@@ -80,6 +83,8 @@ export function QuestionGroupRenderer({
   onAnswerChange,
   onAnswersPatch,
   onToggleFlag,
+  onLocateEvidence,
+  canLocateEvidence = false,
 }: QuestionGroupRendererProps) {
   const [armedOptionId, setArmedOptionId] = useState<string | null>(null);
   const [dragOverQuestionId, setDragOverQuestionId] = useState<string | null>(null);
@@ -188,29 +193,54 @@ export function QuestionGroupRenderer({
     );
   };
 
+  const renderLocateEvidenceButton = (detail: QuestionGradeDetail) => {
+    if (!onLocateEvidence || !canLocateEvidence) return null;
+    if (!detail.sectionRef && detail.acceptedAnswers.length === 0) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => onLocateEvidence(detail)}
+        className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-900/60 cursor-pointer"
+      >
+        <LocateFixed className="h-3.5 w-3.5 shrink-0" />
+        {isEn ? "View evidence in passage" : "Xem đoạn chứa đáp án"}
+        {detail.sectionRef ? ` (${detail.sectionRef})` : ""}
+      </button>
+    );
+  };
+
   const renderQuestionExplanation = (q: TestQuestion) => {
     const detail = detailById.get(q.id);
     if (!detail) return null;
     return (
       <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3.5 text-xs space-y-1.5 dark:border-slate-800 dark:bg-slate-950">
-        <div className="flex flex-wrap items-center gap-2 font-bold">
-          {detail.isCorrect ? (
-            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-              <CheckCircle2 className="h-4 w-4" />
-              {isEn ? "Correct" : "Chính xác"}
-            </span>
-          ) : (
-            <span className="inline-flex flex-wrap items-center gap-1 text-red-600 dark:text-red-400">
-              <XCircle className="h-4 w-4 shrink-0" />
-              {isEn ? "Incorrect" : "Chưa đúng"} ·{" "}
-              {isEn ? "Answer:" : "Đáp án:"}{" "}
-              <strong className="text-emerald-700 dark:text-emerald-400">
-                {detail.acceptedAnswers.join(" / ")}
-              </strong>
-            </span>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2 font-bold">
+            {detail.isCorrect ? (
+              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="h-4 w-4" />
+                {isEn ? "Correct" : "Chính xác"}
+              </span>
+            ) : (
+              <span className="inline-flex flex-wrap items-center gap-1 text-red-600 dark:text-red-400">
+                <XCircle className="h-4 w-4 shrink-0" />
+                {isEn ? "Incorrect" : "Chưa đúng"} ·{" "}
+                {isEn ? "Answer:" : "Đáp án:"}{" "}
+                <strong className="text-emerald-700 dark:text-emerald-400">
+                  {detail.acceptedAnswers.join(" / ")}
+                </strong>
+              </span>
+            )}
+            {detail.wordLimitExceeded && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                <AlertTriangle className="h-3 w-3" />
+                {isEn ? "Word limit exceeded" : "Vượt giới hạn số từ"}
+              </span>
+            )}
+          </div>
+          {renderLocateEvidenceButton(detail)}
         </div>
-        {detail.sectionRef && (
+        {detail.sectionRef && !onLocateEvidence && (
           <p className="text-emerald-800 dark:text-emerald-300">
             <strong>{isEn ? "Evidence:" : "Đoạn chứa đáp án:"}</strong>{" "}
             {detail.sectionRef}
@@ -248,7 +278,7 @@ export function QuestionGroupRenderer({
           {groupDetails.map(({ q, detail }) => (
             <div
               key={q.id}
-              className={`rounded-xl border p-3 text-xs space-y-1 ${
+              className={`rounded-xl border p-3 text-xs space-y-1.5 ${
                 detail.isCorrect
                   ? "border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/20"
                   : "border-red-200 bg-red-50/40 dark:border-red-900 dark:bg-red-950/20"
@@ -282,9 +312,16 @@ export function QuestionGroupRenderer({
                       </span>
                     </span>
                   )}
+                  {detail.wordLimitExceeded && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                      <AlertTriangle className="h-3 w-3" />
+                      {isEn ? "Word limit exceeded" : "Vượt giới hạn số từ"}
+                    </span>
+                  )}
                 </div>
+                {renderLocateEvidenceButton(detail)}
               </div>
-              {detail.sectionRef && (
+              {detail.sectionRef && !onLocateEvidence && (
                 <p className="text-emerald-800 dark:text-emerald-300">
                   <strong>{isEn ? "Evidence:" : "Đoạn chứa đáp án:"}</strong> {detail.sectionRef}
                 </p>
@@ -812,51 +849,95 @@ export function QuestionGroupRenderer({
             }
             className="space-y-2"
           >
-            {opts.map((rawOpt, optIdx) => {
-              const parts = getOptionDisplayParts(rawOpt, optIdx);
-              const isSelected = selectedValues.includes(parts.value);
-              const isDisabled = isLocked || (!isSelected && atLimit);
+            {(() => {
+              const expectedLetters = new Set<string>();
+              if (isLocked) {
+                for (const q of questions) {
+                  const d = detailById.get(q.id);
+                  for (const acc of d?.acceptedAnswers ?? []) {
+                    for (const tok of acc.split(/[,|&/]+|\band\b/i)) {
+                      const letter = normalizeTokenId(tok).toUpperCase();
+                      if (letter) expectedLetters.add(letter);
+                    }
+                  }
+                }
+              }
 
-              return (
-                <button
-                  key={rawOpt}
-                  type="button"
-                  role="checkbox"
-                  aria-checked={isSelected}
-                  aria-disabled={isDisabled}
-                  disabled={isDisabled}
-                  onClick={() => toggleOption(parts.value)}
-                  className={`flex min-h-[44px] w-full items-center gap-3 rounded-xl border px-3.5 py-2 text-left text-xs font-medium transition focus-visible:outline-2 focus-visible:outline-emerald-600 ${
-                    isSelected
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-100 cursor-pointer"
-                      : isDisabled
-                      ? "border-slate-200 bg-slate-50 text-slate-400 opacity-60 cursor-not-allowed dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 cursor-pointer"
-                  }`}
-                >
-                  <span
-                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-                      isSelected
-                        ? "bg-emerald-600 text-white"
-                        : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                    }`}
+              return opts.map((rawOpt, optIdx) => {
+                const parts = getOptionDisplayParts(rawOpt, optIdx);
+                const isSelected = selectedValues.includes(parts.value);
+                const isDisabled = isLocked || (!isSelected && atLimit);
+                const optLetter = parts.letter.toUpperCase();
+                const isExpectedKey = isLocked && expectedLetters.has(optLetter);
+
+                let btnCls =
+                  "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 cursor-pointer";
+                if (isLocked) {
+                  if (isSelected && isExpectedKey) {
+                    btnCls =
+                      "border-emerald-600 bg-emerald-50 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-100";
+                  } else if (isSelected && !isExpectedKey) {
+                    btnCls =
+                      "border-red-500 bg-red-50 text-red-950 dark:border-red-500 dark:bg-red-950/50 dark:text-red-100";
+                  } else if (!isSelected && isExpectedKey) {
+                    btnCls =
+                      "border-emerald-400 border-dashed bg-emerald-50/40 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-200";
+                  } else {
+                    btnCls =
+                      "border-slate-200 bg-slate-50 text-slate-400 opacity-65 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500";
+                  }
+                } else if (isSelected) {
+                  btnCls =
+                    "border-emerald-600 bg-emerald-50 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-100 cursor-pointer";
+                } else if (isDisabled) {
+                  btnCls =
+                    "border-slate-200 bg-slate-50 text-slate-400 opacity-60 cursor-not-allowed dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500";
+                }
+
+                return (
+                  <button
+                    key={rawOpt}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={isSelected}
+                    aria-disabled={isDisabled}
+                    disabled={isDisabled}
+                    onClick={() => toggleOption(parts.value)}
+                    className={`flex min-h-[44px] w-full items-center gap-3 rounded-xl border px-3.5 py-2 text-left text-xs font-medium transition focus-visible:outline-2 focus-visible:outline-emerald-600 ${btnCls}`}
                   >
-                    {parts.letter}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                      isSelected
-                        ? "border-emerald-600 bg-emerald-600 text-white"
-                        : "border-slate-300 dark:border-slate-600"
-                    }`}
-                  >
-                    {isSelected && <Check className="h-3 w-3" />}
-                  </span>
-                  <span className="leading-snug">{parts.label}</span>
-                </button>
-              );
-            })}
+                    <span
+                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                        isLocked && isSelected && !isExpectedKey
+                          ? "bg-red-500 text-white"
+                          : isSelected || isExpectedKey
+                          ? "bg-emerald-600 text-white"
+                          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                      }`}
+                    >
+                      {parts.letter}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                        isLocked && isSelected && !isExpectedKey
+                          ? "border-red-500 bg-red-500 text-white"
+                          : isSelected
+                          ? "border-emerald-600 bg-emerald-600 text-white"
+                          : "border-slate-300 dark:border-slate-600"
+                      }`}
+                    >
+                      {isSelected && <Check className="h-3 w-3" />}
+                    </span>
+                    <span className="flex-1 leading-snug">{parts.label}</span>
+                    {isLocked && isExpectedKey && (
+                      <span className="shrink-0 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        {isEn ? "Key" : "Đáp án"}
+                      </span>
+                    )}
+                  </button>
+                );
+              });
+            })()}
           </div>
 
           {!isLocked && atLimit && (
@@ -1541,6 +1622,20 @@ export function QuestionGroupRenderer({
     );
   };
 
+  const groupScore = useMemo(() => {
+    if (!graded) return null;
+    let correct = 0;
+    let total = 0;
+    for (const q of questions) {
+      const d = detailById.get(q.id);
+      if (d) {
+        total += 1;
+        if (d.isCorrect) correct += 1;
+      }
+    }
+    return total > 0 ? { correct, total } : null;
+  }, [graded, questions, detailById]);
+
   return (
     <Card className="p-5 sm:p-6 space-y-4">
       {/* Shared Group Header */}
@@ -1550,6 +1645,19 @@ export function QuestionGroupRenderer({
             {rangeLabel}
           </h3>
           <div className="flex flex-wrap items-center gap-1.5">
+            {groupScore && (
+              <Badge
+                variant={
+                  groupScore.correct / groupScore.total >= 0.7
+                    ? "default"
+                    : "amber"
+                }
+              >
+                {isEn
+                  ? `${groupScore.correct}/${groupScore.total} correct`
+                  : `Đúng ${groupScore.correct}/${groupScore.total}`}
+              </Badge>
+            )}
             <Badge variant="secondary">
               {getQuestionTypeLabel(group.type, isEn)}
             </Badge>
